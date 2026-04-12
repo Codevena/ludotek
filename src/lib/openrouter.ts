@@ -54,7 +54,8 @@ Format your response as:
   if (!res.ok) throw new Error(`OpenRouter API failed: ${res.status}`);
 
   const data = await res.json();
-  const content: string = data.choices[0]?.message?.content || "";
+  const content: string = data?.choices?.[0]?.message?.content || "";
+  if (!content) throw new Error("OpenRouter returned empty or unexpected response");
 
   const funFactsMatch = content.match(/---FUN_FACTS---\s*([\s\S]*?)(?=---STORY---|$)/);
   const storyMatch = content.match(/---STORY---\s*([\s\S]*?)$/);

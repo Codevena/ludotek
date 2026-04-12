@@ -26,7 +26,12 @@ export async function PUT(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  const body = await request.json();
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   const data: Record<string, string> = {};
   const fields = [
@@ -36,8 +41,12 @@ export async function PUT(request: NextRequest) {
   ];
 
   for (const field of fields) {
-    if (body[field] !== undefined && body[field] !== "********") {
-      data[field] = body[field];
+    const value = body[field];
+    if (value !== undefined && value !== "********") {
+      if (typeof value !== "string") {
+        return NextResponse.json({ error: `Field "${field}" must be a string` }, { status: 400 });
+      }
+      data[field] = value;
     }
   }
 

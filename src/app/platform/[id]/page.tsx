@@ -23,7 +23,7 @@ export default async function PlatformPage({ params, searchParams }: Props) {
 
   const sort = sp.sort || "title";
   const order = sp.order === "desc" ? "desc" as const : "asc" as const;
-  const page = Math.max(1, parseInt(sp.page || "1", 10));
+  const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const limit = 48;
 
   const validSorts = ["title", "igdbScore", "releaseDate", "createdAt"];

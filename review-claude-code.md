@@ -1,184 +1,126 @@
-# Game Vault -- Code Review Findings
+# Game Vault Code Review Findings
 
-Reviewer: Claude Code Review Agent
-Date: 2026-04-12
-Scope: Full codebase review (all source files, 22 commits, scaffold to completion)
+Reviewed all source files on 2026-04-12. Previous fixes (XSS, auth, SSH injection, masking, search debounce, expandable AI sections, SSE streaming, etc.) are confirmed in place. The following remaining issues were found.
 
 ---
 
 ## Critical
 
-### C1. XSS via `dangerouslySetInnerHTML` with unsanitized AI-generated content
+### 1. Score 0 falsified by `||` operator (`src/lib/igdb.ts:131`)
 
-**File:** `/Users/markus/Desktop/game-vault/src/app/game/[id]/page.tsx` (lines 138-139, 147-148)
+The claim that "score 0 fix" was applied is incorrect. The code still reads:
 
-`aiFunFacts` and `aiStory` are rendered with `dangerouslySetInnerHTML` but are never sanitized. The content comes from an LLM via OpenRouter. LLM outputs are not trustworthy -- prompt injection or model misbehavior can produce `<script>`, `<img onerror=...>`, or other XSS payloads. The Markdown-formatted response from the AI is stored raw in the database and rendered as HTML directly.
+```
+igdbScore: game.rating || null,
+```
 
-**Fix:** Use a Markdown-to-HTML library (e.g. `marked` or `remark`) combined with a sanitizer like `DOMPurify` (server-side via `isomorphic-dompurify`) or `sanitize-html`. Alternatively, render the content as plain text or use a React Markdown component that does not allow raw HTML.
+`game.rating` of `0` is falsy, so a legitimate zero score becomes `null`. This should be:
 
-### C2. Settings API has no authentication
+```
+igdbScore: game.rating !== undefined ? game.rating : null,
+```
 
-**File:** `/Users/markus/Desktop/game-vault/src/app/api/settings/route.ts`
+or:
 
-The GET endpoint returns masked secrets, but the PUT endpoint accepts and stores arbitrary credentials (SSH password, API keys) with zero authentication. The scan, enrich, and AI endpoints are also completely unauthenticated. Anyone on the network can:
-- Change the SSH target to their own machine and harvest the password on next scan
-- Replace API keys
-- Trigger scans and enrichments
-
-**Fix:** Add at minimum a shared secret / API key header check, or basic auth, for all admin-facing API routes and the admin page.
-
-### C3. SSH command injection in scanner
-
-**File:** `/Users/markus/Desktop/game-vault/src/lib/scanner.ts` (lines 96-104)
-
-The `ROM_BASE` path is a constant, but `dir` values come from the output of `ls -1` on the remote machine. While they originate from a trusted source (your own Steam Deck), if a directory name ever contains shell metacharacters (backticks, `$(...)`, semicolons, etc.), the constructed command `ls -1 "${ROM_BASE}/${dir}"` would be subject to injection. This is a defense-in-depth concern.
-
-**Fix:** Sanitize or validate `dir` values, or use an SFTP-based listing (`conn.sftp()`) instead of `exec` with string interpolation.
+```
+igdbScore: game.rating ?? null,
+```
 
 ---
 
 ## Important
 
-### I1. `.env` file is committed or present in working tree with real host IP
+### 2. NaN propagation in page parameter parsing
 
-**File:** `/Users/markus/Desktop/game-vault/.env`
+**Files:** `src/app/page.tsx:91`, `src/app/platform/[id]/page.tsx:26`
 
-The `.env` file contains `DECK_HOST="192.168.178.131"` and `DECK_USER="deck"`. While `.env` is in `.gitignore`, the `.env.example` file contains the same real IP address and username, which leaks infrastructure details. The `.env.example` should use placeholder values like `192.168.x.x` or `your-deck-ip`.
+```
+const page = Math.max(1, parseInt(params.page || "1", 10));
+```
 
-### I2. `steamgriddbKey` is not masked in GET /api/settings
+If `params.page` is a non-numeric string (e.g., `?page=abc`), `parseInt` returns `NaN`, and `Math.max(1, NaN)` returns `NaN`. This causes `(NaN - 1) * 48 = NaN` to be passed to Prisma's `skip`, which will error or produce unexpected results.
 
-**File:** `/Users/markus/Desktop/game-vault/src/app/api/settings/route.ts` (lines 11-17)
+The API route at `src/app/api/games/route.ts:11` correctly handles this with a trailing `|| 1` fallback. Apply the same pattern:
 
-The GET endpoint masks `deckPassword`, `igdbClientSecret`, `openrouterKey`, and `steamApiKey`, but `steamgriddbKey` is returned in cleartext. This is inconsistent -- it is an API key and should be masked like the others.
+```
+const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
+```
 
-### I3. Admin page sends masked values ("********") back on save, silently skipping updates
+### 3. SSE streams ignore client disconnection
 
-**File:** `/Users/markus/Desktop/game-vault/src/app/api/settings/route.ts` (line 31) + `/Users/markus/Desktop/game-vault/src/app/admin/page.tsx`
+**Files:** `src/app/api/enrich/route.ts`, `src/app/api/enrich/ai/route.ts`
 
-When the admin page loads, it receives masked values like `"********"` for secrets. If the user changes a non-secret field and saves, the masked values are sent back. The API correctly skips `"********"` values (line 31), but the admin UI shows `"********"` in the password inputs, giving no indication to the user that the actual value is preserved. If a user clears a password field and types something, there is no way to know if the old value was kept or replaced. The UX is confusing and fragile.
+When a client navigates away or closes the tab mid-enrichment, the server continues processing all remaining games (including external API calls and database writes). The `ReadableStream` should check `controller.desiredSize` or use the `request.signal` to detect cancellation:
 
-**Fix:** Use empty strings for masked fields in the response and add placeholder text like "Saved (hidden)" in the input fields. Or use a separate "change password" flow.
+```ts
+for (let i = 0; i < games.length; i++) {
+  if (request.signal.aborted) break;
+  // ...existing logic...
+}
+```
 
-### I4. N+1 query pattern in scan route
+### 4. Unhandled errors before SSE stream starts
 
-**File:** `/Users/markus/Desktop/game-vault/src/app/api/scan/route.ts` (lines 31-53)
+**Files:** `src/app/api/enrich/route.ts:11-19`, `src/app/api/enrich/ai/route.ts:10-24`
 
-Every scanned game triggers an individual `prisma.game.upsert()` call in a loop. For a large collection (hundreds of games), this means hundreds of sequential database round-trips. Additionally, the platform count update (lines 57-69) uses `updateMany` in a loop.
+The `prisma.settings.findFirst()` and `prisma.game.findMany()` calls outside the `ReadableStream` are not wrapped in try-catch. If the database is unavailable, these throw an unhandled exception resulting in a generic 500 error without a useful JSON body. Wrap in try-catch like the scan route does.
 
-**Fix:** Use `prisma.$transaction()` to batch the upserts, or use `createMany` for new games with conflict handling.
+### 5. `next.config.mjs` uses deprecated experimental key
 
-### I5. N+1 API calls in IGDB enrichment
+**File:** `next.config.mjs:4-6`
 
-**File:** `/Users/markus/Desktop/game-vault/src/lib/igdb.ts` (lines 58-138)
+```js
+experimental: {
+  serverComponentsExternalPackages: ["ssh2", "cpu-features"],
+},
+```
 
-For each game, `searchIgdb` makes up to 5 sequential API calls (search, cover, genres, companies, company details, screenshots). For 50 games per enrichment batch, that is up to 250 HTTP requests. While there is a 250ms delay between games, the per-game calls are not batched.
+In Next.js 14.x, `serverComponentsExternalPackages` has been promoted to a top-level config option called `serverExternalPackages`. The experimental key still works but is deprecated and may be removed. Change to:
 
-The IGDB API supports fetching multiple resources in a single query (e.g., `where id = (1,2,3)`). Consider restructuring to batch lookups across games where possible.
+```js
+const nextConfig = {
+  output: "standalone",
+  serverExternalPackages: ["ssh2", "cpu-features"],
+  images: { ... },
+};
+```
 
-### I6. `cleanFilename` crashes on files with no extension
+### 6. `<img>` tags used instead of `next/image`
 
-**File:** `/Users/markus/Desktop/game-vault/src/lib/filename-cleaner.ts` (line 6)
+**Files:** `src/components/game-card.tsx`, `src/components/screenshot-gallery.tsx`, `src/app/game/[id]/page.tsx`
 
-If a filename has no dot (e.g., a directory name or extensionless file), `filename.lastIndexOf(".")` returns -1, and `filename.slice(-1)` returns the last character. This will not match any skip extension, so it will not crash, but the logic is wrong -- it should handle the no-extension case explicitly.
-
-Additionally, if the filename is just `.hidden`, `lastIndexOf(".")` returns 0, and `slice(0)` returns the entire filename, which would then be checked against `SKIP_EXTENSIONS`. This is a minor edge case but indicates the logic does not account for dotfiles.
-
-### I7. Scan result new/updated detection is unreliable
-
-**File:** `/Users/markus/Desktop/game-vault/src/app/api/scan/route.ts` (line 49)
-
-The code checks `result.createdAt.getTime() === result.updatedAt.getTime()` to determine if a record was newly created vs. updated. This is fragile because:
-- Prisma's `@updatedAt` is set by Prisma, not the database, and timing differences could cause false negatives
-- On an upsert that matches but the title has not changed, `updatedAt` still gets bumped by Prisma's `@updatedAt` directive
-
-This means the counts may be inaccurate.
-
-### I8. `deduplicateGames` key does not actually deduplicate across platforms
-
-**File:** `/Users/markus/Desktop/game-vault/src/lib/scanner.ts` (line 51)
-
-The dedup key is `${game.originalFile}|${game.title}`. Two entries from different directories (e.g., `gc/Zelda.rvz` and `gamecube/Zelda.rvz`) will have the same `originalFile` ("Zelda.rvz") and same `title` ("Zelda"), so they will be deduplicated. But if the same game appears in `gc` and `gc-multidisc` with different filenames, they will not be deduplicated because the key includes `originalFile`.
-
-The deduplication logic seems to target the case where the same file appears in aliased directories (e.g., `gc` vs `gamecube`). The key should probably be `${game.title}|${game.platform}` to deduplicate by game identity rather than file identity.
+All images use raw `<img>` tags, bypassing Next.js Image optimization (lazy loading hints, responsive sizing, WebP conversion, CDN caching). The `next.config.mjs` already configures `remotePatterns` for `images.igdb.com` and `steamgriddb.com`, but those patterns are unused. Either use `next/image` with `fill` for these images or remove the unused `images` config to avoid confusion.
 
 ---
 
-## Minor
+## Suggestions
 
-### M1. `SortSelect` splitting logic is fragile
+### 7. Global `.card:hover` lift applies to non-interactive elements
 
-**File:** `/Users/markus/Desktop/game-vault/src/components/sort-select.tsx` (line 18)
+**File:** `src/app/globals.css:18-20`
 
-`e.target.value.split("-")` splits on the first `-`. For the value `"igdbScore-desc"`, this produces `["igdbScore", "desc"]` which is correct. But `"title"` produces `["title"]` and `order` becomes `undefined`, which is also fine. However, if a sort key ever contained a hyphen (e.g., `"release-date"`), this would break. Low risk since the keys are controlled, but fragile.
+The `.card:hover` rule applies `border-vault-amber` and `-translate-y-0.5` to every `.card` element, including the admin settings form, progress indicator, and result display -- all of which are non-interactive containers. Consider scoping the hover effect to only interactive cards (e.g., `.card-link:hover` or `a.card:hover`).
 
-### M2. Pagination only shows first 10 pages
+### 8. Docker compose missing `STEAM_API_KEY` environment variable
 
-**Files:** `/Users/markus/Desktop/game-vault/src/app/page.tsx` (line 95), `/Users/markus/Desktop/game-vault/src/app/platform/[id]/page.tsx` (line 73)
+**File:** `docker-compose.yml`
 
-`Math.min(totalPages, 10)` caps pagination at 10 visible pages. If there are 20+ pages, users cannot navigate to pages 11-20. There is no "next" / "previous" / "last" control.
+The Settings model and admin UI include `steamApiKey`, and `.env.example` does not include it either. Since it is managed through the admin UI and stored in the database, this is functional but inconsistent with the other API keys that are also passed via Docker ENV. Either add `STEAM_API_KEY` to docker-compose.yml for parity or document that it is DB-only.
 
-### M3. Sidebar fetches platforms client-side, causing layout shift
+### 9. Duplicate `safeJsonParse` function
 
-**File:** `/Users/markus/Desktop/game-vault/src/components/layout/sidebar.tsx`
+**Files:** `src/app/api/games/[id]/route.ts:4-7`, `src/app/game/[id]/page.tsx:9-12`
 
-The sidebar is a client component that fetches `/api/platforms` in a `useEffect`. This means the platform list is empty on initial render and pops in after the API call completes, causing visible layout shift. Since this is a Next.js 14 app with server components, the sidebar could be a server component that fetches data directly from Prisma.
+The same `safeJsonParse` helper is defined identically in two files. Extract to a shared utility (e.g., `src/lib/utils.ts`) to reduce duplication.
 
-### M4. `Suspense` boundaries have no fallback
+### 10. Admin page lacks CSRF protection and input validation
 
-**File:** `/Users/markus/Desktop/game-vault/src/app/layout.tsx` (lines 33-35, 37-39)
+**File:** `src/app/admin/page.tsx`
 
-`<Suspense>` without a `fallback` prop renders nothing while the child is loading. This means the sidebar and header will flash in. Provide skeleton/spinner fallbacks for better UX.
+Settings values from the admin form are sent directly to the PUT endpoint without any client-side or server-side validation (e.g., `deckHost` could be set to anything). While this is a home-network tool, basic validation (e.g., ensuring `deckHost` looks like an IP/hostname) would prevent accidental misconfiguration.
 
-### M5. `card` hover effect applies to non-interactive cards
+### 11. `deduplicateGames` uses `originalFile|platformLabel` as key
 
-**File:** `/Users/markus/Desktop/game-vault/src/app/globals.css` (lines 18-20)
+**File:** `src/lib/scanner.ts:51`
 
-The `.card:hover` style with `-translate-y-0.5` applies to all `.card` elements, including static info cards on the game detail page (summary, fun facts, story sections). Non-interactive elements should not have lift-on-hover effects as it implies interactivity.
-
-### M6. Screenshot gallery lightbox has no keyboard dismiss
-
-**File:** `/Users/markus/Desktop/game-vault/src/components/screenshot-gallery.tsx`
-
-The lightbox overlay can only be dismissed by clicking. There is no `onKeyDown` handler for Escape, no focus trap, and no ARIA attributes (`role="dialog"`, `aria-modal`, `aria-label`). This is an accessibility gap.
-
-### M7. Search bar does not sync with URL on navigation
-
-**File:** `/Users/markus/Desktop/game-vault/src/components/search-bar.tsx`
-
-The `SearchBar` component uses local `useState` for the query but does not read from `searchParams` on mount. If a user navigates to `/?search=zelda` (e.g., via browser back), the search input will show empty while the results show filtered games. The state should be initialized from the URL.
-
-### M8. `img` tags use raw `src` instead of `next/image`
-
-**Files:** `/Users/markus/Desktop/game-vault/src/components/game-card.tsx`, `/Users/markus/Desktop/game-vault/src/app/game/[id]/page.tsx`
-
-External images from IGDB and SteamGridDB are loaded with plain `<img>` tags. While `remotePatterns` is configured in `next.config.mjs`, `next/image` is not used. This means no automatic image optimization, no lazy loading with placeholder, and no sizing enforcement. For a grid of 48 game covers, this is a meaningful performance miss.
-
-### M9. No error boundary for admin page fetch failures
-
-**File:** `/Users/markus/Desktop/game-vault/src/app/admin/page.tsx` (line 36)
-
-The `useEffect` that fetches settings has no `.catch()` handler. If the settings API fails, the promise rejection is unhandled and the UI shows empty form fields with no error indication.
-
-### M10. Docker image uses `corepack prepare pnpm@latest`
-
-**File:** `/Users/markus/Desktop/game-vault/Dockerfile` (line 3)
-
-Using `pnpm@latest` in a Dockerfile means builds are not reproducible. Pin to a specific pnpm version (e.g., `pnpm@9.15.0`).
-
-### M11. `@types/ssh2` is a runtime dependency
-
-**File:** `/Users/markus/Desktop/game-vault/package.json` (line 9)
-
-`@types/ssh2` is listed under `dependencies` instead of `devDependencies`. Type packages should always be dev dependencies.
-
-### M12. Missing `aria-label` on select and form elements
-
-**Files:** `/Users/markus/Desktop/game-vault/src/components/sort-select.tsx`, `/Users/markus/Desktop/game-vault/src/components/search-bar.tsx`
-
-The sort `<select>` and search `<input>` have no `aria-label` or associated `<label>` elements. Screen readers will not be able to identify these controls.
-
-### M13. Admin labels not associated with inputs via `htmlFor`/`id`
-
-**File:** `/Users/markus/Desktop/game-vault/src/app/admin/page.tsx`
-
-The admin form uses `<label>` elements but they lack `htmlFor` attributes and the inputs lack `id` attributes. Clicking a label will not focus the corresponding input, and screen readers will not associate them.
+The deduplication key uses `platformLabel` (display string like "GameCube") rather than `platform` (canonical ID like "gc"). Since two directories can map to the same platform (e.g., "gc" and "gamecube" both map to platform ID "gc" but share the same label), this works in practice. However, using `platform` (the canonical ID) would be semantically clearer and more robust.

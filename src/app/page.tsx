@@ -88,7 +88,7 @@ export default async function HomePage({ searchParams }: Props) {
   const search = params.search;
   const sort = params.sort || "title";
   const order = params.order === "desc" ? "desc" as const : "asc" as const;
-  const page = Math.max(1, parseInt(params.page || "1", 10));
+  const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
   const limit = 48;
 
   const where: Record<string, unknown> = {};

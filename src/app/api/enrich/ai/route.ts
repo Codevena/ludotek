@@ -35,6 +35,8 @@ export async function POST(request: NextRequest) {
       let failed = 0;
 
       for (let i = 0; i < games.length; i++) {
+        if (request.signal.aborted) break;
+
         const game = games[i];
         send({ type: "progress", current: i + 1, total: games.length, title: game.title, platform: game.platformLabel });
 

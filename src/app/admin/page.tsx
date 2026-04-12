@@ -41,13 +41,58 @@ export default function AdminPage() {
   const [aiEnriching, setAiEnriching] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [progress, setProgress] = useState<ProgressState | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+  const [tokenInput, setTokenInput] = useState("");
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
-    fetch("/api/settings")
+    // Check if auth is required
+    fetch("/api/auth")
       .then((r) => r.json())
+      .then((data) => {
+        setAuthRequired(data.authRequired);
+        if (!data.authRequired) {
+          setAuthenticated(true);
+          loadSettings();
+        } else {
+          // Try loading settings (cookie might already be set)
+          fetch("/api/settings")
+            .then((r) => {
+              if (r.ok) {
+                setAuthenticated(true);
+                return r.json().then(setSettings);
+              }
+            })
+            .catch(() => {});
+        }
+      });
+  }, []);
+
+  function loadSettings() {
+    fetch("/api/settings")
+      .then((r) => {
+        if (!r.ok) throw new Error("Unauthorized");
+        return r.json();
+      })
       .then(setSettings)
       .catch((err) => console.error("Failed to load settings:", err));
-  }, []);
+  }
+
+  async function handleLogin() {
+    setAuthError("");
+    const res = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: tokenInput }),
+    });
+    if (res.ok) {
+      setAuthenticated(true);
+      loadSettings();
+    } else {
+      setAuthError("Invalid token");
+    }
+  }
 
   async function saveSettings() {
     setSaving(true);
@@ -166,6 +211,47 @@ export default function AdminPage() {
 
   const inputClass = "w-full bg-vault-bg border border-vault-border rounded-lg px-4 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-amber transition-colors";
   const btnClass = "px-6 py-3 rounded-lg font-medium text-sm transition-all duration-200 disabled:opacity-50";
+
+  // Loading state
+  if (authRequired === null) {
+    return (
+      <div className="max-w-3xl mx-auto flex items-center justify-center py-20">
+        <div className="w-6 h-6 rounded-full bg-vault-amber animate-pulse" />
+      </div>
+    );
+  }
+
+  // Login gate
+  if (authRequired && !authenticated) {
+    return (
+      <div className="max-w-sm mx-auto py-20">
+        <h1 className="font-heading text-2xl font-bold mb-6 text-center">Admin Login</h1>
+        <div className="card space-y-4">
+          <div>
+            <label className="text-vault-muted text-xs mb-1 block">Admin Token</label>
+            <input
+              type="password"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              placeholder="Enter admin token..."
+              className="w-full bg-vault-bg border border-vault-border rounded-lg px-4 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-amber transition-colors"
+            />
+          </div>
+          {authError && <p className="text-red-400 text-sm">{authError}</p>}
+          <button
+            onClick={handleLogin}
+            className="w-full px-6 py-3 rounded-lg font-medium text-sm bg-vault-amber text-black hover:bg-vault-amber-hover transition-all"
+          >
+            Login
+          </button>
+        </div>
+        <Link href="/" className="text-vault-muted hover:text-vault-text text-sm mt-4 block text-center">
+          ← Back to library
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto">

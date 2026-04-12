@@ -128,12 +128,12 @@ export async function searchIgdb(
   return {
     igdbId: game.id,
     coverUrl,
-    igdbScore: game.rating || null,
+    igdbScore: game.rating ?? null,
     genres: genreNames,
     developer,
     publisher,
     releaseDate: game.first_release_date ? new Date(game.first_release_date * 1000) : null,
-    summary: game.summary || null,
+    summary: game.summary ?? null,
     screenshotUrls,
   };
 }
