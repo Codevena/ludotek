@@ -20,6 +20,15 @@ interface ActionResult {
   [key: string]: unknown;
 }
 
+interface ProgressState {
+  current: number;
+  total: number;
+  title: string;
+  platform: string;
+  enrichedCount: number;
+  failedCount: number;
+}
+
 export default function AdminPage() {
   const [settings, setSettings] = useState<Settings>({
     deckHost: "", deckUser: "", deckPassword: "",
@@ -31,6 +40,7 @@ export default function AdminPage() {
   const [enriching, setEnriching] = useState(false);
   const [aiEnriching, setAiEnriching] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
+  const [progress, setProgress] = useState<ProgressState | null>(null);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -41,24 +51,116 @@ export default function AdminPage() {
 
   async function saveSettings() {
     setSaving(true);
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings),
-    });
-    setResult(await res.json());
-    setSaving(false);
-  }
-
-  async function runAction(url: string, setter: (v: boolean) => void) {
-    setter(true);
-    setResult(null);
     try {
-      const res = await fetch(url, { method: "POST" });
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
       setResult(await res.json());
     } catch (err) {
       setResult({ error: String(err) });
     }
+    setSaving(false);
+  }
+
+  async function runScan() {
+    setScanning(true);
+    setResult(null);
+    setProgress(null);
+    try {
+      const res = await fetch("/api/scan", { method: "POST" });
+      setResult(await res.json());
+    } catch (err) {
+      setResult({ error: String(err) });
+    }
+    setScanning(false);
+  }
+
+  async function runStreamingAction(
+    url: string,
+    setter: (v: boolean) => void
+  ) {
+    setter(true);
+    setResult(null);
+    setProgress(null);
+
+    try {
+      const res = await fetch(url, { method: "POST" });
+
+      if (!res.ok) {
+        setResult(await res.json());
+        setter(false);
+        return;
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("text/event-stream")) {
+        // Non-streaming response (e.g. empty batch)
+        setResult(await res.json());
+        setter(false);
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) {
+        setResult({ error: "No response body" });
+        setter(false);
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let enrichedCount = 0;
+      let failedCount = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === "progress") {
+              setProgress({
+                current: data.current,
+                total: data.total,
+                title: data.title,
+                platform: data.platform || "",
+                enrichedCount,
+                failedCount,
+              });
+            } else if (data.type === "enriched") {
+              enrichedCount++;
+              setProgress((prev) => prev ? { ...prev, enrichedCount } : null);
+            } else if (data.type === "error" || data.type === "missed") {
+              failedCount++;
+              setProgress((prev) => prev ? { ...prev, failedCount } : null);
+            } else if (data.type === "done") {
+              setResult({
+                success: true,
+                processed: data.processed,
+                enriched: data.enriched,
+                failed: data.failed,
+                remaining: data.remaining,
+              });
+            }
+          } catch {
+            // skip malformed events
+          }
+        }
+      }
+    } catch (err) {
+      setResult({ error: String(err) });
+    }
+
+    setProgress(null);
     setter(false);
   }
 
@@ -75,28 +177,57 @@ export default function AdminPage() {
 
       {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <button onClick={() => runAction("/api/scan", setScanning)} disabled={scanning}
+        <button onClick={runScan} disabled={scanning || enriching || aiEnriching}
           className={`${btnClass} bg-vault-amber text-black hover:bg-vault-amber-hover`}>
           {scanning ? "Scanning..." : "Scan Steam Deck"}
         </button>
-        <button onClick={() => runAction("/api/enrich", setEnriching)} disabled={enriching}
+        <button onClick={() => runStreamingAction("/api/enrich", setEnriching)}
+          disabled={scanning || enriching || aiEnriching}
           className={`${btnClass} bg-blue-600 text-white hover:bg-blue-500`}>
           {enriching ? "Enriching..." : "Enrich All (IGDB)"}
         </button>
-        <button onClick={() => runAction("/api/enrich/ai", setAiEnriching)} disabled={aiEnriching}
+        <button onClick={() => runStreamingAction("/api/enrich/ai", setAiEnriching)}
+          disabled={scanning || enriching || aiEnriching}
           className={`${btnClass} bg-purple-600 text-white hover:bg-purple-500`}>
           {aiEnriching ? "Generating..." : "Generate AI Content"}
         </button>
       </div>
 
-      {/* Progress indicator */}
-      {(scanning || enriching || aiEnriching) && !result && (
+      {/* Live Progress */}
+      {progress && (
+        <div className="card mb-8 border-vault-amber/50 space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-vault-text font-medium">
+              {progress.title}
+              {progress.platform && (
+                <span className="text-vault-muted ml-2">({progress.platform})</span>
+              )}
+            </span>
+            <span className="text-vault-muted">
+              {progress.current}/{progress.total}
+            </span>
+          </div>
+          <div className="w-full bg-vault-bg rounded-full h-2 overflow-hidden">
+            <div
+              className="h-full bg-vault-amber rounded-full transition-all duration-300"
+              style={{ width: `${(progress.current / progress.total) * 100}%` }}
+            />
+          </div>
+          <div className="flex gap-4 text-xs text-vault-muted">
+            <span className="text-green-400">{progress.enrichedCount} enriched</span>
+            {progress.failedCount > 0 && (
+              <span className="text-red-400">{progress.failedCount} failed</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Scanning indicator (non-streaming) */}
+      {scanning && !progress && !result && (
         <div className="card mb-8 border-vault-amber/50">
           <div className="flex items-center gap-3">
             <div className="w-4 h-4 rounded-full bg-vault-amber animate-pulse" />
-            <span className="text-sm text-vault-muted">
-              {scanning ? "Scanning Steam Deck..." : enriching ? "Enriching games with IGDB data..." : "Generating AI content..."}
-            </span>
+            <span className="text-sm text-vault-muted">Scanning Steam Deck via SSH...</span>
           </div>
         </div>
       )}
