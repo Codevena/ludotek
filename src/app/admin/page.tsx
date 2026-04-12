@@ -39,6 +39,7 @@ export default function AdminPage() {
   const [scanning, setScanning] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [aiEnriching, setAiEnriching] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
@@ -120,6 +121,18 @@ export default function AdminPage() {
       setResult({ error: String(err) });
     }
     setScanning(false);
+  }
+
+  async function runCleanup() {
+    setCleaning(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/cleanup", { method: "POST" });
+      setResult(await res.json());
+    } catch (err) {
+      setResult({ error: String(err) });
+    }
+    setCleaning(false);
   }
 
   async function runStreamingAction(
@@ -276,6 +289,13 @@ export default function AdminPage() {
           disabled={scanning || enriching || aiEnriching}
           className={`${btnClass} bg-purple-600 text-white hover:bg-purple-500`}>
           {aiEnriching ? "Generating..." : "Generate AI Content"}
+        </button>
+      </div>
+
+      <div className="flex gap-4 mb-8">
+        <button onClick={runCleanup} disabled={scanning || enriching || aiEnriching || cleaning}
+          className={`${btnClass} flex-1 bg-red-600/80 text-white hover:bg-red-500`}>
+          {cleaning ? "Cleaning..." : "Cleanup Duplicates & .m3u"}
         </button>
       </div>
 

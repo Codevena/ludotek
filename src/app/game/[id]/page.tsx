@@ -5,6 +5,7 @@ import { ScoreBadge } from "@/components/score-badge";
 import { PlatformTag } from "@/components/platform-tag";
 import { ScreenshotGallery } from "@/components/screenshot-gallery";
 import { MarkdownContent } from "@/components/markdown-content";
+import { EnrichWizard } from "@/components/enrich-wizard";
 
 function safeJsonParse(str: string | null): unknown[] {
   if (!str) return [];
@@ -157,6 +158,8 @@ export default async function GameDetailPage({ params }: Props) {
           </div>
         </details>
       )}
+
+      <EnrichWizard gameId={game.id} gameTitle={game.title} />
     </div>
   );
 }
