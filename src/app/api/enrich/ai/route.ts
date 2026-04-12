@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { generateGameAiContent } from "@/lib/openrouter";
 import { requireAuth } from "@/lib/auth";
 
+const CONCURRENCY = parseInt(process.env.AI_CONCURRENCY || "3", 10) || 3;
+const DELAY_MS = Math.max(100, parseInt(process.env.AI_DELAY_MS || "500", 10) || 500);
+
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
@@ -12,63 +15,93 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "OpenRouter API key not configured" }, { status: 400 });
   }
 
-  const batchSize = Math.min(50, Math.max(1, parseInt(process.env.AI_BATCH_SIZE || "10", 10) || 10));
-  const delayMs = Math.max(100, parseInt(process.env.AI_DELAY_MS || "1000", 10) || 1000);
-
+  // Fetch ALL games that need AI content
   const games = await prisma.game.findMany({
     where: { igdbId: { not: null }, aiFunFacts: null },
-    take: batchSize,
   });
 
   if (games.length === 0) {
     return NextResponse.json({ success: true, processed: 0, enriched: 0, failed: 0, remaining: 0 });
   }
 
-  const totalRemaining = await prisma.game.count({ where: { igdbId: { not: null }, aiFunFacts: null } });
-
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: Record<string, unknown>) => {
-        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
+        try {
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          // Stream closed
+        }
       };
 
-      send({ type: "start", total: games.length, totalRemaining });
+      send({ type: "start", total: games.length, totalRemaining: games.length });
 
       let enriched = 0;
       let failed = 0;
+      let completed = 0;
 
-      for (let i = 0; i < games.length; i++) {
+      // Process in parallel batches
+      for (let i = 0; i < games.length; i += CONCURRENCY) {
         if (request.signal.aborted) break;
 
-        const game = games[i];
-        send({ type: "progress", current: i + 1, total: games.length, title: game.title, platform: game.platformLabel });
+        const batch = games.slice(i, i + CONCURRENCY);
 
-        try {
-          const genres: string[] = game.genres ? JSON.parse(game.genres) : [];
-          const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
+        send({
+          type: "progress",
+          current: completed + 1,
+          total: games.length,
+          title: batch.map((g) => g.title).join(", "),
+          platform: batch[0].platformLabel,
+          batchSize: batch.length,
+        });
 
-          const aiContent = await generateGameAiContent(
-            game.title, game.platformLabel, game.developer,
-            releaseYear, genres, game.summary, settings.openrouterKey
-          );
+        const results = await Promise.allSettled(
+          batch.map(async (game) => {
+            try {
+              const genres: string[] = game.genres ? JSON.parse(game.genres) : [];
+              const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
 
-          await prisma.game.update({
-            where: { id: game.id },
-            data: {
-              aiFunFacts: aiContent.funFacts,
-              aiStory: aiContent.story,
-              aiEnrichedAt: new Date(),
-            },
-          });
+              const aiContent = await generateGameAiContent(
+                game.title, game.platformLabel, game.developer,
+                releaseYear, genres, game.summary, settings.openrouterKey
+              );
 
-          enriched++;
-          send({ type: "enriched", title: game.title, current: i + 1 });
+              await prisma.game.update({
+                where: { id: game.id },
+                data: {
+                  aiFunFacts: aiContent.funFacts,
+                  aiStory: aiContent.story,
+                  aiEnrichedAt: new Date(),
+                },
+              });
 
-          await new Promise((r) => setTimeout(r, delayMs));
-        } catch (err) {
-          console.warn(`AI enrichment failed for "${game.title}":`, err);
-          failed++;
-          send({ type: "error", title: game.title, error: err instanceof Error ? err.message : "Unknown", current: i + 1 });
+              return { status: "enriched" as const, title: game.title };
+            } catch (err) {
+              console.warn(`AI enrichment failed for "${game.title}":`, err);
+              return { status: "error" as const, title: game.title, error: err instanceof Error ? err.message : "Unknown" };
+            }
+          })
+        );
+
+        for (const result of results) {
+          completed++;
+          if (result.status === "fulfilled") {
+            if (result.value.status === "enriched") {
+              enriched++;
+              send({ type: "enriched", title: result.value.title, current: completed });
+            } else {
+              failed++;
+              send({ type: "error", title: result.value.title, error: result.value.error, current: completed });
+            }
+          } else {
+            failed++;
+            send({ type: "error", title: "Unknown", error: String(result.reason), current: completed });
+          }
+        }
+
+        // Delay between batches to respect API rate limits
+        if (i + CONCURRENCY < games.length) {
+          await new Promise((r) => setTimeout(r, DELAY_MS));
         }
       }
 
