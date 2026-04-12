@@ -1,4 +1,4 @@
-const SKIP_EXTENSIONS = new Set([".sbi", ".txt", ".xml", ".json", ".png", ".jpg"]);
+const SKIP_EXTENSIONS = new Set([".sbi", ".txt", ".xml", ".json", ".png", ".jpg", ".m3u", ".cue", ".log", ".sub", ".idx"]);
 
 const KNOWN_EXTENSIONS = /\.(chd|rvz|7z|zip|iso|bin|cue|gba|gb|gbc|nes|sfc|smc|n64|z64|v64|nds|3ds|cia|xci|nsp|gcm|gg|md|smd|gen|32x|cdi|gdi|pbp|cso|xex|god)$/i;
 

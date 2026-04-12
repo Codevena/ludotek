@@ -11,7 +11,7 @@ export async function generateGameAiContent(
   genres: string[],
   summary: string | null,
   apiKey: string,
-  model: string = process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-4-20250514"
+  model: string = process.env.OPENROUTER_MODEL || "google/gemini-3.1-flash-lite-preview"
 ): Promise<AiContent> {
   const context = [
     `Game: ${title}`,

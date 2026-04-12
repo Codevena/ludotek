@@ -19,13 +19,26 @@ describe("parseRomListing", () => {
 });
 
 describe("deduplicateGames", () => {
-  it("prefers canonical platform key for duplicates", () => {
+  it("deduplicates same game scanned from aliased directories", () => {
+    // Both gc/ and gamecube/ map to platform "gc" via getPlatformByDir
     const games = [
       { originalFile: "Zelda.rvz", title: "Zelda", platform: "gc", platformLabel: "GameCube", source: "rom" as const },
-      { originalFile: "Zelda.rvz", title: "Zelda", platform: "gamecube", platformLabel: "GameCube", source: "rom" as const },
+      { originalFile: "Zelda.rvz", title: "Zelda", platform: "gc", platformLabel: "GameCube", source: "rom" as const },
     ];
     const deduped = deduplicateGames(games);
     expect(deduped).toHaveLength(1);
     expect(deduped[0].platform).toBe("gc");
+  });
+
+  it("collapses multi-disc games into one entry", () => {
+    const games = [
+      { originalFile: "D2 (Disc 1).chd", title: "D2", platform: "dreamcast", platformLabel: "Dreamcast", source: "rom" as const },
+      { originalFile: "D2 (Disc 2).chd", title: "D2", platform: "dreamcast", platformLabel: "Dreamcast", source: "rom" as const },
+      { originalFile: "D2 (Disc 3).chd", title: "D2", platform: "dreamcast", platformLabel: "Dreamcast", source: "rom" as const },
+      { originalFile: "D2 (Disc 4).chd", title: "D2", platform: "dreamcast", platformLabel: "Dreamcast", source: "rom" as const },
+    ];
+    const deduped = deduplicateGames(games);
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0].title).toBe("D2");
   });
 });

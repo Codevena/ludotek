@@ -48,7 +48,9 @@ export function deduplicateGames(games: ScannedGame[]): ScannedGame[] {
   const canonicalIds = new Set(PLATFORM_CONFIG.map((p) => p.id));
 
   for (const game of games) {
-    const key = `${game.originalFile}|${game.platformLabel}`;
+    // Deduplicate by cleaned title + platform ID (not filename)
+    // This collapses multi-disc games (Disc 1, Disc 2) into one entry
+    const key = `${game.title}|${game.platform}`;
     const existing = seen.get(key);
     if (!existing) {
       seen.set(key, game);
