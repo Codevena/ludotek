@@ -12,9 +12,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "OpenRouter API key not configured" }, { status: 400 });
   }
 
+  const batchSize = Math.min(50, Math.max(1, parseInt(process.env.AI_BATCH_SIZE || "10", 10) || 10));
+  const delayMs = Math.max(100, parseInt(process.env.AI_DELAY_MS || "1000", 10) || 1000);
+
   const games = await prisma.game.findMany({
     where: { igdbId: { not: null }, aiFunFacts: null },
-    take: 10,
+    take: batchSize,
   });
 
   if (games.length === 0) {
@@ -61,7 +64,7 @@ export async function POST(request: NextRequest) {
           enriched++;
           send({ type: "enriched", title: game.title, current: i + 1 });
 
-          await new Promise((r) => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, delayMs));
         } catch (err) {
           console.warn(`AI enrichment failed for "${game.title}":`, err);
           failed++;
