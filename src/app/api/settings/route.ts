@@ -38,5 +38,14 @@ export async function PUT(request: NextRequest) {
     data,
   });
 
-  return NextResponse.json({ success: true, settings: { ...settings, deckPassword: "********" } });
+  return NextResponse.json({
+    success: true,
+    settings: {
+      ...settings,
+      deckPassword: settings.deckPassword ? "********" : "",
+      igdbClientSecret: settings.igdbClientSecret ? "********" : "",
+      openrouterKey: settings.openrouterKey ? "********" : "",
+      steamApiKey: settings.steamApiKey ? "********" : "",
+    },
+  });
 }
