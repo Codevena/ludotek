@@ -1,101 +1,119 @@
-import Image from "next/image";
+import { prisma } from "@/lib/prisma";
+import { GameGrid } from "@/components/game-grid";
+import { SortSelect } from "@/components/sort-select";
+import { Suspense } from "react";
 
-export default function Home() {
+interface Props {
+  searchParams: Promise<{
+    search?: string;
+    sort?: string;
+    order?: string;
+    page?: string;
+  }>;
+}
+
+async function StatsBar() {
+  const [totalGames, platforms, avgScore] = await Promise.all([
+    prisma.game.count(),
+    prisma.platform.count({ where: { gameCount: { gt: 0 } } }),
+    prisma.game.aggregate({ _avg: { igdbScore: true } }),
+  ]);
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="card text-center">
+        <p className="font-heading text-3xl font-bold text-vault-amber">
+          {totalGames.toLocaleString()}
+        </p>
+        <p className="text-vault-muted text-sm">Games</p>
+      </div>
+      <div className="card text-center">
+        <p className="font-heading text-3xl font-bold text-vault-amber">
+          {platforms}
+        </p>
+        <p className="text-vault-muted text-sm">Platforms</p>
+      </div>
+      <div className="card text-center">
+        <p className="font-heading text-3xl font-bold text-vault-amber">
+          {avgScore._avg.igdbScore ? Math.round(avgScore._avg.igdbScore) : "—"}
+        </p>
+        <p className="text-vault-muted text-sm">Avg Score</p>
+      </div>
+    </div>
+  );
+}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+export default async function HomePage({ searchParams }: Props) {
+  const params = await searchParams;
+  const search = params.search;
+  const sort = params.sort || "title";
+  const order = params.order === "desc" ? "desc" as const : "asc" as const;
+  const page = Math.max(1, parseInt(params.page || "1", 10));
+  const limit = 48;
+
+  const where: Record<string, unknown> = {};
+  if (search) where.title = { contains: search };
+
+  const validSorts = ["title", "igdbScore", "releaseDate", "createdAt"];
+  const orderBy: Record<string, string> = {};
+  orderBy[validSorts.includes(sort) ? sort : "title"] = order;
+
+  const [games, total] = await Promise.all([
+    prisma.game.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.game.count({ where }),
+  ]);
+
+  const totalPages = Math.ceil(total / limit);
+
+  return (
+    <div>
+      <Suspense>
+        <StatsBar />
+      </Suspense>
+
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-heading text-xl font-bold">
+          {search ? `Results for "${search}"` : "All Games"}
+          <span className="text-vault-muted text-sm font-normal ml-2">
+            ({total.toLocaleString()})
+          </span>
+        </h2>
+        <Suspense>
+          <SortSelect />
+        </Suspense>
+      </div>
+
+      <GameGrid games={games} />
+
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2 mt-8">
+          {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(
+            (p) => (
+              <a
+                key={p}
+                href={`?${new URLSearchParams({
+                  ...(search ? { search } : {}),
+                  sort,
+                  order,
+                  page: p.toString(),
+                }).toString()}`}
+                className={`px-3 py-1 rounded text-sm ${
+                  p === page
+                    ? "bg-vault-amber text-black font-bold"
+                    : "bg-vault-surface text-vault-muted hover:text-vault-text"
+                }`}
+              >
+                {p}
+              </a>
+            )
+          )}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
     </div>
   );
 }
