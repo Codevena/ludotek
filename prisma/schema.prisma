@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Game {
+  id              Int       @id @default(autoincrement())
+  title           String
+  originalFile    String
+  platform        String
+  platformLabel   String
+  source          String    @default("rom") // "rom" or "steam"
+  coverUrl        String?
+  screenshotUrls  String? // JSON array stored as string
+  igdbId          Int?
+  igdbScore       Float?
+  metacriticScore Int?
+  releaseDate     DateTime?
+  genres          String? // JSON array stored as string
+  developer       String?
+  publisher       String?
+  summary         String?
+  aiFunFacts      String?
+  aiStory         String?
+  aiEnrichedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([originalFile, platform])
+  @@index([platform])
+  @@index([title])
+}
+
+model Platform {
+  id        String @id
+  label     String
+  icon      String @default("")
+  color     String @default("#f59e0b")
+  gameCount Int    @default(0)
+  sortOrder Int    @default(0)
+}
+
+model Settings {
+  id               Int    @id @default(1)
+  deckHost         String @default("192.168.178.131")
+  deckUser         String @default("deck")
+  deckPassword     String @default("")
+  igdbClientId     String @default("")
+  igdbClientSecret String @default("")
+  steamgriddbKey   String @default("")
+  openrouterKey    String @default("")
+  steamApiKey      String @default("")
+}
