@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-vault-border;
+  }
+  body {
+    @apply bg-vault-bg text-vault-text;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-vault-surface rounded-xl border border-vault-border p-4 transition-all duration-200;
+  }
+  .card:hover {
+    @apply border-vault-amber -translate-y-0.5;
+  }
+}
