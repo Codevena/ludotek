@@ -7,6 +7,14 @@ services:
       - game-data:/app/prisma
     environment:
       - DATABASE_URL=file:/app/prisma/games.db
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - DECK_HOST=${DECK_HOST:-}
+      - DECK_USER=${DECK_USER:-deck}
+      - DECK_PASSWORD=${DECK_PASSWORD:-}
+      - IGDB_CLIENT_ID=${IGDB_CLIENT_ID:-}
+      - IGDB_CLIENT_SECRET=${IGDB_CLIENT_SECRET:-}
+      - STEAMGRIDDB_API_KEY=${STEAMGRIDDB_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     restart: unless-stopped
 
 volumes:

@@ -1,9 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { searchIgdb } from "@/lib/igdb";
 import { searchSteamGridDb } from "@/lib/steamgriddb";
+import { requireAuth } from "@/lib/auth";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   try {
     const settings = await prisma.settings.findFirst({ where: { id: 1 } });
     if (!settings?.igdbClientId || !settings?.igdbClientSecret) {

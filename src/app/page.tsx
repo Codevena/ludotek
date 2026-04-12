@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { GameGrid } from "@/components/game-grid";
+import { GameCard } from "@/components/game-card";
 import { SortSelect } from "@/components/sort-select";
 import { Suspense } from "react";
 
@@ -43,6 +44,45 @@ async function StatsBar() {
   );
 }
 
+async function RecentlyAdded() {
+  const games = await prisma.game.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 6,
+  });
+  if (games.length === 0) return null;
+  return (
+    <section className="mb-8">
+      <h2 className="font-heading text-xl font-bold mb-4">Recently Added</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        {games.map((game) => (
+          <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
+            platformLabel={game.platformLabel} igdbScore={game.igdbScore} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function TopRated() {
+  const games = await prisma.game.findMany({
+    where: { igdbScore: { not: null } },
+    orderBy: { igdbScore: "desc" },
+    take: 6,
+  });
+  if (games.length === 0) return null;
+  return (
+    <section className="mb-8">
+      <h2 className="font-heading text-xl font-bold mb-4">Top Rated</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        {games.map((game) => (
+          <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
+            platformLabel={game.platformLabel} igdbScore={game.igdbScore} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default async function HomePage({ searchParams }: Props) {
   const params = await searchParams;
   const search = params.search;
@@ -75,6 +115,17 @@ export default async function HomePage({ searchParams }: Props) {
       <Suspense>
         <StatsBar />
       </Suspense>
+
+      {!search && (
+        <>
+          <Suspense>
+            <RecentlyAdded />
+          </Suspense>
+          <Suspense>
+            <TopRated />
+          </Suspense>
+        </>
+      )}
 
       <div className="flex items-center justify-between mb-6">
         <h2 className="font-heading text-xl font-bold">

@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search");
   const sort = searchParams.get("sort") || "title";
   const order = searchParams.get("order") === "desc" ? "desc" : "asc";
-  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "48", 10)));
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "48", 10) || 48));
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};

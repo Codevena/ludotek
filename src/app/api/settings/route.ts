@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   const settings = await prisma.settings.findFirst({ where: { id: 1 } });
 
   if (!settings) {
@@ -14,10 +18,14 @@ export async function GET() {
     igdbClientSecret: settings.igdbClientSecret ? "********" : "",
     openrouterKey: settings.openrouterKey ? "********" : "",
     steamApiKey: settings.steamApiKey ? "********" : "",
+    steamgriddbKey: settings.steamgriddbKey ? "********" : "",
   });
 }
 
 export async function PUT(request: NextRequest) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   const body = await request.json();
 
   const data: Record<string, string> = {};
@@ -46,6 +54,7 @@ export async function PUT(request: NextRequest) {
       igdbClientSecret: settings.igdbClientSecret ? "********" : "",
       openrouterKey: settings.openrouterKey ? "********" : "",
       steamApiKey: settings.steamApiKey ? "********" : "",
+      steamgriddbKey: settings.steamgriddbKey ? "********" : "",
     },
   });
 }

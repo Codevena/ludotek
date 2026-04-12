@@ -48,7 +48,7 @@ export function deduplicateGames(games: ScannedGame[]): ScannedGame[] {
   const canonicalIds = new Set(PLATFORM_CONFIG.map((p) => p.id));
 
   for (const game of games) {
-    const key = `${game.originalFile}|${game.title}`;
+    const key = `${game.originalFile}|${game.platformLabel}`;
     const existing = seen.get(key);
     if (!existing) {
       seen.set(key, game);
@@ -61,6 +61,10 @@ export function deduplicateGames(games: ScannedGame[]): ScannedGame[] {
   }
 
   return Array.from(seen.values());
+}
+
+function sanitizeShellArg(str: string): string {
+  return str.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
 }
 
 function sshExec(conn: Client, command: string): Promise<string> {
@@ -98,9 +102,10 @@ export async function scanSteamDeck(
         const romDirs = dirs.split("\n").filter((d) => d.trim());
 
         for (const dir of romDirs) {
+          const safeDirName = sanitizeShellArg(dir);
           const listing = await sshExec(
             conn,
-            `ls -1 "${ROM_BASE}/${dir}" 2>/dev/null || echo ""`
+            `ls -1 "${ROM_BASE}/${safeDirName}" 2>/dev/null || echo ""`
           );
           if (listing) {
             const games = parseRomListing(listing, dir);

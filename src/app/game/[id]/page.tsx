@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { ScoreBadge } from "@/components/score-badge";
 import { PlatformTag } from "@/components/platform-tag";
 import { ScreenshotGallery } from "@/components/screenshot-gallery";
+import { MarkdownContent } from "@/components/markdown-content";
+
+function safeJsonParse(str: string | null): unknown[] {
+  if (!str) return [];
+  try { return JSON.parse(str); } catch { return []; }
+}
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -17,10 +23,8 @@ export default async function GameDetailPage({ params }: Props) {
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) notFound();
 
-  const screenshots: string[] = game.screenshotUrls
-    ? JSON.parse(game.screenshotUrls)
-    : [];
-  const genres: string[] = game.genres ? JSON.parse(game.genres) : [];
+  const screenshots: string[] = safeJsonParse(game.screenshotUrls) as string[];
+  const genres: string[] = safeJsonParse(game.genres) as string[];
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -58,7 +62,7 @@ export default async function GameDetailPage({ params }: Props) {
             <div className="flex items-center gap-3 flex-wrap">
               <PlatformTag label={game.platformLabel} />
               <ScoreBadge score={game.igdbScore} />
-              {game.metacriticScore && (
+              {game.metacriticScore !== null && game.metacriticScore !== undefined && (
                 <span className="text-xs text-vault-muted">
                   MC: {game.metacriticScore}
                 </span>
@@ -131,23 +135,27 @@ export default async function GameDetailPage({ params }: Props) {
       )}
 
       {game.aiFunFacts && (
-        <div className="mt-8 card">
-          <h2 className="font-heading text-xl font-bold mb-4">Fun Facts</h2>
-          <div
-            className="text-vault-muted text-sm leading-relaxed prose prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: game.aiFunFacts }}
-          />
-        </div>
+        <details className="mt-8 card group" open>
+          <summary className="font-heading text-xl font-bold cursor-pointer list-none flex items-center justify-between">
+            Fun Facts
+            <span className="text-vault-muted text-sm group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div className="mt-4">
+            <MarkdownContent content={game.aiFunFacts} />
+          </div>
+        </details>
       )}
 
       {game.aiStory && (
-        <div className="mt-8 card">
-          <h2 className="font-heading text-xl font-bold mb-4">Story &amp; Background</h2>
-          <div
-            className="text-vault-muted text-sm leading-relaxed prose prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: game.aiStory }}
-          />
-        </div>
+        <details className="mt-8 card group" open>
+          <summary className="font-heading text-xl font-bold cursor-pointer list-none flex items-center justify-between">
+            Story &amp; Background
+            <span className="text-vault-muted text-sm group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div className="mt-4">
+            <MarkdownContent content={game.aiStory} />
+          </div>
+        </details>
       )}
     </div>
   );

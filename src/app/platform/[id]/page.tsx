@@ -30,7 +30,7 @@ export default async function PlatformPage({ params, searchParams }: Props) {
   const orderBy: Record<string, string> = {};
   orderBy[validSorts.includes(sort) ? sort : "title"] = order;
 
-  const [games, total] = await Promise.all([
+  const [games, total, avgScore] = await Promise.all([
     prisma.game.findMany({
       where: { platform: id },
       orderBy,
@@ -38,6 +38,10 @@ export default async function PlatformPage({ params, searchParams }: Props) {
       take: limit,
     }),
     prisma.game.count({ where: { platform: id } }),
+    prisma.game.aggregate({
+      where: { platform: id },
+      _avg: { igdbScore: true },
+    }),
   ]);
 
   const totalPages = Math.ceil(total / limit);
@@ -59,6 +63,9 @@ export default async function PlatformPage({ params, searchParams }: Props) {
           </h1>
           <p className="text-vault-muted text-sm mt-1">
             {total} {total === 1 ? "game" : "games"}
+            {avgScore._avg.igdbScore && (
+              <span className="ml-3">Avg Score: {Math.round(avgScore._avg.igdbScore)}</span>
+            )}
           </p>
         </div>
         <Suspense>

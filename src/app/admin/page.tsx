@@ -33,7 +33,10 @@ export default function AdminPage() {
   const [result, setResult] = useState<ActionResult | null>(null);
 
   useEffect(() => {
-    fetch("/api/settings").then((r) => r.json()).then(setSettings);
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then(setSettings)
+      .catch((err) => console.error("Failed to load settings:", err));
   }, []);
 
   async function saveSettings() {
@@ -85,6 +88,18 @@ export default function AdminPage() {
           {aiEnriching ? "Generating..." : "Generate AI Content"}
         </button>
       </div>
+
+      {/* Progress indicator */}
+      {(scanning || enriching || aiEnriching) && !result && (
+        <div className="card mb-8 border-vault-amber/50">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-full bg-vault-amber animate-pulse" />
+            <span className="text-sm text-vault-muted">
+              {scanning ? "Scanning Steam Deck..." : enriching ? "Enriching games with IGDB data..." : "Generating AI content..."}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Result display */}
       {result && (
@@ -145,6 +160,11 @@ export default function AdminPage() {
             <label className="text-vault-muted text-xs mb-1 block">OpenRouter API Key</label>
             <input className={inputClass} type="password" value={settings.openrouterKey}
               onChange={(e) => setSettings({ ...settings, openrouterKey: e.target.value })} />
+          </div>
+          <div>
+            <label className="text-vault-muted text-xs mb-1 block">Steam Web API Key</label>
+            <input className={inputClass} type="password" value={settings.steamApiKey}
+              onChange={(e) => setSettings({ ...settings, steamApiKey: e.target.value })} />
           </div>
         </div>
 

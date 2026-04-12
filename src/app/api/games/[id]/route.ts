@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+function safeJsonParse(str: string | null): unknown[] {
+  if (!str) return [];
+  try { return JSON.parse(str); } catch { return []; }
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,8 +25,8 @@ export async function GET(
 
   const parsed = {
     ...game,
-    screenshotUrls: game.screenshotUrls ? JSON.parse(game.screenshotUrls) : [],
-    genres: game.genres ? JSON.parse(game.genres) : [],
+    screenshotUrls: safeJsonParse(game.screenshotUrls),
+    genres: safeJsonParse(game.genres),
   };
 
   return NextResponse.json(parsed);
