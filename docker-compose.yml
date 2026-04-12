@@ -1,0 +1,13 @@
+services:
+  game-vault:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - game-data:/app/prisma
+    environment:
+      - DATABASE_URL=file:/app/prisma/games.db
+    restart: unless-stopped
+
+volumes:
+  game-data:

@@ -1,12 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ["ssh2", "cpu-features"],
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals = config.externals || [];
-      config.externals.push("ssh2", "cpu-features");
-    }
-    return config;
+  output: "standalone",
+  experimental: {
+    serverComponentsExternalPackages: ["ssh2", "cpu-features"],
+  },
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "images.igdb.com" },
+      { protocol: "https", hostname: "**.steamgriddb.com" },
+    ],
   },
 };
 
