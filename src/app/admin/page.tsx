@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { DeviceForm } from "@/components/device-form";
 import { useEnrichment } from "@/context/enrichment-context";
 
 interface Settings {
@@ -45,6 +46,8 @@ export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
   const [tokenInput, setTokenInput] = useState("");
+  const [devices, setDevices] = useState<Array<{ id: number; name: string; type: string; host: string; protocol: string }>>([]);
+  const [showDeviceForm, setShowDeviceForm] = useState(false);
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
@@ -57,6 +60,7 @@ export default function AdminPage() {
         if (!data.authRequired) {
           setAuthenticated(true);
           loadSettings();
+          loadDevices();
           loadPlatforms();
         } else {
           // Try loading settings (cookie might already be set)
@@ -64,6 +68,7 @@ export default function AdminPage() {
             .then((r) => {
               if (r.ok) {
                 setAuthenticated(true);
+                loadDevices();
                 loadPlatforms();
                 return r.json().then(setSettings);
               }
@@ -90,6 +95,13 @@ export default function AdminPage() {
       .catch((err) => console.error("Failed to load settings:", err));
   }
 
+  function loadDevices() {
+    fetch("/api/devices")
+      .then((r) => r.json())
+      .then((data: Array<{ id: number; name: string; type: string; host: string; protocol: string }>) => setDevices(data))
+      .catch((err) => console.error("Failed to load devices:", err));
+  }
+
   function loadPlatforms() {
     fetch("/api/platforms")
       .then((r) => r.json())
@@ -108,6 +120,7 @@ export default function AdminPage() {
       if (res.ok) {
         setAuthenticated(true);
         loadSettings();
+        loadDevices();
         loadPlatforms();
       } else {
         setAuthError("Invalid token");
@@ -435,6 +448,66 @@ export default function AdminPage() {
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-vault-amber text-sm font-semibold uppercase tracking-wide">Devices</h3>
+          {devices.length > 0 && (
+            <div className="space-y-2">
+              {devices.map((device) => (
+                <div
+                  key={device.id}
+                  className="flex items-center justify-between px-3 py-2 rounded-lg border border-vault-border bg-vault-bg"
+                >
+                  <div className="text-sm">
+                    <span className="text-vault-text font-medium">{device.name}</span>
+                    <span className="text-vault-muted ml-2">{device.host} ({device.protocol})</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await fetch(`/api/devices/${device.id}`, { method: "DELETE" });
+                        loadDevices();
+                      } catch (err) {
+                        console.error("Failed to delete device:", err);
+                      }
+                    }}
+                    className="text-red-400 hover:text-red-300 text-sm transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {showDeviceForm ? (
+            <DeviceForm
+              onSubmit={async (data) => {
+                await fetch("/api/devices", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(data),
+                });
+                setShowDeviceForm(false);
+                loadDevices();
+              }}
+              onCancel={() => setShowDeviceForm(false)}
+              submitLabel="Add Device"
+            />
+          ) : (
+            <button
+              onClick={() => setShowDeviceForm(true)}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-vault-border text-vault-muted hover:border-vault-muted transition-colors"
+            >
+              + Add Device
+            </button>
+          )}
+          <Link
+            href="/devices"
+            className="block text-sm text-vault-amber hover:text-vault-amber-hover transition-colors"
+          >
+            Manage scan paths and blacklist on the Devices page &rarr;
+          </Link>
         </div>
 
         <div className="space-y-4">
