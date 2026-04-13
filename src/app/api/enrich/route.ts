@@ -37,9 +37,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "IGDB credentials not configured" }, { status: 400 });
   }
 
-  const games = await prisma.game.findMany({
-    where: { igdbId: null },
-  });
+  let platforms: string[] | null = null;
+  try {
+    const body = await request.clone().json();
+    if (Array.isArray(body.platforms) && body.platforms.length > 0) {
+      platforms = body.platforms.filter((p: unknown) => typeof p === "string");
+    }
+  } catch {
+    // No body — enrich all
+  }
+
+  const where: Record<string, unknown> = { igdbId: null };
+  if (platforms && platforms.length > 0) where.platform = { in: platforms };
+
+  const games = await prisma.game.findMany({ where });
 
   if (games.length === 0) {
     return NextResponse.json({ success: true, processed: 0, enriched: 0, failed: 0, remaining: 0 });
@@ -122,7 +133,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const remaining = await prisma.game.count({ where: { igdbId: null } });
+      const remaining = await prisma.game.count({ where });
       send({ type: "done", processed: games.length, enriched, failed, remaining });
       controller.close();
     },

@@ -42,6 +42,9 @@ export default function AdminPage() {
   const [cleaning, setCleaning] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [progress, setProgress] = useState<ProgressState | null>(null);
+  const [platforms, setPlatforms] = useState<Array<{ id: string; label: string; gameCount: number }>>([]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
   const [tokenInput, setTokenInput] = useState("");
@@ -56,12 +59,14 @@ export default function AdminPage() {
         if (!data.authRequired) {
           setAuthenticated(true);
           loadSettings();
+          loadPlatforms();
         } else {
           // Try loading settings (cookie might already be set)
           fetch("/api/settings")
             .then((r) => {
               if (r.ok) {
                 setAuthenticated(true);
+                loadPlatforms();
                 return r.json().then(setSettings);
               }
             })
@@ -80,6 +85,13 @@ export default function AdminPage() {
       .catch((err) => console.error("Failed to load settings:", err));
   }
 
+  function loadPlatforms() {
+    fetch("/api/platforms")
+      .then((r) => r.json())
+      .then((data: Array<{ id: string; label: string; gameCount: number }>) => setPlatforms(data))
+      .catch((err) => console.error("Failed to load platforms:", err));
+  }
+
   async function handleLogin() {
     setAuthError("");
     const res = await fetch("/api/auth", {
@@ -90,6 +102,7 @@ export default function AdminPage() {
     if (res.ok) {
       setAuthenticated(true);
       loadSettings();
+      loadPlatforms();
     } else {
       setAuthError("Invalid token");
     }
@@ -137,14 +150,18 @@ export default function AdminPage() {
 
   async function runStreamingAction(
     url: string,
-    setter: (v: boolean) => void
+    setter: (v: boolean) => void,
+    body?: Record<string, unknown>
   ) {
     setter(true);
     setResult(null);
     setProgress(null);
 
     try {
-      const res = await fetch(url, { method: "POST" });
+      const res = await fetch(url, {
+        method: "POST",
+        ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+      });
 
       if (!res.ok) {
         setResult(await res.json());
@@ -280,10 +297,13 @@ export default function AdminPage() {
           className={`${btnClass} bg-vault-amber text-black hover:bg-vault-amber-hover`}>
           {scanning ? "Scanning..." : "Scan Steam Deck"}
         </button>
-        <button onClick={() => runStreamingAction("/api/enrich", setEnriching)}
+        <button onClick={() => {
+            const body = selectedPlatforms.length > 0 ? { platforms: selectedPlatforms } : undefined;
+            runStreamingAction("/api/enrich", setEnriching, body);
+          }}
           disabled={scanning || enriching || aiEnriching}
           className={`${btnClass} bg-blue-600 text-white hover:bg-blue-500`}>
-          {enriching ? "Enriching..." : "Enrich All (IGDB)"}
+          {enriching ? "Enriching..." : selectedPlatforms.length > 0 ? `Enrich (${selectedPlatforms.length} Systems)` : "Enrich All (IGDB)"}
         </button>
         <button onClick={() => runStreamingAction("/api/enrich/ai", setAiEnriching)}
           disabled={scanning || enriching || aiEnriching}
@@ -302,6 +322,67 @@ export default function AdminPage() {
           className={`${btnClass} bg-red-600/80 text-white hover:bg-red-500`}>
           {cleaning ? "Cleaning..." : "Cleanup Duplicates & .m3u"}
         </button>
+      </div>
+
+      {/* Platform Filter */}
+      <div className="mb-8">
+        <button
+          onClick={() => setShowPlatformPicker(!showPlatformPicker)}
+          className="text-sm text-vault-muted hover:text-vault-text transition-colors"
+        >
+          Filter by platform {showPlatformPicker ? "▲" : "▼"}
+          {selectedPlatforms.length > 0 && (
+            <span className="ml-2 text-vault-amber">({selectedPlatforms.length} selected)</span>
+          )}
+        </button>
+        {showPlatformPicker && (
+          <div className="card mt-3 space-y-4">
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSelectedPlatforms(platforms.map((p) => p.id))}
+                className="text-xs text-vault-amber hover:text-vault-amber-hover transition-colors"
+              >
+                Select all
+              </button>
+              <button
+                onClick={() => setSelectedPlatforms([])}
+                className="text-xs text-vault-muted hover:text-vault-text transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {platforms.map((p) => {
+                const selected = selectedPlatforms.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() =>
+                      setSelectedPlatforms((prev) =>
+                        selected ? prev.filter((id) => id !== p.id) : [...prev, p.id]
+                      )
+                    }
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all border ${
+                      selected
+                        ? "border-vault-amber bg-vault-amber/10 text-vault-amber"
+                        : "border-vault-border text-vault-muted hover:border-vault-muted"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/platforms/${p.id}.png`}
+                      alt={p.label}
+                      className="w-5 h-5 object-contain"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                    <span className="truncate">{p.label}</span>
+                    <span className="ml-auto opacity-60">{p.gameCount}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Live Progress */}
