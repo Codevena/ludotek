@@ -56,10 +56,26 @@ export async function PUT(
     const data: Record<string, any> = {};
 
     if (body.name !== undefined) data.name = body.name;
-    if (body.type !== undefined) data.type = body.type;
-    if (body.protocol !== undefined) data.protocol = body.protocol;
+    if (body.type !== undefined) {
+      if (!["steamdeck", "android", "custom"].includes(body.type)) {
+        return NextResponse.json({ error: "Invalid device type" }, { status: 400 });
+      }
+      data.type = body.type;
+    }
+    if (body.protocol !== undefined) {
+      if (!["ssh", "ftp"].includes(body.protocol)) {
+        return NextResponse.json({ error: "Invalid protocol" }, { status: 400 });
+      }
+      data.protocol = body.protocol;
+    }
     if (body.host !== undefined) data.host = body.host;
-    if (body.port !== undefined) data.port = body.port;
+    if (body.port !== undefined) {
+      const port = Number(body.port);
+      if (port < 1 || port > 65535) {
+        return NextResponse.json({ error: "Invalid port number" }, { status: 400 });
+      }
+      data.port = port;
+    }
     if (body.user !== undefined) data.user = body.user;
 
     // Don't overwrite password if the masked placeholder is sent back

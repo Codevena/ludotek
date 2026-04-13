@@ -109,7 +109,7 @@ class SshConnection implements DeviceConnection {
   async listDir(path: string): Promise<DirEntry[]> {
     // Sanitize path to prevent shell injection
     const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
-    const cmd = `ls -1p "${safePath}" 2>/dev/null | head -${MAX_ENTRIES}`;
+    const cmd = `ls -1p -- "${safePath}" 2>/dev/null | head -${MAX_ENTRIES}`;
     const output = await sshExec(this.conn, cmd);
 
     const entries: DirEntry[] = output

@@ -44,9 +44,17 @@ export async function POST(request: NextRequest) {
     }
 
     const type: string = body.type ?? "custom";
+    if (!["steamdeck", "android", "custom"].includes(type)) {
+      return NextResponse.json({ error: "Invalid device type" }, { status: 400 });
+    }
     const protocol: string = body.protocol ?? "ssh";
-    const port: number =
-      body.port ?? (protocol === "ftp" ? 21 : 22);
+    if (!["ssh", "ftp"].includes(protocol)) {
+      return NextResponse.json({ error: "Invalid protocol (must be ssh or ftp)" }, { status: 400 });
+    }
+    const port: number = Number(body.port) || (protocol === "ftp" ? 21 : 22);
+    if (port < 1 || port > 65535) {
+      return NextResponse.json({ error: "Invalid port number" }, { status: 400 });
+    }
     const password: string = body.password ?? "";
 
     const blacklist =
