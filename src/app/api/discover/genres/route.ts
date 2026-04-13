@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function safeJsonParse(str: string | null): string[] {
@@ -13,9 +12,7 @@ function safeJsonParse(str: string | null): string[] {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = requireAuth(request);
-  if (authError) return authError;
-
+  // No auth required — discovery is a public feature
   const platformsParam = request.nextUrl.searchParams.get("platforms");
   if (!platformsParam) {
     return NextResponse.json(

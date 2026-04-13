@@ -143,7 +143,7 @@ function DiscoverPageContent() {
       {phase === "wizard" && (
         <DiscoverWizard
           platforms={platforms.filter((p) => p.gameCount > 0)}
-          onGenerate={handleGenerate}
+          onGenerate={(p, g, t) => { setError(null); handleGenerate(p, g, t); }}
         />
       )}
 

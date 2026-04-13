@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildLibraryPrompt,
@@ -43,9 +42,7 @@ async function callOpenRouter(
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requireAuth(request);
-  if (authError) return authError;
-
+  // No auth required — discovery is a public feature (uses server-side API keys)
   const body = await request.json();
   const {
     platforms,
@@ -68,9 +65,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!platforms?.length || !genres?.length) {
+  if (!platforms?.length || (!genres?.length && !themes?.length)) {
     return NextResponse.json(
-      { error: "Platforms and genres are required" },
+      { error: "Platforms and at least one genre or theme are required" },
       { status: 400 }
     );
   }

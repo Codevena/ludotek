@@ -20,12 +20,16 @@ export function DiscoverWizard({
   const [step, setStep] = useState(1);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
-  const [availableGenres, setAvailableGenres] = useState<string[]>([]);
-  const [availableThemes, setAvailableThemes] = useState<string[]>([]);
-  const [loadingGenres, setLoadingGenres] = useState(false);
-
   const visiblePlatforms = platforms.filter((p) => p.gameCount > 0);
+
+  // Fixed categories — the AI understands these directly, no need to query DB
+  const CATEGORIES = [
+    "RPG", "Action", "Adventure", "Platformer", "Puzzle", "Racing",
+    "Fighting", "Shooter", "Strategy", "Sport", "Simulation",
+    "Horror", "Survival", "Open World", "Fantasy", "Sci-Fi",
+    "Stealth", "Hack & Slash", "Turn-Based", "Roguelike",
+    "Co-op", "Party", "Retro", "Indie",
+  ];
 
   function togglePlatform(id: string) {
     setSelectedPlatforms((prev) =>
@@ -33,42 +37,23 @@ export function DiscoverWizard({
     );
   }
 
-  function toggleGenre(genre: string) {
+  function toggleCategory(cat: string) {
     setSelectedGenres((prev) =>
-      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre],
+      prev.includes(cat) ? prev.filter((g) => g !== cat) : [...prev, cat],
     );
   }
 
-  function toggleTheme(theme: string) {
-    setSelectedThemes((prev) =>
-      prev.includes(theme) ? prev.filter((t) => t !== theme) : [...prev, theme],
-    );
-  }
-
-  async function goToStep2() {
+  function goToStep2() {
     setStep(2);
-    setLoadingGenres(true);
-    try {
-      const res = await fetch(
-        `/api/discover/genres?platforms=${selectedPlatforms.join(",")}`,
-      );
-      const data = await res.json();
-      setAvailableGenres(data.genres ?? []);
-      setAvailableThemes(data.themes ?? []);
-    } catch (err) {
-      console.error("Failed to fetch genres:", err);
-    }
-    setLoadingGenres(false);
   }
 
   function goBack() {
     setStep(1);
     setSelectedGenres([]);
-    setSelectedThemes([]);
   }
 
   function handleGenerate() {
-    onGenerate(selectedPlatforms, selectedGenres, selectedThemes);
+    onGenerate(selectedPlatforms, selectedGenres, []);
   }
 
   return (
@@ -171,54 +156,25 @@ export function DiscoverWizard({
             </p>
           </div>
 
-          {loadingGenres ? (
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 animate-pulse rounded-full bg-vault-amber" />
-              <span className="text-sm text-vault-muted">
-                Loading genres...
-              </span>
-            </div>
-          ) : (
-            <>
-              {/* Combined Genres + Themes */}
-              <div className="flex flex-wrap gap-2">
-                {availableGenres.map((genre) => {
-                  const isSelected = selectedGenres.includes(genre);
-                  return (
-                    <button
-                      key={`g-${genre}`}
-                      onClick={() => toggleGenre(genre)}
-                      disabled={disabled}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                        isSelected
-                          ? "border-vault-amber bg-vault-amber/15 text-vault-amber"
-                          : "border-vault-border bg-vault-surface text-vault-muted hover:border-vault-amber hover:text-vault-text"
-                      }`}
-                    >
-                      {genre}
-                    </button>
-                  );
-                })}
-                {availableThemes.map((theme) => {
-                  const isSelected = selectedThemes.includes(theme);
-                  return (
-                    <button
-                      key={`t-${theme}`}
-                      onClick={() => toggleTheme(theme)}
-                      disabled={disabled}
-                      className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                        isSelected
-                          ? "border-indigo-500 bg-indigo-500/15 text-indigo-400"
-                          : "border-vault-border bg-vault-surface text-vault-muted hover:border-indigo-400 hover:text-vault-text"
-                      }`}
-                    >
-                      {theme}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {CATEGORIES.map((cat) => {
+              const isSelected = selectedGenres.includes(cat);
+              return (
+                <button
+                  key={cat}
+                  onClick={() => toggleCategory(cat)}
+                  disabled={disabled}
+                  className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    isSelected
+                      ? "border-vault-amber bg-vault-amber/15 text-vault-amber"
+                      : "border-vault-border bg-vault-surface text-vault-muted hover:border-vault-amber hover:text-vault-text"
+                  }`}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
 
           <div className="flex justify-between">
             <button
@@ -230,7 +186,7 @@ export function DiscoverWizard({
             </button>
             <button
               onClick={handleGenerate}
-              disabled={(selectedGenres.length === 0 && selectedThemes.length === 0) || disabled}
+              disabled={selectedGenres.length === 0 || disabled}
               className="rounded-lg bg-vault-amber px-6 py-3 text-sm font-medium text-black transition-colors hover:bg-vault-amber-hover disabled:opacity-50"
             >
               Generate
