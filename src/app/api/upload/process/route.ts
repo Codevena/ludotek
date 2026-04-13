@@ -15,7 +15,7 @@ import { PLATFORM_CONFIG } from "@/lib/platforms";
 import { readdir, stat, rm } from "fs/promises";
 import path from "path";
 
-const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+const UPLOAD_BASE = "/tmp/game-vault-uploads";
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
@@ -37,16 +37,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Path traversal check
-  if (sessionId.includes("..") || sessionId.includes("/") || sessionId.includes("\\")) {
+  // Path traversal check (match detect route's approach)
+  const sessionDir = path.resolve(UPLOAD_BASE, sessionId);
+  if (!sessionDir.startsWith(UPLOAD_BASE)) {
     return NextResponse.json({ error: "Invalid sessionId" }, { status: 400 });
   }
 
-  const sessionDir = path.join(UPLOAD_DIR, sessionId);
-
   // Load settings for SSH and IGDB credentials
   const settings = await prisma.settings.findFirst({ where: { id: 1 } });
-  if (!settings?.deckHost || !settings?.deckPassword) {
+  if (!settings?.deckHost || !settings?.deckUser || !settings?.deckPassword) {
     return NextResponse.json(
       { error: "Steam Deck SSH credentials not configured" },
       { status: 400 }

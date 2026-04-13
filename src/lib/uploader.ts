@@ -155,13 +155,15 @@ function mkdirSftp(
   sftp: SFTPWrapper,
   dirPath: string
 ): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     sftp.mkdir(dirPath, (err: Error | null | undefined) => {
+      if (!err) return resolve();
       // Ignore "already exists" errors (SFTP status code 4 / FAILURE)
-      if (err && !err.message.includes("already exists") && !err.message.includes("Failure")) {
-        console.warn(`Failed to create directory ${dirPath}:`, err.message);
+      const msg = err.message || "";
+      if (msg.includes("already exists") || msg.includes("Failure")) {
+        return resolve();
       }
-      resolve();
+      reject(err);
     });
   });
 }

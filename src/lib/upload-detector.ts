@@ -66,8 +66,14 @@ function determineConversion(platform: string): "none" | "chd" | "rvz" {
   return "none";
 }
 
-function generateId(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+function generateId(title: string, platform: string): string {
+  // Deterministic ID based on title+platform so detect and process calls produce the same IDs
+  let hash = 0;
+  const str = `${platform}:${title}`;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return `game-${Math.abs(hash).toString(36)}`;
 }
 
 export function detectGames(files: UploadedFile[], platform: string): DetectedGame[] {
@@ -116,7 +122,7 @@ export function detectGames(files: UploadedFile[], platform: string): DetectedGa
     });
 
     results.push({
-      id: generateId(),
+      id: generateId(title, platform),
       title,
       type: isMultiDisc ? "multi-disc" : "single",
       discCount,
