@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { buildRomSearchUrl } from "@/lib/rom-search";
 
 interface WishlistItem {
   id: number;
@@ -152,10 +153,7 @@ export default function WishlistPage() {
                 <div className="mt-auto flex items-center gap-3">
                   {romSearchUrl && (
                     <a
-                      href={romSearchUrl
-                        .replace("{title}", encodeURIComponent(item.title))
-                        .replace("{platform}", encodeURIComponent(item.platform))
-                        .replace("{platformLabel}", encodeURIComponent(item.platformLabel))}
+                      href={buildRomSearchUrl(romSearchUrl, item.title, item.platform, item.platformLabel)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-vault-amber hover:text-vault-amber-hover text-xs transition-colors flex items-center gap-1"

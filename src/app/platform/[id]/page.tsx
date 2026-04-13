@@ -63,7 +63,7 @@ export default async function PlatformPage({ params, searchParams }: Props) {
           : [{ label: platform.label }]),
       ]} />
 
-      <PlatformStats platformId={id} />
+      <PlatformStats platformId={id} platformLabel={platform.label} />
 
       <div className="flex items-center justify-between mb-6">
         <div>

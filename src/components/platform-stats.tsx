@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { buildRomSearchUrl } from "@/lib/rom-search";
 
 /* ---------- Types ---------- */
 
 interface PlatformStatsProps {
   platformId: string;
+  platformLabel?: string;
 }
 
 interface StatsData {
@@ -379,7 +381,7 @@ function DetailModal({
 
 /* ---------- Main Component ---------- */
 
-export function PlatformStats({ platformId }: PlatformStatsProps) {
+export function PlatformStats({ platformId, platformLabel }: PlatformStatsProps) {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [missing, setMissing] = useState<MissingGame[] | null>(null);
   const [missingError, setMissingError] = useState(false);
@@ -658,24 +660,16 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
                       scrollbarWidth: "none",
                     }}
                   >
-                    {missing.map((game) => {
-                      const gameSearchUrl = romSearchUrl
-                        ? romSearchUrl
-                            .replace("{title}", encodeURIComponent(game.title))
-                            .replace("{platform}", encodeURIComponent(platformId))
-                            .replace("{platformLabel}", encodeURIComponent(platformId))
-                        : undefined;
-                      return (
-                        <GameCard
-                          key={game.title}
-                          game={game}
-                          isWishlisted={isWishlisted(game.title)}
-                          onToggleWishlist={(e) => toggleWishlist(game, e)}
-                          onSelect={() => setSelectedGame(game)}
-                          searchUrl={gameSearchUrl}
-                        />
-                      );
-                    })}
+                    {missing.map((game) => (
+                      <GameCard
+                        key={game.title}
+                        game={game}
+                        isWishlisted={isWishlisted(game.title)}
+                        onToggleWishlist={(e) => toggleWishlist(game, e)}
+                        onSelect={() => setSelectedGame(game)}
+                        searchUrl={romSearchUrl ? buildRomSearchUrl(romSearchUrl, game.title, platformId, platformLabel) : undefined}
+                      />
+                    ))}
                   </div>
                   {/* Scroll right button */}
                   <button
@@ -704,12 +698,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
           isWishlisted={isWishlisted(selectedGame.title)}
           onToggleWishlist={() => toggleWishlist(selectedGame)}
           onClose={() => setSelectedGame(null)}
-          searchUrl={romSearchUrl
-            ? romSearchUrl
-                .replace("{title}", encodeURIComponent(selectedGame.title))
-                .replace("{platform}", encodeURIComponent(platformId))
-                .replace("{platformLabel}", encodeURIComponent(platformId))
-            : undefined}
+          searchUrl={romSearchUrl ? buildRomSearchUrl(romSearchUrl, selectedGame.title, platformId, platformLabel) : undefined}
         />
       )}
     </div>

@@ -445,7 +445,7 @@ export default function AdminPage() {
               onChange={(e) => setSettings({ ...settings, romSearchUrl: e.target.value })}
               placeholder="https://example.com/roms/{platform}/?q={title}" />
             <p className="text-vault-muted text-[10px] mt-1">
-              Variables: {"{title}"}, {"{platform}"}, {"{platformLabel}"} — leave empty to hide search button
+              Variables: {"{title}"}, {"{titleSlug}"}, {"{platform}"}, {"{platformLabel}"} — leave empty to hide search button
             </p>
           </div>
         </div>
