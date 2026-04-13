@@ -1,125 +1,65 @@
-# Next Session Plan — Sticky Enrichment Progress + Fun Facts/Story Redesign
+# Next Session Plan — ROM Search URL Bug + Remaining Features
 
-## Context
-
-Game Vault is feature-complete with ROM upload, AI discovery, cinematic game detail page, breadcrumbs, and clickable genre/theme tags. Two UI improvements remain.
-
-## Design Mocks
-
-Visual mocks are in `.superpowers/brainstorm/` — start the companion server to view them:
-```bash
-/Users/markus/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh --project-dir /Users/markus/Desktop/game-vault
-```
-
----
-
-## Feature 1: Sticky Enrichment Progress Bar
+## Critical Bug: ROM Search URL uses platform ID instead of label
 
 ### Problem
-Enrichment progress is only visible on the Admin page. If you navigate away, you lose visibility into the running process.
+The "Search ROM" button on carousel cards and wishlist generates URLs like:
+`https://romsfun.com/roms/snes/?q=Top+Gear`
 
-### Solution
-A global sticky progress bar at the bottom of every page that shows enrichment status while any enrichment process is running.
+But the correct URL should be:
+`https://romsfun.com/roms/super-nintendo/?q=Top+Gear`
 
-### Architecture
+The `{platformLabel}` variable in the URL template is being replaced with the platform ID (`snes`) instead of the slugified label (`super-nintendo`).
 
-**React Context Provider** (`src/context/enrichment-context.tsx`):
-- `EnrichmentProvider` wraps the app in `layout.tsx`
-- Stores: `{ isRunning, current, total, enriched, failed, title, type }`
-- `startEnrichment(url, setter?)` — starts SSE stream, updates context
-- `dismiss()` — hides the bar without cancelling
+### What we tried
+1. Passing `platformLabel` as prop from server component → didn't work (undefined in client)
+2. Resolving from `PLATFORM_CONFIG.find(p => p.id === platformId)?.label` in client → still produces wrong URL
+3. Multiple cache clears + rebuilds → same issue
 
-**Sticky Bar Component** (`src/components/enrichment-bar.tsx`):
-- Fixed bottom position (`fixed bottom-0 left-0 right-0 z-50`)
-- Background: `bg-vault-surface border-t border-vault-border`
-- Content: pulsing amber dot + "Enriching" label + progress bar + counts + dismiss button
-- Auto-fades after completion (3s delay)
-- Only renders when `isRunning` or recently completed
+### Root cause investigation needed
+- Check `src/components/platform-stats.tsx` — the `resolvedLabel` is set via `PLATFORM_CONFIG.find()` but may not reach `buildRomSearchUrl()` correctly
+- Check `src/lib/rom-search.ts` — the `buildRomSearchUrl` function and its replacement order
+- The GameCard sub-component inside platform-stats.tsx receives `platformLabel` prop — trace the full data flow
+- Check if there's a second code path (e.g. the wishlist page) that builds URLs differently
+- The `romSearchUrl` template in the DB is correct: `https://romsfun.com/roms/{platformLabel}/?q={title}`
 
-**Admin Page Changes** (`src/app/admin/page.tsx`):
-- Replace direct `runStreamingAction` calls with context's `startEnrichment`
-- Remove local progress state (moved to context)
-- Keep action buttons (they trigger context)
-
-### Files to Create/Modify
-| File | Action |
-|------|--------|
-| `src/context/enrichment-context.tsx` | Create — context provider + hook |
-| `src/components/enrichment-bar.tsx` | Create — sticky bottom bar |
-| `src/app/layout.tsx` | Modify — wrap children in EnrichmentProvider |
-| `src/app/admin/page.tsx` | Modify — use context instead of local state |
+### Key files
+| File | Role |
+|------|------|
+| `src/lib/rom-search.ts` | `buildRomSearchUrl()` — replaces template variables |
+| `src/lib/platforms.ts` | `PLATFORM_CONFIG` with platform IDs and labels |
+| `src/components/platform-stats.tsx` | Carousel component that builds + passes search URLs |
+| `src/app/wishlist/page.tsx` | Wishlist page that also builds search URLs |
+| `src/app/api/settings/rom-search/route.ts` | Public API returning the URL template |
 
 ---
 
-## Feature 2: Fun Facts & Story Redesign
+## Remaining Features (from PLAN.md)
 
-### Problem
-Fun Facts and Story sections on the game detail page are plain `<details>` elements — functional but visually boring.
+1. **Theme Toggle (Dark/Light)** — CSS variables for both themes, toggle in header, localStorage
+2. **Export/Backup** — JSON export of collection + metadata, import function, optional CSV
 
-### Solution
-Replace with styled content blocks that are always visible (no toggle needed).
+## Session Summary — What was built today
 
-### Design
+### Features implemented:
+- Sticky enrichment progress bar (global, all pages)
+- Fun Facts & Story redesign (gradient blocks, prose-vault typography)
+- Smart Upload with auto-detection (folder names, extensions, fuzzy matching)
+- Search with cover thumbnails + platform badges (autocomplete dropdown)
+- AI content language toggle (German/English)
+- Stats dashboard (Recharts: bar chart, donut, 5 stat cards)
+- Favorites system (heart icon, sidebar filter, toggle API)
+- Platform collection overview (stats, genre tags, IGDB top rated missing)
+- Infinite scroll (replaces pagination)
+- Wishlist system (carousel catalog, detail modals, CRUD API)
+- Configurable ROM search URL template
+- Discovery wishlist button
+- Home link in header
 
-**Fun Facts Block:**
-- Amber gradient border: `bg-gradient-to-br from-vault-amber/[0.08] to-transparent`
-- Border: `border border-vault-amber/20 rounded-xl`
-- Lightning bolt icon + "Fun Facts" heading in amber
-- Bullet points with amber dots
-- Markdown content rendered inside
+### Tech stack:
+- Next.js 14 + React + TypeScript + Tailwind CSS
+- Prisma 6.x + SQLite
+- Recharts for dashboard charts
+- @tailwindcss/typography for prose styling
 
-**Story Block:**
-- Indigo gradient border: `bg-gradient-to-br from-indigo-500/[0.08] to-transparent`
-- Border: `border border-indigo-500/20 rounded-xl`
-- Book icon + "Story & Background" heading in indigo
-- Flowing text with proper line-height
-- Markdown content rendered inside
-
-### Files to Modify
-| File | Action |
-|------|--------|
-| `src/app/game/[id]/page.tsx` | Modify — replace `<details>` with styled blocks |
-
-### Implementation (simple CSS change, ~30 lines)
-
-Replace the current `<details>` sections with:
-
-```tsx
-{game.aiFunFacts && (
-  <div className="mt-8 rounded-xl border border-vault-amber/20 bg-gradient-to-br from-vault-amber/[0.08] to-transparent p-6">
-    <div className="flex items-center gap-2 mb-4">
-      <span className="text-lg">&#9889;</span>
-      <h2 className="font-heading text-xl font-bold text-vault-amber">Fun Facts</h2>
-    </div>
-    <MarkdownContent content={game.aiFunFacts} />
-  </div>
-)}
-
-{game.aiStory && (
-  <div className="mt-6 rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.08] to-transparent p-6">
-    <div className="flex items-center gap-2 mb-4">
-      <span className="text-lg">&#128214;</span>
-      <h2 className="font-heading text-xl font-bold text-indigo-400">Story &amp; Background</h2>
-    </div>
-    <MarkdownContent content={game.aiStory} />
-  </div>
-)}
-```
-
----
-
-## Execution Order
-
-1. **Fun Facts/Story redesign** (5 min, simple CSS) — do first as warmup
-2. **Enrichment Context** (20 min) — create provider + hook
-3. **Enrichment Bar** (10 min) — create sticky component
-4. **Layout integration** (5 min) — wrap app in provider
-5. **Admin page refactor** (15 min) — move streaming to context
-6. **Integration test** — verify bar shows on all pages
-
-## Current State
-
-- All tests pass (43)
-- Build clean
-- Dev server: `pnpm dev`
-- GitHub: Codevena/game-vault (PRs #1-#7 merged)
+### Git: all pushed to `origin/master` on GitHub (Codevena/game-vault)
