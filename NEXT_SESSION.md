@@ -16,12 +16,17 @@ The `{platformLabel}` variable in the URL template is being replaced with the pl
 2. Resolving from `PLATFORM_CONFIG.find(p => p.id === platformId)?.label` in client → still produces wrong URL
 3. Multiple cache clears + rebuilds → same issue
 
-### Root cause investigation needed
-- Check `src/components/platform-stats.tsx` — the `resolvedLabel` is set via `PLATFORM_CONFIG.find()` but may not reach `buildRomSearchUrl()` correctly
-- Check `src/lib/rom-search.ts` — the `buildRomSearchUrl` function and its replacement order
-- The GameCard sub-component inside platform-stats.tsx receives `platformLabel` prop — trace the full data flow
-- Check if there's a second code path (e.g. the wishlist page) that builds URLs differently
-- The `romSearchUrl` template in the DB is correct: `https://romsfun.com/roms/{platformLabel}/?q={title}`
+### Root cause (from Claude Review)
+The code logic is actually correct — `resolvedLabel` resolves to "Super Nintendo", `slugify` produces "super-nintendo". The reviewer confirmed the replacement chain works. Possible remaining causes:
+1. **Browser/Next.js caching** — old client bundle may still be served despite cache clears
+2. **`.replace()` uses string overload** — only replaces first occurrence. Use regex `/g` flag instead
+3. **`useCallback` stale closure** — `toggleWishlist` has `resolvedLabel` in scope but not in dependency array
+
+### Review findings to fix
+- [C1] `toggleWishlist` useCallback missing `resolvedLabel` in deps (platform-stats.tsx:552)
+- [I1] `buildRomSearchUrl` should use regex `g` flag for all replacements (rom-search.ts:30-34)
+- [I2] Carousel description uses `platformId` instead of `resolvedLabel` (platform-stats.tsx:652)
+- [I3] IGDB error message hardcoded in German, should be English (platform-stats.tsx:607-609)
 
 ### Key files
 | File | Role |
