@@ -91,14 +91,19 @@ function GameCard({
   isWishlisted,
   onToggleWishlist,
   onSelect,
-  searchUrl,
+  romSearchUrl,
+  platformId,
+  platformLabel,
 }: {
   game: MissingGame;
   isWishlisted: boolean;
   onToggleWishlist: (e: React.MouseEvent) => void;
   onSelect: () => void;
-  searchUrl?: string;
+  romSearchUrl: string;
+  platformId: string;
+  platformLabel?: string;
 }) {
+  const searchUrl = romSearchUrl ? buildRomSearchUrl(romSearchUrl, game.title, platformId, platformLabel) : undefined;
   return (
     <div
       onClick={onSelect}
@@ -667,7 +672,9 @@ export function PlatformStats({ platformId, platformLabel }: PlatformStatsProps)
                         isWishlisted={isWishlisted(game.title)}
                         onToggleWishlist={(e) => toggleWishlist(game, e)}
                         onSelect={() => setSelectedGame(game)}
-                        searchUrl={romSearchUrl ? buildRomSearchUrl(romSearchUrl, game.title, platformId, platformLabel) : undefined}
+                        romSearchUrl={romSearchUrl}
+                        platformId={platformId}
+                        platformLabel={platformLabel}
                       />
                     ))}
                   </div>
