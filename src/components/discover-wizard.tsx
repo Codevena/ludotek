@@ -164,10 +164,10 @@ export function DiscoverWizard({
         <div className="space-y-4">
           <div>
             <h2 className="font-heading text-xl font-bold text-vault-text">
-              Was magst du?
+              Was interessiert dich?
             </h2>
             <p className="mt-1 text-sm text-vault-muted">
-              Waehle Genres und optional Themes
+              Waehle Genres und Kategorien
             </p>
           </div>
 
@@ -180,59 +180,43 @@ export function DiscoverWizard({
             </div>
           ) : (
             <>
-              {/* Genres */}
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-vault-text">
-                  Genres
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {availableGenres.map((genre) => {
-                    const isSelected = selectedGenres.includes(genre);
-                    return (
-                      <button
-                        key={genre}
-                        onClick={() => toggleGenre(genre)}
-                        disabled={disabled}
-                        className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                          isSelected
-                            ? "border-vault-amber bg-vault-amber/15 text-vault-amber"
-                            : "border-vault-border bg-vault-surface text-vault-muted hover:border-vault-amber hover:text-vault-text"
-                        }`}
-                      >
-                        {genre}
-                      </button>
-                    );
-                  })}
-                </div>
+              {/* Combined Genres + Themes */}
+              <div className="flex flex-wrap gap-2">
+                {availableGenres.map((genre) => {
+                  const isSelected = selectedGenres.includes(genre);
+                  return (
+                    <button
+                      key={`g-${genre}`}
+                      onClick={() => toggleGenre(genre)}
+                      disabled={disabled}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                        isSelected
+                          ? "border-vault-amber bg-vault-amber/15 text-vault-amber"
+                          : "border-vault-border bg-vault-surface text-vault-muted hover:border-vault-amber hover:text-vault-text"
+                      }`}
+                    >
+                      {genre}
+                    </button>
+                  );
+                })}
+                {availableThemes.map((theme) => {
+                  const isSelected = selectedThemes.includes(theme);
+                  return (
+                    <button
+                      key={`t-${theme}`}
+                      onClick={() => toggleTheme(theme)}
+                      disabled={disabled}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                        isSelected
+                          ? "border-indigo-500 bg-indigo-500/15 text-indigo-400"
+                          : "border-vault-border bg-vault-surface text-vault-muted hover:border-indigo-400 hover:text-vault-text"
+                      }`}
+                    >
+                      {theme}
+                    </button>
+                  );
+                })}
               </div>
-
-              {/* Themes */}
-              {availableThemes.length > 0 && (
-                <div className="space-y-2">
-                  <span className="text-sm font-medium text-vault-text">
-                    Themes
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {availableThemes.map((theme) => {
-                      const isSelected = selectedThemes.includes(theme);
-                      return (
-                        <button
-                          key={theme}
-                          onClick={() => toggleTheme(theme)}
-                          disabled={disabled}
-                          className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                            isSelected
-                              ? "border-vault-amber bg-vault-amber/15 text-vault-amber"
-                              : "border-vault-border bg-vault-surface text-vault-muted hover:border-vault-amber hover:text-vault-text"
-                          }`}
-                        >
-                          {theme}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
             </>
           )}
 
@@ -246,7 +230,7 @@ export function DiscoverWizard({
             </button>
             <button
               onClick={handleGenerate}
-              disabled={selectedGenres.length === 0 || disabled}
+              disabled={(selectedGenres.length === 0 && selectedThemes.length === 0) || disabled}
               className="rounded-lg bg-vault-amber px-6 py-3 text-sm font-medium text-black transition-colors hover:bg-vault-amber-hover disabled:opacity-50"
             >
               Generate
