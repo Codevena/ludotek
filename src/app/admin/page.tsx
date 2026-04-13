@@ -312,6 +312,13 @@ export default function AdminPage() {
         </button>
       </div>
 
+      <Link
+        href="/admin/upload"
+        className={`${btnClass} bg-emerald-600 text-white hover:bg-emerald-500 block text-center mb-4`}
+      >
+        Upload ROMs
+      </Link>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <button onClick={() => runStreamingAction("/api/enrich/metacritic", setEnriching)}
           disabled={scanning || enriching || aiEnriching || cleaning}
