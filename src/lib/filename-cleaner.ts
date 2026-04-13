@@ -14,5 +14,17 @@ export function cleanFilename(filename: string): string {
   // Strip bracket tags: [!], [b], etc.
   name = name.replace(/\s*\[[^\]]*\]/g, "");
 
+  // If title has ~ separator (alternate names), take the first part
+  // e.g., "Bare Knuckle II ~ Streets of Rage 2" → "Bare Knuckle II"
+  if (name.includes(" ~ ")) {
+    name = name.split(" ~ ")[0];
+  }
+
+  // Strip subtitle after " - " only for very long titles (>60 chars)
+  // Helps IGDB matching: "F355 Challenge - Passione Rossa" stays, but very long compound names get trimmed
+  if (name.length > 60 && name.includes(" - ")) {
+    name = name.split(" - ")[0];
+  }
+
   return name.trim();
 }
