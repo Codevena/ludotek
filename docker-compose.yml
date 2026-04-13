@@ -5,6 +5,7 @@ services:
       - "3000:3000"
     volumes:
       - game-data:/app/prisma
+      - upload-temp:/tmp/game-vault-uploads
     environment:
       - DATABASE_URL=file:/app/prisma/games.db
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
@@ -21,3 +22,4 @@ services:
 
 volumes:
   game-data:
+  upload-temp:
