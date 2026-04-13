@@ -91,9 +91,17 @@ export default async function PlatformPage({ params, searchParams }: Props) {
             )}
           </div>
         </div>
-        <Suspense>
-          <SortSelect />
-        </Suspense>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/discover?platforms=${id}&surprise=true`}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-vault-amber/20 text-vault-amber border border-vault-amber/30 hover:bg-vault-amber/30 transition-colors"
+          >
+            Surprise Me
+          </Link>
+          <Suspense>
+            <SortSelect />
+          </Suspense>
+        </div>
       </div>
 
       <GameGrid games={games} />
