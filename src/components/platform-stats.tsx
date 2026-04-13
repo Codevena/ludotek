@@ -2,12 +2,12 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { buildRomSearchUrl } from "@/lib/rom-search";
+import { PLATFORM_CONFIG } from "@/lib/platforms";
 
 /* ---------- Types ---------- */
 
 interface PlatformStatsProps {
   platformId: string;
-  platformLabel?: string;
 }
 
 interface StatsData {
@@ -386,7 +386,8 @@ function DetailModal({
 
 /* ---------- Main Component ---------- */
 
-export function PlatformStats({ platformId, platformLabel }: PlatformStatsProps) {
+export function PlatformStats({ platformId }: PlatformStatsProps) {
+  const resolvedLabel = PLATFORM_CONFIG.find((p) => p.id === platformId)?.label || platformId;
   const [stats, setStats] = useState<StatsData | null>(null);
   const [missing, setMissing] = useState<MissingGame[] | null>(null);
   const [missingError, setMissingError] = useState(false);
@@ -515,7 +516,7 @@ export function PlatformStats({ platformId, platformLabel }: PlatformStatsProps)
             body: JSON.stringify({
               title: game.title,
               platform: platformId,
-              platformLabel: platformId,
+              platformLabel: resolvedLabel,
               coverUrl: game.coverUrl ?? null,
               igdbScore: game.score ?? null,
               summary: game.summary ?? null,
@@ -674,7 +675,7 @@ export function PlatformStats({ platformId, platformLabel }: PlatformStatsProps)
                         onSelect={() => setSelectedGame(game)}
                         romSearchUrl={romSearchUrl}
                         platformId={platformId}
-                        platformLabel={platformLabel}
+                        platformLabel={resolvedLabel}
                       />
                     ))}
                   </div>
@@ -705,7 +706,7 @@ export function PlatformStats({ platformId, platformLabel }: PlatformStatsProps)
           isWishlisted={isWishlisted(selectedGame.title)}
           onToggleWishlist={() => toggleWishlist(selectedGame)}
           onClose={() => setSelectedGame(null)}
-          searchUrl={romSearchUrl ? buildRomSearchUrl(romSearchUrl, selectedGame.title, platformId, platformLabel) : undefined}
+          searchUrl={romSearchUrl ? buildRomSearchUrl(romSearchUrl, selectedGame.title, platformId, resolvedLabel) : undefined}
         />
       )}
     </div>
