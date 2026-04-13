@@ -18,7 +18,8 @@
     "react": "^18",
     "react-dom": "^18",
     "react-markdown": "^10.1.0",
-    "ssh2": "^1.17.0"
+    "ssh2": "^1.17.0",
+    "unzipper": "^0.12.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -38,6 +39,7 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/unzipper": "^0.10.11",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
