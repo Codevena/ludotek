@@ -82,7 +82,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
         body: JSON.stringify({ protocol, host, port, user, password }),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && data.ok) {
         setTestStatus("success");
         setTestMessage("Connected!");
       } else {

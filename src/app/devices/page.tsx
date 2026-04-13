@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { FileBrowser } from "@/components/file-browser";
@@ -26,6 +26,8 @@ export default function DevicesPage() {
   const [scanResult, setScanResult] = useState<{ message: string; isError: boolean } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [blacklistInput, setBlacklistInput] = useState("");
+  const [loading, setLoading] = useState(true);
+  const hasAutoSelected = useRef(false);
 
   const loadDevices = useCallback(async () => {
     try {
@@ -33,13 +35,16 @@ export default function DevicesPage() {
       if (!res.ok) throw new Error("Failed to load devices");
       const data: Device[] = await res.json();
       setDevices(data);
-      if (data.length > 0 && !selectedDeviceId) {
+      if (data.length > 0 && !hasAutoSelected.current) {
+        hasAutoSelected.current = true;
         setSelectedDeviceId(data[0].id);
       }
     } catch (err) {
       console.error("Failed to load devices:", err);
+    } finally {
+      setLoading(false);
     }
-  }, [selectedDeviceId]);
+  }, []);
 
   useEffect(() => {
     loadDevices();
@@ -111,6 +116,15 @@ export default function DevicesPage() {
       setScanResult({ message: String(err), isError: true });
     }
     setScanning(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto">
+        <div className="h-8 bg-vault-surface rounded w-48 mb-6 animate-pulse" />
+        <div className="h-64 bg-vault-surface rounded animate-pulse" />
+      </div>
+    );
   }
 
   if (devices.length === 0) {

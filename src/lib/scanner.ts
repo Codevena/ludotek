@@ -43,30 +43,34 @@ export async function scanDevice(device: DeviceConfig): Promise<ScannedGame[]> {
   try {
     const allGames: ScannedGame[] = [];
     for (const scanPath of device.scanPaths) {
-      if (scanPath.type === "rom") {
-        const dirs = await conn.listDir(scanPath.path);
-        for (const dir of dirs) {
-          if (dir.type !== "dir") continue;
-          const subEntries = await conn.listDir(`${scanPath.path}/${dir.name}`);
-          const listing = subEntries.map((e) => e.name).join("\n");
-          if (listing) {
-            const games = parseRomListing(listing, dir.name);
-            allGames.push(...games);
+      try {
+        if (scanPath.type === "rom") {
+          const dirs = await conn.listDir(scanPath.path);
+          for (const dir of dirs) {
+            if (dir.type !== "dir") continue;
+            const subEntries = await conn.listDir(`${scanPath.path}/${dir.name}`);
+            const listing = subEntries.map((e) => e.name).join("\n");
+            if (listing) {
+              const games = parseRomListing(listing, dir.name);
+              allGames.push(...games);
+            }
           }
+        } else {
+          const entries = await conn.listDir(scanPath.path);
+          const steamGames = entries
+            .filter((e) => e.type === "dir")
+            .filter((e) => !matchesBlacklist(e.name, device.blacklist))
+            .map((e) => ({
+              originalFile: e.name,
+              title: e.name,
+              platform: "steam",
+              platformLabel: "Steam",
+              source: "steam" as const,
+            }));
+          allGames.push(...steamGames);
         }
-      } else {
-        const entries = await conn.listDir(scanPath.path);
-        const steamGames = entries
-          .filter((e) => e.type === "dir")
-          .filter((e) => !matchesBlacklist(e.name, device.blacklist))
-          .map((e) => ({
-            originalFile: e.name,
-            title: e.name,
-            platform: "steam",
-            platformLabel: "Steam",
-            source: "steam" as const,
-          }));
-        allGames.push(...steamGames);
+      } catch (err) {
+        console.warn(`Scan path ${scanPath.path} failed, skipping:`, err);
       }
     }
     return deduplicateGames(allGames);

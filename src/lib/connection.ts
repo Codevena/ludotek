@@ -107,7 +107,9 @@ class SshConnection implements DeviceConnection {
   constructor(private conn: SshClient) {}
 
   async listDir(path: string): Promise<DirEntry[]> {
-    const cmd = `ls -1p "${path}" 2>/dev/null | head -${MAX_ENTRIES}`;
+    // Sanitize path to prevent shell injection
+    const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
+    const cmd = `ls -1p "${safePath}" 2>/dev/null | head -${MAX_ENTRIES}`;
     const output = await sshExec(this.conn, cmd);
 
     const entries: DirEntry[] = output
@@ -139,10 +141,13 @@ class FtpConnection implements DeviceConnection {
   async listDir(path: string): Promise<DirEntry[]> {
     const items = await this.client.list(path);
 
-    const entries: DirEntry[] = items.slice(0, MAX_ENTRIES).map((item) => ({
-      name: item.name,
-      type: item.isDirectory ? "dir" : "file",
-    }));
+    const entries: DirEntry[] = items
+      .filter((item) => item.name && item.name !== "." && item.name !== "..")
+      .slice(0, MAX_ENTRIES)
+      .map((item) => ({
+        name: item.name,
+        type: item.isDirectory ? "dir" : "file",
+      }));
 
     return sortEntries(entries);
   }
