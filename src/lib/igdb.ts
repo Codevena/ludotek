@@ -1,6 +1,6 @@
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
-async function getIgdbToken(clientId: string, clientSecret: string): Promise<string> {
+export async function getIgdbToken(clientId: string, clientSecret: string): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt) {
     return cachedToken.token;
   }
@@ -21,7 +21,7 @@ async function getIgdbToken(clientId: string, clientSecret: string): Promise<str
   return cachedToken.token;
 }
 
-const IGDB_PLATFORM_MAP: Record<string, number> = {
+export const IGDB_PLATFORM_MAP: Record<string, number> = {
   snes: 19, gba: 24, gb: 33, megadrive: 29, nes: 18, gbc: 22,
   gamegear: 35, mastersystem: 64, n64: 4, psx: 7, ps2: 8,
   dreamcast: 23, saturn: 32, gc: 21, switch: 130, segacd: 78,

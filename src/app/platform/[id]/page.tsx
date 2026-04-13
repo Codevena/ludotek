@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { GameGrid } from "@/components/game-grid";
 import { SortSelect } from "@/components/sort-select";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { PlatformStats } from "@/components/platform-stats";
 import { Suspense } from "react";
 
 interface Props {
@@ -43,7 +44,7 @@ export default async function PlatformPage({ params, searchParams }: Props) {
     ];
   }
 
-  const [games, total, avgScore] = await Promise.all([
+  const [games, total] = await Promise.all([
     prisma.game.findMany({
       where,
       orderBy,
@@ -51,10 +52,6 @@ export default async function PlatformPage({ params, searchParams }: Props) {
       take: limit,
     }),
     prisma.game.count({ where }),
-    prisma.game.aggregate({
-      where,
-      _avg: { igdbScore: true },
-    }),
   ]);
 
   const totalPages = Math.ceil(total / limit);
@@ -68,28 +65,24 @@ export default async function PlatformPage({ params, searchParams }: Props) {
           : [{ label: platform.label }]),
       ]} />
 
+      <PlatformStats platformId={id} />
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-heading text-2xl font-bold flex items-center gap-3">
             <span>{platform.icon}</span>
             {platform.label}
           </h1>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-vault-muted text-sm">
-              {total} {total === 1 ? "game" : "games"}
-              {avgScore._avg.igdbScore && (
-                <span className="ml-3">Avg Score: {Math.round(avgScore._avg.igdbScore)}</span>
-              )}
-            </p>
-            {tag && (
+          {tag && (
+            <div className="flex items-center gap-2 mt-1">
               <Link
                 href={`/platform/${id}`}
                 className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
               >
                 Clear filter
               </Link>
-            )}
-          </div>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <Link

@@ -112,10 +112,11 @@ Keine Möglichkeit, die Collection zu sichern oder zu migrieren.
 - Home Link im Header
 - Spielestatistiken Dashboard (Recharts: Bar Chart, Donut, 5 Stats-Karten)
 - Favoriten (Herz-Icon auf Cards + Detail-Seite, Sidebar-Filter, Toggle-API)
+- Collection-Vergleich (Platform Stats + IGDB Top Rated Missing)
 
 ## Execution Order (remaining)
 
 1. ~~Favoriten & Bewertung~~ Done
-2. Collection-Vergleich
+2. ~~Collection-Vergleich~~ Done
 3. Theme Toggle
 4. Export/Backup
