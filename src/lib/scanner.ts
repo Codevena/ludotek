@@ -1,13 +1,79 @@
 import { Client } from "ssh2";
 import { cleanFilename } from "./filename-cleaner";
 import { getPlatformByDir, PLATFORM_CONFIG } from "./platforms";
+import { createConnection, DeviceConnection } from "./connection";
 
 const SKIP_FILES = new Set(["metadata.txt", "systeminfo.txt", "media", ".sbi"]);
-const ROM_BASE = "/run/media/deck/SD/Emulation/roms";
-const STEAM_PATHS = [
-  "/run/media/deck/SD/Games",
-  "/home/deck/.local/share/Steam/steamapps/common",
-];
+
+export function matchesBlacklist(name: string, blacklist: string[]): boolean {
+  const lower = name.toLowerCase();
+  return blacklist.some((pattern) => {
+    const p = pattern.toLowerCase();
+    if (p.endsWith("*")) {
+      return lower.startsWith(p.slice(0, -1));
+    }
+    return lower === p;
+  });
+}
+
+interface ScanPath {
+  path: string;
+  type: "rom" | "steam";
+}
+
+interface DeviceConfig {
+  id: number;
+  protocol: "ssh" | "ftp";
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  scanPaths: ScanPath[];
+  blacklist: string[];
+}
+
+export async function scanDevice(device: DeviceConfig): Promise<ScannedGame[]> {
+  const conn = await createConnection({
+    protocol: device.protocol,
+    host: device.host,
+    port: device.port,
+    user: device.user,
+    password: device.password,
+  });
+  try {
+    const allGames: ScannedGame[] = [];
+    for (const scanPath of device.scanPaths) {
+      if (scanPath.type === "rom") {
+        const dirs = await conn.listDir(scanPath.path);
+        for (const dir of dirs) {
+          if (dir.type !== "dir") continue;
+          const subEntries = await conn.listDir(`${scanPath.path}/${dir.name}`);
+          const listing = subEntries.map((e) => e.name).join("\n");
+          if (listing) {
+            const games = parseRomListing(listing, dir.name);
+            allGames.push(...games);
+          }
+        }
+      } else {
+        const entries = await conn.listDir(scanPath.path);
+        const steamGames = entries
+          .filter((e) => e.type === "dir")
+          .filter((e) => !matchesBlacklist(e.name, device.blacklist))
+          .map((e) => ({
+            originalFile: e.name,
+            title: e.name,
+            platform: "steam",
+            platformLabel: "Steam",
+            source: "steam" as const,
+          }));
+        allGames.push(...steamGames);
+      }
+    }
+    return deduplicateGames(allGames);
+  } finally {
+    conn.disconnect();
+  }
+}
 
 export interface ScannedGame {
   originalFile: string;
@@ -85,11 +151,17 @@ function sshExec(conn: Client, command: string): Promise<string> {
   });
 }
 
+/** @deprecated Use scanDevice() instead */
 export async function scanSteamDeck(
   host: string,
   user: string,
   password: string
 ): Promise<ScannedGame[]> {
+  const ROM_BASE = "/run/media/deck/SD/Emulation/roms";
+  const STEAM_PATHS = [
+    "/run/media/deck/SD/Games",
+    "/home/deck/.local/share/Steam/steamapps/common",
+  ];
   const conn = new Client();
 
   return new Promise((resolve, reject) => {
