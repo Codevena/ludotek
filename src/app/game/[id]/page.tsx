@@ -7,9 +7,9 @@ import { ScreenshotGallery } from "@/components/screenshot-gallery";
 import { MarkdownContent } from "@/components/markdown-content";
 import { EnrichWizard } from "@/components/enrich-wizard";
 
-function safeJsonParse(str: string | null): unknown[] {
+function safeJsonParse(str: string | null): string[] {
   if (!str) return [];
-  try { return JSON.parse(str); } catch { return []; }
+  try { const parsed = JSON.parse(str); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
 }
 
 interface Props {
@@ -24,11 +24,12 @@ export default async function GameDetailPage({ params }: Props) {
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) notFound();
 
-  const screenshots: string[] = safeJsonParse(game.screenshotUrls) as string[];
-  const genres: string[] = safeJsonParse(game.genres) as string[];
-  const videoIds: string[] = safeJsonParse(game.videoIds) as string[];
-  const artworks: string[] = safeJsonParse(game.artworkUrls) as string[];
-  const themes: string[] = safeJsonParse(game.themes) as string[];
+  const screenshots = safeJsonParse(game.screenshotUrls);
+  const genres = safeJsonParse(game.genres);
+  const videoIds = safeJsonParse(game.videoIds);
+  const safeVideoIds = videoIds.filter((id) => /^[a-zA-Z0-9_-]{6,15}$/.test(id));
+  const artworks = safeJsonParse(game.artworkUrls);
+  const themes = safeJsonParse(game.themes);
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -153,11 +154,11 @@ export default async function GameDetailPage({ params }: Props) {
       )}
 
       {/* Trailer Videos */}
-      {videoIds.length > 0 && (
+      {safeVideoIds.length > 0 && (
         <div className="mt-8">
           <h2 className="font-heading text-xl font-bold mb-4">Videos</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {videoIds.map((ytId) => (
+            {safeVideoIds.map((ytId) => (
               <div key={ytId} className="aspect-video rounded-xl overflow-hidden bg-vault-surface">
                 <iframe
                   src={`https://www.youtube-nocookie.com/embed/${ytId}`}

@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         const results = await Promise.allSettled(
           batch.map(async (game) => {
             try {
-              const genres: string[] = game.genres ? JSON.parse(game.genres) : [];
+              const genres: string[] = (() => { try { return JSON.parse(game.genres || "[]"); } catch { return []; } })();
               const releaseYear = game.releaseDate ? new Date(game.releaseDate).getFullYear() : null;
 
               const aiContent = await generateGameAiContent(

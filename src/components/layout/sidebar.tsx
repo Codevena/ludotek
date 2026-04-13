@@ -68,8 +68,9 @@ export function Sidebar() {
                 alt={p.label}
                 className="w-6 h-6 object-contain flex-shrink-0"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                  (e.target as HTMLImageElement).nextElementSibling!.classList.remove("hidden");
+                  const img = e.target as HTMLImageElement;
+                  img.style.display = "none";
+                  img.nextElementSibling?.classList.remove("hidden");
                 }}
               />
               <span className="hidden text-base">{p.icon}</span>

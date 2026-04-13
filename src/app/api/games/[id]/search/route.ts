@@ -10,10 +10,13 @@ export async function GET(
   if (authError) return authError;
 
   const { id } = await params;
+  const gameId = parseInt(id, 10);
+  if (isNaN(gameId)) return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
+
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q");
 
-  const game = await prisma.game.findUnique({ where: { id: parseInt(id, 10) } });
+  const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
   const settings = await prisma.settings.findFirst({ where: { id: 1 } });
@@ -54,6 +57,7 @@ export async function GET(
     body,
   });
 
+  if (!gamesRes.ok) return NextResponse.json({ error: "IGDB search failed" }, { status: 500 });
   const results = await gamesRes.json();
 
   // Fetch covers for each result
@@ -70,6 +74,7 @@ export async function GET(
       },
       body: `fields id,image_id; where id = (${coverIds.join(",")}); limit 20;`,
     });
+    if (!coversRes.ok) return NextResponse.json({ error: "IGDB covers fetch failed" }, { status: 500 });
     const covers = await coversRes.json();
     coverMap = new Map(covers.map((c: { id: number; image_id: string }) => [
       c.id,

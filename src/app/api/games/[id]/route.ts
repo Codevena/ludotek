@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 function safeJsonParse(str: string | null): unknown[] {
   if (!str) return [];
-  try { return JSON.parse(str); } catch { return []; }
+  try { const parsed = JSON.parse(str); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
 }
 
 export async function GET(
@@ -27,6 +27,9 @@ export async function GET(
     ...game,
     screenshotUrls: safeJsonParse(game.screenshotUrls),
     genres: safeJsonParse(game.genres),
+    videoIds: safeJsonParse(game.videoIds),
+    artworkUrls: safeJsonParse(game.artworkUrls),
+    themes: safeJsonParse(game.themes),
   };
 
   return NextResponse.json(parsed);

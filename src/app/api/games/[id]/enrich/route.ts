@@ -12,8 +12,12 @@ export async function POST(
 
   const { id } = await params;
   const gameId = parseInt(id, 10);
+  if (isNaN(gameId)) return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
+
   const body = await request.json();
   const { igdbId, generateAi } = body;
+
+  if (igdbId && typeof igdbId !== "number") return NextResponse.json({ error: "Invalid igdbId" }, { status: 400 });
 
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
@@ -26,6 +30,7 @@ export async function POST(
       `https://id.twitch.tv/oauth2/token?client_id=${settings.igdbClientId}&client_secret=${settings.igdbClientSecret}&grant_type=client_credentials`,
       { method: "POST" }
     );
+    if (!tokenRes.ok) return NextResponse.json({ error: "IGDB auth failed" }, { status: 500 });
     const { access_token } = await tokenRes.json();
 
     const query = `fields name,rating,genres,first_release_date,summary,cover,involved_companies,screenshots; where id = ${igdbId}; limit 1;`;
@@ -38,6 +43,7 @@ export async function POST(
       },
       body: query,
     });
+    if (!gamesRes.ok) return NextResponse.json({ error: "IGDB games fetch failed" }, { status: 500 });
     const results = await gamesRes.json();
 
     if (results.length > 0) {
@@ -51,6 +57,7 @@ export async function POST(
           headers: { "Client-ID": settings.igdbClientId, Authorization: `Bearer ${access_token}`, "Content-Type": "text/plain" },
           body: `fields image_id; where id = ${igdbGame.cover};`,
         });
+        if (!coversRes.ok) return NextResponse.json({ error: "IGDB covers fetch failed" }, { status: 500 });
         const covers = await coversRes.json();
         if (covers.length > 0) {
           coverUrl = `https://images.igdb.com/igdb/image/upload/t_cover_big/${covers[0].image_id}.jpg`;
@@ -65,6 +72,7 @@ export async function POST(
           headers: { "Client-ID": settings.igdbClientId, Authorization: `Bearer ${access_token}`, "Content-Type": "text/plain" },
           body: `fields name; where id = (${igdbGame.genres.join(",")}); limit 10;`,
         });
+        if (!genresRes.ok) return NextResponse.json({ error: "IGDB genres fetch failed" }, { status: 500 });
         const genres = await genresRes.json();
         genreNames = genres.map((g: { name: string }) => g.name);
       }
@@ -78,6 +86,7 @@ export async function POST(
           headers: { "Client-ID": settings.igdbClientId, Authorization: `Bearer ${access_token}`, "Content-Type": "text/plain" },
           body: `fields company,developer,publisher; where id = (${igdbGame.involved_companies.join(",")}); limit 10;`,
         });
+        if (!companiesRes.ok) return NextResponse.json({ error: "IGDB companies fetch failed" }, { status: 500 });
         const companies = await companiesRes.json();
         const companyIds = companies.map((c: { company: number }) => c.company);
         if (companyIds.length > 0) {
@@ -86,6 +95,7 @@ export async function POST(
             headers: { "Client-ID": settings.igdbClientId, Authorization: `Bearer ${access_token}`, "Content-Type": "text/plain" },
             body: `fields name; where id = (${companyIds.join(",")}); limit 10;`,
           });
+          if (!detailsRes.ok) return NextResponse.json({ error: "IGDB company details fetch failed" }, { status: 500 });
           const details = await detailsRes.json();
           const companyMap = new Map(details.map((c: { id: number; name: string }) => [c.id, c.name]));
           const dev = companies.find((c: { developer: boolean }) => c.developer);
@@ -103,6 +113,7 @@ export async function POST(
           headers: { "Client-ID": settings.igdbClientId, Authorization: `Bearer ${access_token}`, "Content-Type": "text/plain" },
           body: `fields image_id; where id = (${igdbGame.screenshots.slice(0, 4).join(",")}); limit 4;`,
         });
+        if (!screenshotsRes.ok) return NextResponse.json({ error: "IGDB screenshots fetch failed" }, { status: 500 });
         const screenshots = await screenshotsRes.json();
         screenshotUrls = screenshots.map((s: { image_id: string }) =>
           `https://images.igdb.com/igdb/image/upload/t_screenshot_big/${s.image_id}.jpg`
@@ -130,7 +141,7 @@ export async function POST(
   if (generateAi && settings?.openrouterKey) {
     const updatedGame = await prisma.game.findUnique({ where: { id: gameId } });
     if (updatedGame) {
-      const genres: string[] = updatedGame.genres ? JSON.parse(updatedGame.genres) : [];
+      const genres: string[] = (() => { try { return JSON.parse(updatedGame.genres || "[]"); } catch { return []; } })();
       const releaseYear = updatedGame.releaseDate ? new Date(updatedGame.releaseDate).getFullYear() : null;
 
       const aiContent = await generateGameAiContent(
