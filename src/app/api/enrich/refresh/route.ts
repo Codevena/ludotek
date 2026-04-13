@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         }
       };
 
-      send({ type: "start", total: games.length });
+      send({ type: "start", total: games.length, totalRemaining: games.length });
 
       let enriched = 0;
       let failed = 0;
@@ -137,7 +137,6 @@ export async function POST(request: NextRequest) {
           igdbId: { not: null },
           OR: [
             { metacriticScore: null },
-            { franchise: null },
             { videoIds: null },
             { videoIds: "[]" },
             { artworkUrls: null },
