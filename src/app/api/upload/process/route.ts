@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   // Path traversal check (match detect route's approach)
   const sessionDir = path.resolve(UPLOAD_BASE, sessionId);
-  if (!sessionDir.startsWith(UPLOAD_BASE)) {
+  if (!sessionDir.startsWith(UPLOAD_BASE + path.sep)) {
     return NextResponse.json({ error: "Invalid sessionId" }, { status: 400 });
   }
 

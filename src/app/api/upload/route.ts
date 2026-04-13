@@ -33,6 +33,7 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(await file.arrayBuffer());
       // Sanitize filename to prevent path traversal
       const safeName = path.basename(file.name);
+      if (!safeName || safeName === "." || safeName === "..") continue;
       const filePath = path.join(sessionDir, safeName);
       await writeFile(filePath, buffer);
 
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
           if (entry.type === "File") {
             const content = await entry.buffer();
             const extractedName = path.basename(entry.path);
+            if (!extractedName || extractedName === "." || extractedName === "..") continue;
             const extractedPath = path.join(sessionDir, extractedName);
             await writeFile(extractedPath, content);
             savedFiles.push({

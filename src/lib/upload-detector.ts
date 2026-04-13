@@ -68,12 +68,16 @@ function determineConversion(platform: string): "none" | "chd" | "rvz" {
 
 function generateId(title: string, platform: string): string {
   // Deterministic ID based on title+platform so detect and process calls produce the same IDs
-  let hash = 0;
+  // FNV-1a 64-bit (emulated with two 32-bit halves to avoid collisions)
   const str = `${platform}:${title}`;
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
   for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ c, 0x811c9dc5);
   }
-  return `game-${Math.abs(hash).toString(36)}`;
+  return `game-${(h1 >>> 0).toString(36)}-${(h2 >>> 0).toString(36)}`;
 }
 
 export function detectGames(files: UploadedFile[], platform: string): DetectedGame[] {
