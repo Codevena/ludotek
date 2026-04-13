@@ -3,7 +3,7 @@ import { detectGames, UploadedFile } from "@/lib/upload-detector";
 
 describe("detectGames", () => {
   it("returns empty array for no files", () => {
-    expect(detectGames([], "SNES")).toEqual([]);
+    expect(detectGames([], "snes")).toEqual([]);
   });
 
   it("returns empty array when all files are metadata", () => {
@@ -18,14 +18,14 @@ describe("detectGames", () => {
       { name: "track.idx", size: 100, path: "/tmp/track.idx" },
       { name: "patch.sbi", size: 50, path: "/tmp/patch.sbi" },
     ];
-    expect(detectGames(files, "PSX")).toEqual([]);
+    expect(detectGames(files, "psx")).toEqual([]);
   });
 
   it("detects a single SNES ROM with no conversion", () => {
     const files: UploadedFile[] = [
       { name: "Super Mario World (USA).sfc", size: 1048576, path: "/tmp/smw.sfc" },
     ];
-    const result = detectGames(files, "SNES");
+    const result = detectGames(files, "snes");
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       title: "Super Mario World",
@@ -42,7 +42,7 @@ describe("detectGames", () => {
     const files: UploadedFile[] = [
       { name: "Crash Bandicoot (USA).iso", size: 524288000, path: "/tmp/crash.iso" },
     ];
-    const result = detectGames(files, "PSX");
+    const result = detectGames(files, "psx");
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       title: "Crash Bandicoot",
@@ -57,7 +57,7 @@ describe("detectGames", () => {
     const files: UploadedFile[] = [
       { name: "Super Smash Bros Melee (USA).iso", size: 1459978240, path: "/tmp/ssbm.iso" },
     ];
-    const result = detectGames(files, "GC");
+    const result = detectGames(files, "gc");
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       title: "Super Smash Bros Melee",
@@ -79,7 +79,7 @@ describe("detectGames", () => {
       { name: "Final Fantasy VII (USA) (Disc 4).bin", size: 620000000, path: "/tmp/ff7d4.bin" },
       { name: "Final Fantasy VII (USA) (Disc 4).cue", size: 200, path: "/tmp/ff7d4.cue" },
     ];
-    const result = detectGames(files, "PSX");
+    const result = detectGames(files, "psx");
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       title: "Final Fantasy VII",
@@ -100,7 +100,7 @@ describe("detectGames", () => {
       { name: "Resident Evil 2 (USA) (Disk 1).iso", size: 600000000, path: "/tmp/re2d1.iso" },
       { name: "Resident Evil 2 (USA) (Disk 2).iso", size: 590000000, path: "/tmp/re2d2.iso" },
     ];
-    const result = detectGames(files, "PSX");
+    const result = detectGames(files, "psx");
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("multi-disc");
     expect(result[0].discCount).toBe(2);
@@ -113,7 +113,7 @@ describe("detectGames", () => {
       { name: "Phantasmagoria (USA) (CD 2).bin", size: 480000000, path: "/tmp/p2.bin" },
       { name: "Phantasmagoria (USA) (CD 2).cue", size: 200, path: "/tmp/p2.cue" },
     ];
-    const result = detectGames(files, "PSX");
+    const result = detectGames(files, "psx");
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("multi-disc");
     expect(result[0].discCount).toBe(2);
@@ -126,7 +126,7 @@ describe("detectGames", () => {
       { name: "Spyro the Dragon (USA).bin", size: 450000000, path: "/tmp/spyro.bin" },
       { name: "Spyro the Dragon (USA).cue", size: 200, path: "/tmp/spyro.cue" },
     ];
-    const result = detectGames(files, "PSX");
+    const result = detectGames(files, "psx");
     expect(result).toHaveLength(2);
     const titles = result.map((g) => g.title).sort();
     expect(titles).toEqual(["Crash Bandicoot", "Spyro the Dragon"]);
@@ -143,7 +143,7 @@ describe("detectGames", () => {
       { name: "Zelda.txt", size: 500, path: "/tmp/zelda.txt" },
       { name: "cover.png", size: 100000, path: "/tmp/cover.png" },
     ];
-    const result = detectGames(files, "SNES");
+    const result = detectGames(files, "snes");
     expect(result).toHaveLength(1);
     expect(result[0].files).toHaveLength(1);
     expect(result[0].files[0].name).toBe("Zelda.sfc");
@@ -153,7 +153,7 @@ describe("detectGames", () => {
     const files: UploadedFile[] = [
       { name: "Shadow of the Colossus (USA).iso", size: 3000000000, path: "/tmp/sotc.iso" },
     ];
-    const result = detectGames(files, "PS2");
+    const result = detectGames(files, "ps2");
     expect(result).toHaveLength(1);
     expect(result[0].conversion).toBe("chd");
   });
@@ -162,7 +162,7 @@ describe("detectGames", () => {
     const files: UploadedFile[] = [
       { name: "Sonic Adventure (USA).gdi", size: 1200000000, path: "/tmp/sa.gdi" },
     ];
-    const result = detectGames(files, "Dreamcast");
+    const result = detectGames(files, "dreamcast");
     expect(result).toHaveLength(1);
     expect(result[0].conversion).toBe("chd");
   });
@@ -171,7 +171,7 @@ describe("detectGames", () => {
     const files: UploadedFile[] = [
       { name: "Nights Into Dreams (USA).iso", size: 500000000, path: "/tmp/nights.iso" },
     ];
-    const result = detectGames(files, "Saturn");
+    const result = detectGames(files, "saturn");
     expect(result[0].conversion).toBe("chd");
   });
 
@@ -179,7 +179,7 @@ describe("detectGames", () => {
     const files: UploadedFile[] = [
       { name: "Sonic CD (USA).iso", size: 400000000, path: "/tmp/soniccd.iso" },
     ];
-    const result = detectGames(files, "SegaCD");
+    const result = detectGames(files, "segacd");
     expect(result[0].conversion).toBe("chd");
   });
 
@@ -188,7 +188,7 @@ describe("detectGames", () => {
       { name: "Tekken 3 (USA).bin", size: 600000000, path: "/tmp/tekken3.bin" },
       { name: "Tekken 3 (USA).cue", size: 200, path: "/tmp/tekken3.cue" },
     ];
-    const result = detectGames(files, "PSX");
+    const result = detectGames(files, "psx");
     expect(result).toHaveLength(1);
     expect(result[0].files).toHaveLength(2);
     expect(result[0].type).toBe("single");

@@ -18,7 +18,7 @@ const METADATA_EXTENSIONS = new Set([
   ".txt", ".xml", ".json", ".png", ".jpg", ".log", ".sub", ".idx", ".sbi",
 ]);
 
-const CHD_PLATFORMS = new Set(["PSX", "PS2", "Dreamcast", "Saturn", "SegaCD"]);
+const CHD_PLATFORMS = new Set(["psx", "ps2", "dreamcast", "saturn", "segacd"]);
 
 const DISC_PATTERN = /\((Disc|Disk|CD)\s+(\d+)\)/i;
 
@@ -60,8 +60,9 @@ function cleanTitle(filename: string): string {
 }
 
 function determineConversion(platform: string): "none" | "chd" | "rvz" {
-  if (CHD_PLATFORMS.has(platform)) return "chd";
-  if (platform === "GC") return "rvz";
+  const p = platform.toLowerCase();
+  if (CHD_PLATFORMS.has(p)) return "chd";
+  if (p === "gc") return "rvz";
   return "none";
 }
 
