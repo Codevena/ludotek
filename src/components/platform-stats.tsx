@@ -525,7 +525,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
   if (!stats) return null;
 
   return (
-    <div>
+    <div className="min-w-0 overflow-hidden">
       {/* ---- Stats Row ---- */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
@@ -580,7 +580,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
       ) : (
         missing &&
         missing.length > 0 && (
-          <div className="mb-6 bg-gradient-to-br from-vault-amber/[0.05] to-transparent border border-vault-amber/20 rounded-xl overflow-hidden">
+          <div className="mb-6 bg-gradient-to-br from-vault-amber/[0.05] to-transparent border border-vault-amber/20 rounded-xl overflow-hidden min-w-0">
             {/* Collapsible Header Bar */}
             <button
               onClick={() => setMissingExpanded((prev) => !prev)}
@@ -616,7 +616,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
 
             {/* Expanded Carousel */}
             {missingExpanded && (
-              <div className="px-4 pb-4">
+              <div className="px-4 pb-4 min-w-0 max-w-full">
                 <p className="text-vault-muted text-xs mb-3">
                   Top-rated {platformId} games not in your collection according
                   to IGDB
@@ -626,7 +626,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
                 <style>{`
                   .missing-carousel::-webkit-scrollbar { display: none; }
                 `}</style>
-                <div className="relative overflow-hidden">
+                <div className="relative overflow-hidden min-w-0 w-full">
                   <div
                     ref={carouselRef}
                     className="missing-carousel flex gap-4 overflow-x-auto pb-2"
