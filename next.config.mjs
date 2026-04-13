@@ -2,7 +2,7 @@
 const nextConfig = {
   output: "standalone",
   experimental: {
-    serverComponentsExternalPackages: ["ssh2", "cpu-features"],
+    serverComponentsExternalPackages: ["ssh2", "cpu-features", "unzipper"],
   },
   images: {
     remotePatterns: [
