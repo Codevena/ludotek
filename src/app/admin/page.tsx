@@ -40,6 +40,7 @@ export default function AdminPage() {
   const [enriching, setEnriching] = useState(false);
   const [aiEnriching, setAiEnriching] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const [reEnriching, setReEnriching] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [platforms, setPlatforms] = useState<Array<{ id: string; label: string; gameCount: number }>>([]);
@@ -293,7 +294,7 @@ export default function AdminPage() {
 
       {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <button onClick={runScan} disabled={scanning || enriching || aiEnriching}
+        <button onClick={runScan} disabled={scanning || enriching || aiEnriching || reEnriching}
           className={`${btnClass} bg-vault-amber text-black hover:bg-vault-amber-hover`}>
           {scanning ? "Scanning..." : "Scan Steam Deck"}
         </button>
@@ -301,12 +302,12 @@ export default function AdminPage() {
             const body = selectedPlatforms.length > 0 ? { platforms: selectedPlatforms } : undefined;
             runStreamingAction("/api/enrich", setEnriching, body);
           }}
-          disabled={scanning || enriching || aiEnriching}
+          disabled={scanning || enriching || aiEnriching || reEnriching}
           className={`${btnClass} bg-blue-600 text-white hover:bg-blue-500`}>
           {enriching ? "Enriching..." : selectedPlatforms.length > 0 ? `Enrich (${selectedPlatforms.length} Systems)` : "Enrich All (IGDB)"}
         </button>
         <button onClick={() => runStreamingAction("/api/enrich/ai", setAiEnriching)}
-          disabled={scanning || enriching || aiEnriching}
+          disabled={scanning || enriching || aiEnriching || reEnriching}
           className={`${btnClass} bg-purple-600 text-white hover:bg-purple-500`}>
           {aiEnriching ? "Generating..." : "Generate AI Content"}
         </button>
@@ -319,13 +320,18 @@ export default function AdminPage() {
         Upload ROMs
       </Link>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <button onClick={() => runStreamingAction("/api/enrich/metacritic", setEnriching)}
-          disabled={scanning || enriching || aiEnriching || cleaning}
+          disabled={scanning || enriching || aiEnriching || cleaning || reEnriching}
           className={`${btnClass} bg-cyan-600 text-white hover:bg-cyan-500`}>
           {enriching ? "Fetching..." : "Fetch Critic Scores"}
         </button>
-        <button onClick={runCleanup} disabled={scanning || enriching || aiEnriching || cleaning}
+        <button onClick={() => runStreamingAction("/api/enrich/refresh", setReEnriching)}
+          disabled={scanning || enriching || aiEnriching || cleaning || reEnriching}
+          className={`${btnClass} bg-orange-600 text-white hover:bg-orange-500`}>
+          {reEnriching ? "Re-Enriching..." : "Re-Enrich Missing Fields"}
+        </button>
+        <button onClick={runCleanup} disabled={scanning || enriching || aiEnriching || cleaning || reEnriching}
           className={`${btnClass} bg-red-600/80 text-white hover:bg-red-500`}>
           {cleaning ? "Cleaning..." : "Cleanup Duplicates & .m3u"}
         </button>
