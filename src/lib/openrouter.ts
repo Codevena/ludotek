@@ -11,7 +11,8 @@ export async function generateGameAiContent(
   genres: string[],
   summary: string | null,
   apiKey: string,
-  model: string = process.env.OPENROUTER_MODEL || "google/gemini-3.1-flash-lite-preview"
+  model: string = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash",
+  language: string = "en"
 ): Promise<AiContent> {
   const context = [
     `Game: ${title}`,
@@ -22,14 +23,21 @@ export async function generateGameAiContent(
     summary ? `Summary: ${summary}` : null,
   ].filter(Boolean).join("\n");
 
-  const prompt = `You are a gaming expert. Given the following game information, generate two sections in Markdown:
+  const isGerman = language === "de";
+  const languageInstruction = isGerman
+    ? "Write all content in German."
+    : "Write all content in English.";
+  const funFactsHeading = isGerman ? "Wissenswertes" : "Fun Facts";
+  const storyHeading = isGerman ? "Geschichte & Hintergrund" : "Story & Background";
+
+  const prompt = `You are a gaming expert. ${languageInstruction} Given the following game information, generate two sections in Markdown:
 
 ${context}
 
-## Section 1: Fun Facts
+## Section 1: ${funFactsHeading}
 Write 3-5 interesting fun facts about this game. Include development stories, Easter eggs, cultural impact, world records, or surprising connections. Each fact should be a bullet point.
 
-## Section 2: Story & Background
+## Section 2: ${storyHeading}
 Write 2-3 paragraphs about the game's story, setting, and what makes it special. If the game doesn't have a traditional story (like a puzzle game), talk about the game's concept, design philosophy, and legacy.
 
 Format your response as:

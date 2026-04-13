@@ -14,6 +14,7 @@ interface Settings {
   steamgriddbKey: string;
   openrouterKey: string;
   steamApiKey: string;
+  aiLanguage: string;
 }
 
 interface ActionResult {
@@ -27,7 +28,7 @@ export default function AdminPage() {
   const [settings, setSettings] = useState<Settings>({
     deckHost: "", deckUser: "", deckPassword: "",
     igdbClientId: "", igdbClientSecret: "", steamgriddbKey: "",
-    openrouterKey: "", steamApiKey: "",
+    openrouterKey: "", steamApiKey: "", aiLanguage: "en",
   });
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -405,6 +406,33 @@ export default function AdminPage() {
             <label htmlFor="steam-api-key" className="text-vault-muted text-xs mb-1 block">Steam Web API Key</label>
             <input id="steam-api-key" className={inputClass} type="password" value={settings.steamApiKey}
               onChange={(e) => setSettings({ ...settings, steamApiKey: e.target.value })} />
+          </div>
+          <div>
+            <label className="text-vault-muted text-xs mb-2 block">AI Content Language</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSettings({ ...settings, aiLanguage: "en" })}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
+                  settings.aiLanguage === "en"
+                    ? "border-vault-amber bg-vault-amber/10 text-vault-amber"
+                    : "border-vault-border text-vault-muted hover:border-vault-muted"
+                }`}
+              >
+                English
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettings({ ...settings, aiLanguage: "de" })}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
+                  settings.aiLanguage === "de"
+                    ? "border-vault-amber bg-vault-amber/10 text-vault-amber"
+                    : "border-vault-border text-vault-muted hover:border-vault-muted"
+                }`}
+              >
+                Deutsch
+              </button>
+            </div>
           </div>
         </div>
 

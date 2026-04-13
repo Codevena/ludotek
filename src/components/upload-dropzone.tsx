@@ -2,23 +2,47 @@
 
 import { useCallback, useRef, useState } from "react";
 
+interface FileWithPath {
+  file: File;
+  relativePath: string;
+}
+
 interface UploadDropzoneProps {
-  onFilesSelected: (files: File[]) => void;
+  onFilesSelected: (files: FileWithPath[]) => void;
   disabled?: boolean;
 }
 
-async function traverseEntry(entry: FileSystemEntry): Promise<File[]> {
+async function traverseEntry(
+  entry: FileSystemEntry,
+  basePath = "",
+): Promise<FileWithPath[]> {
   if (entry.isFile) {
-    return new Promise<File[]>((resolve) => {
-      (entry as FileSystemFileEntry).file((f) => resolve([f]));
+    return new Promise<FileWithPath[]>((resolve) => {
+      (entry as FileSystemFileEntry).file((f) =>
+        resolve([
+          {
+            file: f,
+            relativePath: basePath ? basePath + "/" + entry.name : entry.name,
+          },
+        ]),
+      );
     });
   }
   if (entry.isDirectory) {
     const reader = (entry as FileSystemDirectoryEntry).createReader();
-    const entries = await new Promise<FileSystemEntry[]>((resolve) => {
-      reader.readEntries((results) => resolve(results));
-    });
-    const nested = await Promise.all(entries.map(traverseEntry));
+    const allEntries: FileSystemEntry[] = [];
+    // readEntries returns at most 100 entries per call — loop until empty
+    let batch: FileSystemEntry[];
+    do {
+      batch = await new Promise<FileSystemEntry[]>((resolve) => {
+        reader.readEntries((results) => resolve(results));
+      });
+      allEntries.push(...batch);
+    } while (batch.length > 0);
+    const dirPath = basePath ? basePath + "/" + entry.name : entry.name;
+    const nested = await Promise.all(
+      allEntries.map((e) => traverseEntry(e, dirPath)),
+    );
     return nested.flat();
   }
   return [];
@@ -52,7 +76,7 @@ export default function UploadDropzone({
       if (disabled) return;
 
       const items = e.dataTransfer.items;
-      const allFiles: File[] = [];
+      const allFiles: FileWithPath[] = [];
 
       const entries: FileSystemEntry[] = [];
       for (let i = 0; i < items.length; i++) {
@@ -61,12 +85,14 @@ export default function UploadDropzone({
       }
 
       if (entries.length > 0) {
-        const nested = await Promise.all(entries.map(traverseEntry));
+        const nested = await Promise.all(
+          entries.map((e) => traverseEntry(e)),
+        );
         allFiles.push(...nested.flat());
       } else {
         const files = e.dataTransfer.files;
         for (let i = 0; i < files.length; i++) {
-          allFiles.push(files[i]);
+          allFiles.push({ file: files[i], relativePath: files[i].name });
         }
       }
 
@@ -79,9 +105,13 @@ export default function UploadDropzone({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
-      const arr: File[] = [];
+      const arr: FileWithPath[] = [];
       for (let i = 0; i < files.length; i++) {
-        arr.push(files[i]);
+        const f = files[i];
+        arr.push({
+          file: f,
+          relativePath: f.webkitRelativePath || f.name,
+        });
       }
       onFilesSelected(arr);
       e.target.value = "";

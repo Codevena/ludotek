@@ -4,7 +4,24 @@ import ReactMarkdown from "react-markdown";
 
 export function MarkdownContent({ content }: { content: string }) {
   return (
-    <div className="text-vault-muted text-sm leading-relaxed prose prose-invert max-w-none">
+    <div
+      className={[
+        "prose-vault prose prose-sm prose-invert max-w-none",
+        // Base text
+        "text-vault-muted text-sm leading-7",
+        // Paragraphs — clear separation between blocks
+        "prose-p:my-4 prose-p:leading-7",
+        // Headings
+        "prose-headings:text-vault-text prose-headings:font-bold prose-headings:mt-6 prose-headings:mb-3",
+        // Bold text — bright white so inline bold acts as sub-headings
+        "prose-strong:text-white prose-strong:font-bold",
+        // Lists — proper indentation and spacing
+        "prose-ul:my-3 prose-ul:pl-5 prose-ol:my-3 prose-ol:pl-5",
+        "prose-li:my-1.5 prose-li:leading-7",
+        // Links
+        "prose-a:text-vault-amber prose-a:no-underline hover:prose-a:text-vault-amber-hover",
+      ].join(" ")}
+    >
       <ReactMarkdown>{content}</ReactMarkdown>
     </div>
   );

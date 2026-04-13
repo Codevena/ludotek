@@ -58,4 +58,5 @@ model Settings {
   steamgriddbKey   String @default("")
   openrouterKey    String @default("")
   steamApiKey      String @default("")
+  aiLanguage       String @default("en") // "en" or "de"
 }

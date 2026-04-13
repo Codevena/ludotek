@@ -37,7 +37,7 @@ export async function PUT(request: NextRequest) {
   const fields = [
     "deckHost", "deckUser", "deckPassword",
     "igdbClientId", "igdbClientSecret", "steamgriddbKey",
-    "openrouterKey", "steamApiKey",
+    "openrouterKey", "steamApiKey", "aiLanguage",
   ];
 
   for (const field of fields) {

@@ -67,7 +67,8 @@ export async function POST(
 
       const aiContent = await generateGameAiContent(
         updatedGame.title, updatedGame.platformLabel, updatedGame.developer,
-        releaseYear, genres, updatedGame.summary, settings.openrouterKey
+        releaseYear, genres, updatedGame.summary, settings.openrouterKey,
+        undefined, settings.aiLanguage || "en"
       );
 
       await prisma.game.update({

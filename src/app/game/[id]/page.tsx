@@ -209,7 +209,7 @@ export default async function GameDetailPage({ params }: Props) {
       )}
 
       {game.aiStory && (
-        <div className="mt-6 rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.08] to-transparent p-6">
+        <div className="mt-6 rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.08] to-transparent p-6 prose-vault-indigo">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">&#128214;</span>
             <h2 className="font-heading text-xl font-bold text-indigo-400">Story &amp; Background</h2>

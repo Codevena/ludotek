@@ -1,6 +1,6 @@
 # Game Vault — Feature Roadmap
 
-## Feature 1: Smart Upload — Auto-Erkennung der Systeme (NEXT)
+## Feature 1: Smart Upload — Auto-Erkennung der Systeme (DONE)
 
 ### Problem
 Aktuell muss man beim Upload erst manuell ein System auswählen, bevor man Dateien hochladen kann. Wenn man 4 Ordner mit ROMs reinzieht (z.B. `snes/`, `gba/`, `megadrive/`, `n64/`), muss man das für jedes System einzeln machen.
@@ -103,11 +103,18 @@ Keine Möglichkeit, die Collection zu sichern oder zu migrieren.
 
 ---
 
-## Execution Order
+## Completed (this session)
 
-1. **Smart Upload — Auto-Erkennung** ← Starten wir jetzt
-2. Spielestatistiken
-3. Favoriten & Bewertung
-4. Collection-Vergleich
-5. Theme Toggle
-6. Export/Backup
+- Smart Upload — Auto-Erkennung der Systeme
+- Search mit Cover-Thumbnails + Platform-Badges (Autocomplete-Dropdown)
+- AI Content Sprache wählbar (Deutsch/Englisch) in Admin Settings
+- Fun Facts & Story Formatierung (prose-vault Typography, amber/indigo sub-headings)
+- Home Link im Header
+
+## Execution Order (remaining)
+
+1. **Spielestatistiken** ← Next
+2. Favoriten & Bewertung
+3. Collection-Vergleich
+4. Theme Toggle
+5. Export/Backup

@@ -18,4 +18,59 @@
   .card:hover {
     @apply border-vault-amber -translate-y-0.5;
   }
+
+  /* Vault-themed prose overrides for MarkdownContent */
+  .prose-vault {
+    --tw-prose-body: #a1a1aa;
+    --tw-prose-headings: #e4e4e7;
+    --tw-prose-bold: #ffffff;
+    --tw-prose-links: #f59e0b;
+    --tw-prose-bullets: #71717a;
+    --tw-prose-counters: #71717a;
+  }
+
+  .prose-vault strong {
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  .prose-vault p {
+    margin-top: 0.875rem;
+    margin-bottom: 0.875rem;
+    line-height: 1.75;
+  }
+
+  /* Bold text that starts a paragraph — acts as a sub-heading */
+  .prose-vault p > strong:first-child {
+    display: inline-block;
+    border-left: 2px solid #f59e0b;
+    padding-left: 0.5rem;
+    margin-bottom: 0.125rem;
+  }
+
+  /* Indigo variant for Story sections */
+  .prose-vault-indigo p > strong:first-child {
+    border-left-color: #6366f1;
+  }
+
+  .prose-vault ul,
+  .prose-vault ol {
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .prose-vault li {
+    margin-top: 0.375rem;
+    margin-bottom: 0.375rem;
+    line-height: 1.75;
+  }
+
+  .prose-vault h2,
+  .prose-vault h3,
+  .prose-vault h4 {
+    color: #e4e4e7;
+    font-weight: 700;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+  }
 }
