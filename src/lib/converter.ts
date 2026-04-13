@@ -1,10 +1,20 @@
-import { spawn } from "child_process";
+import { spawn, execFileSync } from "child_process";
 
 export interface ConvertJob {
   inputPath: string;
   outputPath: string;
   format: "chd" | "rvz";
   onProgress?: (percent: number) => void;
+}
+
+/** Check if a CLI tool is available on the system */
+function isToolAvailable(cmd: string): boolean {
+  try {
+    execFileSync("which", [cmd], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -25,6 +35,16 @@ export function parseChdmanProgress(line: string): number | null {
 export function convert(job: ConvertJob): Promise<void> {
   return new Promise((resolve, reject) => {
     const { inputPath, outputPath, format, onProgress } = job;
+
+    // Check tool availability before spawning
+    const toolName = format === "chd" ? "chdman" : "DolphinTool";
+    if (!isToolAvailable(toolName)) {
+      return reject(new Error(
+        `${toolName} is not installed. ${format === "rvz"
+          ? "Place a DolphinTool binary in the Docker image to enable GameCube RVZ conversion."
+          : "Install mame-tools to enable CHD conversion."}`
+      ));
+    }
 
     const command =
       format === "chd"
