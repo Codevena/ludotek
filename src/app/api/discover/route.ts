@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   buildLibraryPrompt,
@@ -42,19 +43,19 @@ async function callOpenRouter(
 }
 
 export async function POST(request: NextRequest) {
-  // No auth required — discovery is a public feature (uses server-side API keys)
-  const body = await request.json();
-  const {
-    platforms,
-    genres,
-    themes,
-    tab,
-  }: {
-    platforms: string[];
-    genres: string[];
-    themes: string[];
-    tab: "library" | "wishlist";
-  } = body;
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const platforms = body.platforms as string[] | undefined;
+  const genres = body.genres as string[] | undefined;
+  const themes = body.themes as string[] | undefined;
+  const tab = body.tab as "library" | "wishlist" | undefined;
 
   // Load settings
   const settings = await prisma.settings.findFirst({ where: { id: 1 } });
@@ -65,7 +66,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!platforms?.length || (!genres?.length && !themes?.length)) {
+  const safePlatforms = platforms || [];
+  const safeGenres = genres || [];
+  const safeThemes = themes || [];
+
+  if (!safePlatforms.length || (!safeGenres.length && !safeThemes.length)) {
     return NextResponse.json(
       { error: "Platforms and at least one genre or theme are required" },
       { status: 400 }
@@ -90,7 +95,7 @@ export async function POST(request: NextRequest) {
       try {
         // Step 1: Load games from DB for selected platforms
         const games = await prisma.game.findMany({
-          where: { platform: { in: platforms } },
+          where: { platform: { in: safePlatforms } },
         });
 
         // --- LIBRARY TAB ---
@@ -109,7 +114,7 @@ export async function POST(request: NextRequest) {
           igdbScore: g.igdbScore,
         }));
 
-        const libraryPrompt = buildLibraryPrompt(gameData, genres, themes);
+        const libraryPrompt = buildLibraryPrompt(gameData, safeGenres, safeThemes);
         const aiResponse = await callOpenRouter(
           libraryPrompt,
           settings.openrouterKey,
@@ -126,9 +131,12 @@ export async function POST(request: NextRequest) {
             (g) => g.title.toLowerCase() === recTitle && g.platform === rec.platform
           ) || games.find(
             (g) => g.title.toLowerCase() === recTitle
-          ) || games.find(
-            (g) => g.title.toLowerCase().includes(recTitle) || recTitle.includes(g.title.toLowerCase())
-          );
+          ) || (recTitle.length >= 5 ? games.find(
+            (g) => {
+              const dbTitle = g.title.toLowerCase();
+              return dbTitle.includes(recTitle) || recTitle.includes(dbTitle);
+            }
+          ) : undefined);
           if (dbGame) {
             enrichedLibrary.push({
               ...rec,
@@ -164,9 +172,9 @@ export async function POST(request: NextRequest) {
           const existingTitles = games.map((g) => g.title);
           const wishlistPrompt = buildWishlistPrompt(
             existingTitles,
-            platforms,
-            genres,
-            themes
+            safePlatforms,
+            safeGenres,
+            safeThemes
           );
           const wishlistAiResponse = await callOpenRouter(
             wishlistPrompt,
