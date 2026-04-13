@@ -78,7 +78,8 @@ export async function POST(request: NextRequest) {
   }
 
   const model =
-    process.env.OPENROUTER_MODEL || "google/gemini-3.1-flash-lite-preview";
+    process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
+  const language = settings.aiLanguage || "en";
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
           igdbScore: g.igdbScore,
         }));
 
-        const libraryPrompt = buildLibraryPrompt(gameData, safeGenres, safeThemes);
+        const libraryPrompt = buildLibraryPrompt(gameData, safeGenres, safeThemes, language);
         const aiResponse = await callOpenRouter(
           libraryPrompt,
           settings.openrouterKey,
@@ -174,7 +175,8 @@ export async function POST(request: NextRequest) {
             existingTitles,
             safePlatforms,
             safeGenres,
-            safeThemes
+            safeThemes,
+            language
           );
           const wishlistAiResponse = await callOpenRouter(
             wishlistPrompt,

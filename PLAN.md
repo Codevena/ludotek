@@ -110,11 +110,11 @@ Keine Möglichkeit, die Collection zu sichern oder zu migrieren.
 - AI Content Sprache wählbar (Deutsch/Englisch) in Admin Settings
 - Fun Facts & Story Formatierung (prose-vault Typography, amber/indigo sub-headings)
 - Home Link im Header
+- Spielestatistiken Dashboard (Recharts: Bar Chart, Donut, 5 Stats-Karten)
 
 ## Execution Order (remaining)
 
-1. **Spielestatistiken** ← Next
-2. Favoriten & Bewertung
-3. Collection-Vergleich
-4. Theme Toggle
-5. Export/Backup
+1. **Favoriten & Bewertung** ← Next
+2. Collection-Vergleich
+3. Theme Toggle
+4. Export/Backup

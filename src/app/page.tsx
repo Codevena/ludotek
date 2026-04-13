@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { GameGrid } from "@/components/game-grid";
 import { GameCard } from "@/components/game-card";
 import { SortSelect } from "@/components/sort-select";
+import { StatsDashboard } from "@/components/stats-dashboard";
 import { Suspense } from "react";
 
 interface Props {
@@ -11,37 +12,6 @@ interface Props {
     order?: string;
     page?: string;
   }>;
-}
-
-async function StatsBar() {
-  const [totalGames, platforms, avgScore] = await Promise.all([
-    prisma.game.count(),
-    prisma.platform.count({ where: { gameCount: { gt: 0 } } }),
-    prisma.game.aggregate({ _avg: { igdbScore: true } }),
-  ]);
-
-  return (
-    <div className="grid grid-cols-3 gap-4 mb-8">
-      <div className="card text-center">
-        <p className="font-heading text-3xl font-bold text-vault-amber">
-          {totalGames.toLocaleString()}
-        </p>
-        <p className="text-vault-muted text-sm">Games</p>
-      </div>
-      <div className="card text-center">
-        <p className="font-heading text-3xl font-bold text-vault-amber">
-          {platforms}
-        </p>
-        <p className="text-vault-muted text-sm">Platforms</p>
-      </div>
-      <div className="card text-center">
-        <p className="font-heading text-3xl font-bold text-vault-amber">
-          {avgScore._avg.igdbScore ? Math.round(avgScore._avg.igdbScore) : "—"}
-        </p>
-        <p className="text-vault-muted text-sm">Avg Score</p>
-      </div>
-    </div>
-  );
 }
 
 async function RecentlyAdded() {
@@ -114,9 +84,7 @@ export default async function HomePage({ searchParams }: Props) {
 
   return (
     <div>
-      <Suspense>
-        <StatsBar />
-      </Suspense>
+      <StatsDashboard />
 
       {!search && (
         <>

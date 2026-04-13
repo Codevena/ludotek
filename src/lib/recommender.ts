@@ -17,7 +17,8 @@ export interface Recommendation {
 export function buildLibraryPrompt(
   games: GameForPrompt[],
   genres: string[],
-  themes: string[]
+  themes: string[],
+  language: string = "en"
 ): string {
   const gameLines = games
     .map(
@@ -27,6 +28,7 @@ export function buildLibraryPrompt(
     .join("\n");
 
   const categories = [...genres, ...themes].join(", ");
+  const isGerman = language === "de";
 
   return `You are a gaming expert. The user has the following games in their library:
 
@@ -37,6 +39,7 @@ The user is especially interested in: ${categories}
 Recommend 5-8 games FROM THIS LIBRARY that the user absolutely should play.
 Focus on hidden gems and underrated titles, not just the obvious classics.
 The title MUST match exactly as listed above.
+${isGerman ? "\nWrite ALL reason texts in German." : ""}
 
 For each game respond with this JSON format:
 [{"title":"Exact title from the list above","platform":"platform-id","reason":"2-3 sentences why they will love this","vibeTag":"Hidden Gem"}]
@@ -50,10 +53,12 @@ export function buildWishlistPrompt(
   gameTitles: string[],
   platforms: string[],
   genres: string[],
-  themes: string[]
+  themes: string[],
+  language: string = "en"
 ): string {
   const titleLines = gameTitles.map((t) => `- ${t}`).join("\n");
   const categories = [...genres, ...themes].join(", ");
+  const isGerman = language === "de";
 
   return `You are a gaming expert. The user already has these games on ${platforms.join(", ")}:
 
@@ -64,6 +69,7 @@ The user is especially interested in: ${categories}
 Recommend 5-8 games for these platform(s) that the user does NOT have but would love.
 The games must actually exist and be available for the listed platform(s).
 Do NOT recommend any games the user already owns!
+${isGerman ? "\nWrite ALL reason texts in German." : ""}
 
 For each game respond with this JSON format:
 [{"title":"Official game title","platform":"platform-id","reason":"2-3 sentences why they will love this","vibeTag":"Must Have"}]
