@@ -22,13 +22,14 @@ export function buildRomSearchUrl(
       .replace(/-+/g, "-")
       .trim();
 
-  // For query params: spaces become +
   const titleQuery = title.replace(/\s+/g, "+");
 
+  // Replace longer variable names first to avoid partial matches
+  // (e.g. {platformLabel} contains {platform})
   return template
-    .replace("{title}", titleQuery)
-    .replace("{titleSlug}", slugify(title))
+    .replace("{platformLabel}", slugify(platformLabel || platform))
     .replace("{titleEncoded}", encodeURIComponent(title))
+    .replace("{titleSlug}", slugify(title))
     .replace("{platform}", platform)
-    .replace("{platformLabel}", slugify(platformLabel || platform));
+    .replace("{title}", titleQuery);
 }
