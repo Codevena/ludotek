@@ -108,17 +108,23 @@ export async function POST(request: NextRequest) {
           let filesToTransfer: { name: string; localPath: string }[] = [];
 
           if (game.conversion !== "none") {
-            // Determine which files need conversion
+            // Files that trigger conversion (chdman reads .cue which references .bin)
             const convertibleExts =
               game.conversion === "chd"
                 ? new Set([".cue", ".gdi", ".iso"])
                 : new Set([".iso"]); // rvz
 
             const outputExt = game.conversion === "chd" ? ".chd" : ".rvz";
+            // Files that are already in target format — pass through
+            const alreadyConvertedExts = new Set([".chd", ".rvz"]);
+            // Files implicitly consumed by conversion (.bin referenced by .cue)
+            const implicitExts = new Set([".bin"]);
 
             for (const file of game.files) {
               const ext = path.extname(file.name).toLowerCase();
+
               if (convertibleExts.has(ext)) {
+                // Convert this file
                 const inputPath = file.path;
                 const baseName = path.basename(file.name, ext);
                 const outputPath = path.join(sessionDir, baseName + outputExt);
@@ -136,6 +142,14 @@ export async function POST(request: NextRequest) {
 
                 send({ type: "convert-done", gameId: game.id, file: file.name });
                 filesToTransfer.push({ name: baseName + outputExt, localPath: outputPath });
+              } else if (alreadyConvertedExts.has(ext)) {
+                // Already converted — transfer as-is
+                filesToTransfer.push({ name: file.name, localPath: file.path });
+              } else if (implicitExts.has(ext)) {
+                // .bin files are consumed by .cue conversion — skip
+              } else {
+                // Unknown extension — transfer as-is
+                filesToTransfer.push({ name: file.name, localPath: file.path });
               }
             }
           } else {

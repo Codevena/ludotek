@@ -18,6 +18,10 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache mame-tools
+# DolphinTool for GameCube ISO->RVZ conversion (no Alpine package available)
+# To enable: place a static linux-musl DolphinTool binary in the repo root, then uncomment:
+# COPY DolphinTool /usr/local/bin/DolphinTool
+# RUN chmod +x /usr/local/bin/DolphinTool
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma

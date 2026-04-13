@@ -31,10 +31,12 @@ export async function POST(request: NextRequest) {
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());
-      const filePath = path.join(sessionDir, file.name);
+      // Sanitize filename to prevent path traversal
+      const safeName = path.basename(file.name);
+      const filePath = path.join(sessionDir, safeName);
       await writeFile(filePath, buffer);
 
-      if (file.name.toLowerCase().endsWith(".zip")) {
+      if (safeName.toLowerCase().endsWith(".zip")) {
         // Extract ZIP contents, then remove the zip
         const directory = await Open.file(filePath);
         for (const entry of directory.files) {
@@ -53,7 +55,7 @@ export async function POST(request: NextRequest) {
         await unlink(filePath);
       } else {
         savedFiles.push({
-          name: file.name,
+          name: safeName,
           size: buffer.length,
           path: filePath,
         });
