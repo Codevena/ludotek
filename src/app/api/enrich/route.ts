@@ -98,6 +98,10 @@ export async function POST(request: NextRequest) {
                 releaseDate: igdbData.releaseDate,
                 summary: igdbData.summary,
                 screenshotUrls: JSON.stringify(igdbData.screenshotUrls),
+                videoIds: JSON.stringify(igdbData.videoIds),
+                artworkUrls: JSON.stringify(igdbData.artworkUrls),
+                franchise: igdbData.franchise,
+                themes: JSON.stringify(igdbData.themes),
               },
             });
             enriched++;

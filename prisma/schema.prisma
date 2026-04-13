@@ -24,6 +24,10 @@ model Game {
   developer       String?
   publisher       String?
   summary         String?
+  videoIds        String?   // JSON array of YouTube video IDs
+  artworkUrls     String?   // JSON array of artwork image URLs
+  franchise       String?   // Franchise/series name (e.g., "Zelda")
+  themes          String?   // JSON array of theme strings (e.g., "Horror", "Fantasy")
   aiFunFacts      String?
   aiStory         String?
   aiEnrichedAt    DateTime?

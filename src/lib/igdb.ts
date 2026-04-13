@@ -39,6 +39,10 @@ export interface IgdbGameData {
   releaseDate: Date | null;
   summary: string | null;
   screenshotUrls: string[];
+  videoIds: string[];
+  artworkUrls: string[];
+  franchise: string | null;
+  themes: string[];
 }
 
 async function igdbQuery(clientId: string, token: string, endpoint: string, body: string): Promise<unknown[]> {
@@ -66,13 +70,14 @@ export async function searchIgdb(
   const platformId = IGDB_PLATFORM_MAP[platform];
 
   const safeTitle = title.replace(/"/g, '\\"');
-  const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots;";
+  const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
 
   // Try with platform filter first
   let results: Array<{
     id: number; name: string; rating?: number; aggregated_rating?: number; genres?: number[];
     first_release_date?: number; summary?: string; cover?: number;
     involved_companies?: number[]; screenshots?: number[];
+    videos?: number[]; artworks?: number[]; franchise?: number; themes?: number[];
   }> = [];
 
   if (platformId) {
@@ -139,6 +144,44 @@ export async function searchIgdb(
     );
   }
 
+  // Fetch videos (YouTube IDs)
+  let videoIds: string[] = [];
+  if (game.videos && game.videos.length > 0) {
+    const videos = (await igdbQuery(clientId, token, "game_videos",
+      `fields video_id; where id = (${game.videos.slice(0, 3).join(",")}); limit 3;`
+    )) as Array<{ video_id: string }>;
+    videoIds = videos.map((v) => v.video_id);
+  }
+
+  // Fetch artworks
+  let artworkUrls: string[] = [];
+  if (game.artworks && game.artworks.length > 0) {
+    const artworks = (await igdbQuery(clientId, token, "artworks",
+      `fields image_id; where id = (${game.artworks.slice(0, 4).join(",")}); limit 4;`
+    )) as Array<{ image_id: string }>;
+    artworkUrls = artworks.map(
+      (a) => `https://images.igdb.com/igdb/image/upload/t_1080p/${a.image_id}.jpg`
+    );
+  }
+
+  // Fetch franchise
+  let franchise: string | null = null;
+  if (game.franchise) {
+    const franchises = (await igdbQuery(clientId, token, "franchises",
+      `fields name; where id = ${game.franchise};`
+    )) as Array<{ name: string }>;
+    if (franchises.length > 0) franchise = franchises[0].name;
+  }
+
+  // Fetch themes
+  let themeNames: string[] = [];
+  if (game.themes && game.themes.length > 0) {
+    const themes = (await igdbQuery(clientId, token, "themes",
+      `fields name; where id = (${game.themes.join(",")}); limit 10;`
+    )) as Array<{ name: string }>;
+    themeNames = themes.map((t) => t.name);
+  }
+
   return {
     igdbId: game.id,
     coverUrl,
@@ -150,5 +193,9 @@ export async function searchIgdb(
     releaseDate: game.first_release_date ? new Date(game.first_release_date * 1000) : null,
     summary: game.summary ?? null,
     screenshotUrls,
+    videoIds,
+    artworkUrls,
+    franchise,
+    themes: themeNames,
   };
 }

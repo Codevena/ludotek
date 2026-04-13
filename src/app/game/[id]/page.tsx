@@ -26,6 +26,9 @@ export default async function GameDetailPage({ params }: Props) {
 
   const screenshots: string[] = safeJsonParse(game.screenshotUrls) as string[];
   const genres: string[] = safeJsonParse(game.genres) as string[];
+  const videoIds: string[] = safeJsonParse(game.videoIds) as string[];
+  const artworks: string[] = safeJsonParse(game.artworkUrls) as string[];
+  const themes: string[] = safeJsonParse(game.themes) as string[];
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -62,10 +65,15 @@ export default async function GameDetailPage({ params }: Props) {
             </h1>
             <div className="flex items-center gap-3 flex-wrap">
               <PlatformTag label={game.platformLabel} />
+              {game.franchise && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-500/20 text-purple-400">
+                  {game.franchise}
+                </span>
+              )}
               <ScoreBadge score={game.igdbScore} />
               {game.metacriticScore !== null && game.metacriticScore !== undefined && (
-                <span className="text-xs text-vault-muted">
-                  MC: {game.metacriticScore}
+                <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full font-bold">
+                  MC {game.metacriticScore}
                 </span>
               )}
             </div>
@@ -104,14 +112,16 @@ export default async function GameDetailPage({ params }: Props) {
             )}
           </div>
 
-          {genres.length > 0 && (
+          {(genres.length > 0 || themes.length > 0) && (
             <div className="flex gap-2 flex-wrap">
               {genres.map((g) => (
-                <span
-                  key={g}
-                  className="text-xs bg-vault-bg px-3 py-1 rounded-full text-vault-muted"
-                >
+                <span key={g} className="text-xs bg-vault-bg px-3 py-1 rounded-full text-vault-muted">
                   {g}
+                </span>
+              ))}
+              {themes.map((t) => (
+                <span key={t} className="text-xs bg-indigo-500/10 px-3 py-1 rounded-full text-indigo-400">
+                  {t}
                 </span>
               ))}
             </div>
@@ -127,6 +137,40 @@ export default async function GameDetailPage({ params }: Props) {
           )}
         </div>
       </div>
+
+      {/* Hero Artwork */}
+      {artworks.length > 0 && (
+        <div className="mt-8">
+          <h2 className="font-heading text-xl font-bold mb-4">Artwork</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {artworks.map((url, i) => (
+              <div key={i} className="aspect-video rounded-xl overflow-hidden bg-vault-surface">
+                <img src={url} alt={`${game.title} artwork ${i + 1}`} className="w-full h-full object-cover" loading="lazy" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Trailer Videos */}
+      {videoIds.length > 0 && (
+        <div className="mt-8">
+          <h2 className="font-heading text-xl font-bold mb-4">Videos</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {videoIds.map((ytId) => (
+              <div key={ytId} className="aspect-video rounded-xl overflow-hidden bg-vault-surface">
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${ytId}`}
+                  title="Game Trailer"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {screenshots.length > 0 && (
         <div className="mt-8">
