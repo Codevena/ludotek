@@ -6,6 +6,7 @@ interface Game {
   coverUrl: string | null;
   platformLabel: string;
   igdbScore: number | null;
+  metacriticScore: number | null;
 }
 
 export function GameGrid({ games }: { games: Game[] }) {
@@ -21,14 +22,9 @@ export function GameGrid({ games }: { games: Game[] }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       {games.map((game) => (
-        <GameCard
-          key={game.id}
-          id={game.id}
-          title={game.title}
-          coverUrl={game.coverUrl}
-          platformLabel={game.platformLabel}
-          igdbScore={game.igdbScore}
-        />
+        <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
+          platformLabel={game.platformLabel} igdbScore={game.igdbScore}
+          metacriticScore={game.metacriticScore} />
       ))}
     </div>
   );

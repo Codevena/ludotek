@@ -56,7 +56,8 @@ async function RecentlyAdded() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {games.map((game) => (
           <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
-            platformLabel={game.platformLabel} igdbScore={game.igdbScore} />
+            platformLabel={game.platformLabel} igdbScore={game.igdbScore}
+            metacriticScore={game.metacriticScore} />
         ))}
       </div>
     </section>
@@ -76,7 +77,8 @@ async function TopRated() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {games.map((game) => (
           <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
-            platformLabel={game.platformLabel} igdbScore={game.igdbScore} />
+            platformLabel={game.platformLabel} igdbScore={game.igdbScore}
+            metacriticScore={game.metacriticScore} />
         ))}
       </div>
     </section>
