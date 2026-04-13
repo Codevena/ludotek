@@ -89,11 +89,13 @@ function GameCard({
   isWishlisted,
   onToggleWishlist,
   onSelect,
+  searchUrl,
 }: {
   game: MissingGame;
   isWishlisted: boolean;
   onToggleWishlist: (e: React.MouseEvent) => void;
   onSelect: () => void;
+  searchUrl?: string;
 }) {
   return (
     <div
@@ -161,6 +163,20 @@ function GameCard({
             {game.summary}
           </p>
         )}
+        {searchUrl && (
+          <a
+            href={searchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="mt-2 flex items-center justify-center gap-1.5 w-full py-1.5 bg-vault-bg border border-vault-border rounded-lg text-vault-muted hover:text-vault-text hover:border-vault-amber/50 transition-all text-[10px] font-medium"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            Search ROM
+          </a>
+        )}
       </div>
     </div>
   );
@@ -174,12 +190,14 @@ function DetailModal({
   isWishlisted,
   onToggleWishlist,
   onClose,
+  searchUrl,
 }: {
   game: MissingGame;
   platformId: string;
   isWishlisted: boolean;
   onToggleWishlist: () => void;
   onClose: () => void;
+  searchUrl?: string;
 }) {
   // Close on Escape
   useEffect(() => {
@@ -328,8 +346,8 @@ function DetailModal({
           </div>
         )}
 
-        {/* Wishlist Button */}
-        <div className="px-6 py-5">
+        {/* Action Buttons */}
+        <div className="px-6 py-5 flex flex-col gap-2">
           <button
             onClick={onToggleWishlist}
             className={`w-full py-2.5 rounded-xl font-medium text-sm transition-colors ${
@@ -340,6 +358,19 @@ function DetailModal({
           >
             {isWishlisted ? "Remove from Wishlist" : "Add to Wishlist"}
           </button>
+          {searchUrl && (
+            <a
+              href={searchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 rounded-xl font-medium text-sm text-center bg-vault-bg border border-vault-border text-vault-muted hover:text-vault-text hover:border-vault-amber/50 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              Search ROM
+            </a>
+          )}
         </div>
       </div>
     </div>
@@ -360,6 +391,9 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
 
   // Detail modal
   const [selectedGame, setSelectedGame] = useState<MissingGame | null>(null);
+
+  // ROM search URL
+  const [romSearchUrl, setRomSearchUrl] = useState("");
 
   // Wishlist state: map of "title::platform" -> wishlist item id
   const [wishlistMap, setWishlistMap] = useState<Map<string, number>>(
@@ -390,7 +424,12 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
       .then((json) => setMissing(json.missing || []))
       .catch(() => setMissingError(true));
 
-    Promise.allSettled([fetchStats, fetchMissing]).finally(() =>
+    const fetchRomUrl = fetch("/api/settings/rom-search")
+      .then((res) => res.json())
+      .then((json) => setRomSearchUrl(json.romSearchUrl || ""))
+      .catch(() => {});
+
+    Promise.allSettled([fetchStats, fetchMissing, fetchRomUrl]).finally(() =>
       setLoading(false)
     );
   }, [platformId]);
@@ -619,15 +658,24 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
                       scrollbarWidth: "none",
                     }}
                   >
-                    {missing.map((game) => (
-                      <GameCard
-                        key={game.title}
-                        game={game}
-                        isWishlisted={isWishlisted(game.title)}
-                        onToggleWishlist={(e) => toggleWishlist(game, e)}
-                        onSelect={() => setSelectedGame(game)}
-                      />
-                    ))}
+                    {missing.map((game) => {
+                      const gameSearchUrl = romSearchUrl
+                        ? romSearchUrl
+                            .replace("{title}", encodeURIComponent(game.title))
+                            .replace("{platform}", encodeURIComponent(platformId))
+                            .replace("{platformLabel}", encodeURIComponent(platformId))
+                        : undefined;
+                      return (
+                        <GameCard
+                          key={game.title}
+                          game={game}
+                          isWishlisted={isWishlisted(game.title)}
+                          onToggleWishlist={(e) => toggleWishlist(game, e)}
+                          onSelect={() => setSelectedGame(game)}
+                          searchUrl={gameSearchUrl}
+                        />
+                      );
+                    })}
                   </div>
                   {/* Scroll right button */}
                   <button
@@ -656,6 +704,12 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
           isWishlisted={isWishlisted(selectedGame.title)}
           onToggleWishlist={() => toggleWishlist(selectedGame)}
           onClose={() => setSelectedGame(null)}
+          searchUrl={romSearchUrl
+            ? romSearchUrl
+                .replace("{title}", encodeURIComponent(selectedGame.title))
+                .replace("{platform}", encodeURIComponent(platformId))
+                .replace("{platformLabel}", encodeURIComponent(platformId))
+            : undefined}
         />
       )}
     </div>

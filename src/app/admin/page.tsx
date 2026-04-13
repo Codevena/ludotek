@@ -15,6 +15,7 @@ interface Settings {
   openrouterKey: string;
   steamApiKey: string;
   aiLanguage: string;
+  romSearchUrl: string;
 }
 
 interface ActionResult {
@@ -28,7 +29,7 @@ export default function AdminPage() {
   const [settings, setSettings] = useState<Settings>({
     deckHost: "", deckUser: "", deckPassword: "",
     igdbClientId: "", igdbClientSecret: "", steamgriddbKey: "",
-    openrouterKey: "", steamApiKey: "", aiLanguage: "en",
+    openrouterKey: "", steamApiKey: "", aiLanguage: "en", romSearchUrl: "",
   });
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -433,6 +434,19 @@ export default function AdminPage() {
                 Deutsch
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-vault-amber text-sm font-semibold uppercase tracking-wide">ROM Search</h3>
+          <div>
+            <label htmlFor="rom-search-url" className="text-vault-muted text-xs mb-1 block">ROM Search URL Template</label>
+            <input id="rom-search-url" className={inputClass} value={settings.romSearchUrl}
+              onChange={(e) => setSettings({ ...settings, romSearchUrl: e.target.value })}
+              placeholder="https://example.com/roms/{platform}/?q={title}" />
+            <p className="text-vault-muted text-[10px] mt-1">
+              Variables: {"{title}"}, {"{platform}"}, {"{platformLabel}"} — leave empty to hide search button
+            </p>
           </div>
         </div>
 

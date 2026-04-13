@@ -78,4 +78,5 @@ model Settings {
   openrouterKey    String @default("")
   steamApiKey      String @default("")
   aiLanguage       String @default("en") // "en" or "de"
+  romSearchUrl     String @default("https://romsfun.com/roms/{platform}/?q={title}")
 }

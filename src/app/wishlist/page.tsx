@@ -20,6 +20,7 @@ interface WishlistItem {
 export default function WishlistPage() {
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [romSearchUrl, setRomSearchUrl] = useState("");
 
   useEffect(() => {
     fetch("/api/wishlist")
@@ -31,6 +32,11 @@ export default function WishlistPage() {
         console.error("Failed to load wishlist:", err);
       })
       .finally(() => setLoading(false));
+
+    fetch("/api/settings/rom-search")
+      .then((r) => r.json())
+      .then((data) => setRomSearchUrl(data.romSearchUrl || ""))
+      .catch(() => {});
   }, []);
 
   function handleRemove(id: number) {
@@ -143,7 +149,23 @@ export default function WishlistPage() {
                   </p>
                 )}
 
-                <div className="mt-auto">
+                <div className="mt-auto flex items-center gap-3">
+                  {romSearchUrl && (
+                    <a
+                      href={romSearchUrl
+                        .replace("{title}", encodeURIComponent(item.title))
+                        .replace("{platform}", encodeURIComponent(item.platform))
+                        .replace("{platformLabel}", encodeURIComponent(item.platformLabel))}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-vault-amber hover:text-vault-amber-hover text-xs transition-colors flex items-center gap-1"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                      </svg>
+                      Search ROM
+                    </a>
+                  )}
                   <button
                     onClick={() => handleRemove(item.id)}
                     className="text-red-400 hover:text-red-300 text-xs transition-colors"
