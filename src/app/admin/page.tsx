@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { useEnrichment } from "@/context/enrichment-context";
 
 interface Settings {
   deckHost: string;
@@ -21,16 +22,8 @@ interface ActionResult {
   [key: string]: unknown;
 }
 
-interface ProgressState {
-  current: number;
-  total: number;
-  title: string;
-  platform: string;
-  enrichedCount: number;
-  failedCount: number;
-}
-
 export default function AdminPage() {
+  const { startEnrichment, isRunning: enrichmentRunning } = useEnrichment();
   const [settings, setSettings] = useState<Settings>({
     deckHost: "", deckUser: "", deckPassword: "",
     igdbClientId: "", igdbClientSecret: "", steamgriddbKey: "",
@@ -40,10 +33,10 @@ export default function AdminPage() {
   const [scanning, setScanning] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [aiEnriching, setAiEnriching] = useState(false);
+  const [metacriticEnriching, setMetacriticEnriching] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [reEnriching, setReEnriching] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
-  const [progress, setProgress] = useState<ProgressState | null>(null);
   const [platforms, setPlatforms] = useState<Array<{ id: string; label: string; gameCount: number }>>([]);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
@@ -53,8 +46,9 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
+    const controller = new AbortController();
     // Check if auth is required
-    fetch("/api/auth")
+    fetch("/api/auth", { signal: controller.signal })
       .then((r) => r.json())
       .then((data) => {
         setAuthRequired(data.authRequired);
@@ -64,7 +58,7 @@ export default function AdminPage() {
           loadPlatforms();
         } else {
           // Try loading settings (cookie might already be set)
-          fetch("/api/settings")
+          fetch("/api/settings", { signal: controller.signal })
             .then((r) => {
               if (r.ok) {
                 setAuthenticated(true);
@@ -74,7 +68,14 @@ export default function AdminPage() {
             })
             .catch(() => {});
         }
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        console.error("Failed to check auth:", err);
+        setAuthRequired(true);
+        setAuthError("Unable to connect to server");
       });
+    return () => controller.abort();
   }, []);
 
   function loadSettings() {
@@ -96,17 +97,21 @@ export default function AdminPage() {
 
   async function handleLogin() {
     setAuthError("");
-    const res = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: tokenInput }),
-    });
-    if (res.ok) {
-      setAuthenticated(true);
-      loadSettings();
-      loadPlatforms();
-    } else {
-      setAuthError("Invalid token");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: tokenInput }),
+      });
+      if (res.ok) {
+        setAuthenticated(true);
+        loadSettings();
+        loadPlatforms();
+      } else {
+        setAuthError("Invalid token");
+      }
+    } catch {
+      setAuthError("Connection failed");
     }
   }
 
@@ -128,7 +133,6 @@ export default function AdminPage() {
   async function runScan() {
     setScanning(true);
     setResult(null);
-    setProgress(null);
     try {
       const res = await fetch("/api/scan", { method: "POST" });
       setResult(await res.json());
@@ -155,90 +159,16 @@ export default function AdminPage() {
     setter: (v: boolean) => void,
     body?: Record<string, unknown>
   ) {
-    setter(true);
     setResult(null);
-    setProgress(null);
-
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        ...(body ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
-      });
-
-      if (!res.ok) {
-        setResult(await res.json());
-        setter(false);
-        return;
-      }
-
-      const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("text/event-stream")) {
-        // Non-streaming response (e.g. empty batch)
-        setResult(await res.json());
-        setter(false);
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      if (!reader) {
-        setResult({ error: "No response body" });
-        setter(false);
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let enrichedCount = 0;
-      let failedCount = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-
-            if (data.type === "progress") {
-              setProgress({
-                current: data.current,
-                total: data.total,
-                title: data.title,
-                platform: data.platform || "",
-                enrichedCount,
-                failedCount,
-              });
-            } else if (data.type === "enriched") {
-              enrichedCount++;
-              setProgress((prev) => prev ? { ...prev, enrichedCount } : null);
-            } else if (data.type === "error" || data.type === "missed") {
-              failedCount++;
-              setProgress((prev) => prev ? { ...prev, failedCount } : null);
-            } else if (data.type === "done") {
-              setResult({
-                success: true,
-                processed: data.processed,
-                enriched: data.enriched,
-                failed: data.failed,
-                remaining: data.remaining,
-              });
-            }
-          } catch {
-            // skip malformed events
-          }
-        }
+      const res = await startEnrichment(url, setter, body);
+      if (res) {
+        setResult(res as ActionResult);
       }
     } catch (err) {
+      setter(false);
       setResult({ error: String(err) });
     }
-
-    setProgress(null);
-    setter(false);
   }
 
   const inputClass = "w-full bg-vault-bg border border-vault-border rounded-lg px-4 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-amber transition-colors";
@@ -260,8 +190,9 @@ export default function AdminPage() {
         <h1 className="font-heading text-2xl font-bold mb-6 text-center">Admin Login</h1>
         <div className="card space-y-4">
           <div>
-            <label className="text-vault-muted text-xs mb-1 block">Admin Token</label>
+            <label htmlFor="admin-token" className="text-vault-muted text-xs mb-1 block">Admin Token</label>
             <input
+              id="admin-token"
               type="password"
               value={tokenInput}
               onChange={(e) => setTokenInput(e.target.value)}
@@ -296,7 +227,7 @@ export default function AdminPage() {
 
       {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <button onClick={runScan} disabled={scanning || enriching || aiEnriching || reEnriching}
+        <button onClick={runScan} disabled={scanning || enrichmentRunning}
           className={`${btnClass} bg-vault-amber text-black hover:bg-vault-amber-hover`}>
           {scanning ? "Scanning..." : "Scan Steam Deck"}
         </button>
@@ -304,12 +235,12 @@ export default function AdminPage() {
             const body = selectedPlatforms.length > 0 ? { platforms: selectedPlatforms } : undefined;
             runStreamingAction("/api/enrich", setEnriching, body);
           }}
-          disabled={scanning || enriching || aiEnriching || reEnriching}
+          disabled={scanning || enrichmentRunning}
           className={`${btnClass} bg-blue-600 text-white hover:bg-blue-500`}>
           {enriching ? "Enriching..." : selectedPlatforms.length > 0 ? `Enrich (${selectedPlatforms.length} Systems)` : "Enrich All (IGDB)"}
         </button>
         <button onClick={() => runStreamingAction("/api/enrich/ai", setAiEnriching)}
-          disabled={scanning || enriching || aiEnriching || reEnriching}
+          disabled={scanning || enrichmentRunning}
           className={`${btnClass} bg-purple-600 text-white hover:bg-purple-500`}>
           {aiEnriching ? "Generating..." : "Generate AI Content"}
         </button>
@@ -323,17 +254,17 @@ export default function AdminPage() {
       </Link>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <button onClick={() => runStreamingAction("/api/enrich/metacritic", setEnriching)}
-          disabled={scanning || enriching || aiEnriching || cleaning || reEnriching}
+        <button onClick={() => runStreamingAction("/api/enrich/metacritic", setMetacriticEnriching)}
+          disabled={scanning || enrichmentRunning || cleaning}
           className={`${btnClass} bg-cyan-600 text-white hover:bg-cyan-500`}>
-          {enriching ? "Fetching..." : "Fetch Critic Scores"}
+          {metacriticEnriching ? "Fetching..." : "Fetch Critic Scores"}
         </button>
         <button onClick={() => runStreamingAction("/api/enrich/refresh", setReEnriching)}
-          disabled={scanning || enriching || aiEnriching || cleaning || reEnriching}
+          disabled={scanning || enrichmentRunning || cleaning}
           className={`${btnClass} bg-orange-600 text-white hover:bg-orange-500`}>
           {reEnriching ? "Re-Enriching..." : "Re-Enrich Missing Fields"}
         </button>
-        <button onClick={runCleanup} disabled={scanning || enriching || aiEnriching || cleaning || reEnriching}
+        <button onClick={runCleanup} disabled={scanning || enrichmentRunning || cleaning}
           className={`${btnClass} bg-red-600/80 text-white hover:bg-red-500`}>
           {cleaning ? "Cleaning..." : "Cleanup Duplicates & .m3u"}
         </button>
@@ -400,37 +331,8 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* Live Progress */}
-      {progress && (
-        <div className="card mb-8 border-vault-amber/50 space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-vault-text font-medium">
-              {progress.title}
-              {progress.platform && (
-                <span className="text-vault-muted ml-2">({progress.platform})</span>
-              )}
-            </span>
-            <span className="text-vault-muted">
-              {progress.current}/{progress.total}
-            </span>
-          </div>
-          <div className="w-full bg-vault-bg rounded-full h-2 overflow-hidden">
-            <div
-              className="h-full bg-vault-amber rounded-full transition-all duration-300"
-              style={{ width: `${(progress.current / progress.total) * 100}%` }}
-            />
-          </div>
-          <div className="flex gap-4 text-xs text-vault-muted">
-            <span className="text-green-400">{progress.enrichedCount} enriched</span>
-            {progress.failedCount > 0 && (
-              <span className="text-red-400">{progress.failedCount} failed</span>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Scanning indicator (non-streaming) */}
-      {scanning && !progress && !result && (
+      {scanning && !result && (
         <div className="card mb-8 border-vault-amber/50">
           <div className="flex items-center gap-3">
             <div className="w-4 h-4 rounded-full bg-vault-amber animate-pulse" />
@@ -454,19 +356,19 @@ export default function AdminPage() {
           <h3 className="text-vault-amber text-sm font-semibold uppercase tracking-wide">Steam Deck SSH</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-vault-muted text-xs mb-1 block">Host</label>
-              <input className={inputClass} value={settings.deckHost}
+              <label htmlFor="deck-host" className="text-vault-muted text-xs mb-1 block">Host</label>
+              <input id="deck-host" className={inputClass} value={settings.deckHost}
                 onChange={(e) => setSettings({ ...settings, deckHost: e.target.value })} placeholder="192.168.178.131" />
             </div>
             <div>
-              <label className="text-vault-muted text-xs mb-1 block">User</label>
-              <input className={inputClass} value={settings.deckUser}
+              <label htmlFor="deck-user" className="text-vault-muted text-xs mb-1 block">User</label>
+              <input id="deck-user" className={inputClass} value={settings.deckUser}
                 onChange={(e) => setSettings({ ...settings, deckUser: e.target.value })} placeholder="deck" />
             </div>
           </div>
           <div>
-            <label className="text-vault-muted text-xs mb-1 block">Password</label>
-            <input className={inputClass} type="password" value={settings.deckPassword}
+            <label htmlFor="deck-password" className="text-vault-muted text-xs mb-1 block">Password</label>
+            <input id="deck-password" className={inputClass} type="password" value={settings.deckPassword}
               onChange={(e) => setSettings({ ...settings, deckPassword: e.target.value })} />
           </div>
         </div>
@@ -475,13 +377,13 @@ export default function AdminPage() {
           <h3 className="text-vault-amber text-sm font-semibold uppercase tracking-wide">IGDB API</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-vault-muted text-xs mb-1 block">Client ID</label>
-              <input className={inputClass} value={settings.igdbClientId}
+              <label htmlFor="igdb-client-id" className="text-vault-muted text-xs mb-1 block">Client ID</label>
+              <input id="igdb-client-id" className={inputClass} value={settings.igdbClientId}
                 onChange={(e) => setSettings({ ...settings, igdbClientId: e.target.value })} />
             </div>
             <div>
-              <label className="text-vault-muted text-xs mb-1 block">Client Secret</label>
-              <input className={inputClass} type="password" value={settings.igdbClientSecret}
+              <label htmlFor="igdb-client-secret" className="text-vault-muted text-xs mb-1 block">Client Secret</label>
+              <input id="igdb-client-secret" className={inputClass} type="password" value={settings.igdbClientSecret}
                 onChange={(e) => setSettings({ ...settings, igdbClientSecret: e.target.value })} />
             </div>
           </div>
@@ -490,18 +392,18 @@ export default function AdminPage() {
         <div className="space-y-4">
           <h3 className="text-vault-amber text-sm font-semibold uppercase tracking-wide">Other APIs</h3>
           <div>
-            <label className="text-vault-muted text-xs mb-1 block">SteamGridDB API Key</label>
-            <input className={inputClass} type="password" value={settings.steamgriddbKey}
+            <label htmlFor="steamgriddb-key" className="text-vault-muted text-xs mb-1 block">SteamGridDB API Key</label>
+            <input id="steamgriddb-key" className={inputClass} type="password" value={settings.steamgriddbKey}
               onChange={(e) => setSettings({ ...settings, steamgriddbKey: e.target.value })} />
           </div>
           <div>
-            <label className="text-vault-muted text-xs mb-1 block">OpenRouter API Key</label>
-            <input className={inputClass} type="password" value={settings.openrouterKey}
+            <label htmlFor="openrouter-key" className="text-vault-muted text-xs mb-1 block">OpenRouter API Key</label>
+            <input id="openrouter-key" className={inputClass} type="password" value={settings.openrouterKey}
               onChange={(e) => setSettings({ ...settings, openrouterKey: e.target.value })} />
           </div>
           <div>
-            <label className="text-vault-muted text-xs mb-1 block">Steam Web API Key</label>
-            <input className={inputClass} type="password" value={settings.steamApiKey}
+            <label htmlFor="steam-api-key" className="text-vault-muted text-xs mb-1 block">Steam Web API Key</label>
+            <input id="steam-api-key" className={inputClass} type="password" value={settings.steamApiKey}
               onChange={(e) => setSettings({ ...settings, steamApiKey: e.target.value })} />
           </div>
         </div>

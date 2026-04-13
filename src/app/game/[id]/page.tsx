@@ -24,8 +24,8 @@ interface Props {
 
 export default async function GameDetailPage({ params }: Props) {
   const { id } = await params;
+  if (!/^\d+$/.test(id)) notFound();
   const gameId = parseInt(id, 10);
-  if (isNaN(gameId)) notFound();
 
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) notFound();
@@ -93,7 +93,7 @@ export default async function GameDetailPage({ params }: Props) {
         )}
         {game.metacriticScore !== null && game.metacriticScore !== undefined && (
           <>
-            {game.igdbScore !== null && <div className="w-px h-8 bg-vault-border" />}
+            {game.igdbScore != null && <div className="w-px h-8 bg-vault-border" />}
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-400">{game.metacriticScore}</div>
               <div className="text-[10px] text-vault-muted uppercase tracking-wider">Metacritic</div>
@@ -102,7 +102,7 @@ export default async function GameDetailPage({ params }: Props) {
         )}
         {game.releaseDate && (
           <>
-            {(game.igdbScore !== null || game.metacriticScore !== null) && <div className="w-px h-8 bg-vault-border" />}
+            {(game.igdbScore != null || game.metacriticScore != null) && <div className="w-px h-8 bg-vault-border" />}
             <div className="text-center">
               <div className="text-2xl font-bold text-vault-amber">{new Date(game.releaseDate).getFullYear()}</div>
               <div className="text-[10px] text-vault-muted uppercase tracking-wider">Release</div>
@@ -199,23 +199,23 @@ export default async function GameDetailPage({ params }: Props) {
 
       {/* AI Content */}
       {game.aiFunFacts && (
-        <details className="mt-8 card group" open>
-          <summary className="font-heading text-xl font-bold cursor-pointer list-none flex items-center justify-between">
-            Fun Facts
-            <span className="text-vault-muted text-sm group-open:rotate-180 transition-transform">&#9660;</span>
-          </summary>
-          <div className="mt-4"><MarkdownContent content={game.aiFunFacts} /></div>
-        </details>
+        <div className="mt-8 rounded-xl border border-vault-amber/20 bg-gradient-to-br from-vault-amber/[0.08] to-transparent p-6 [&_li]:marker:text-vault-amber">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-lg">&#9889;</span>
+            <h2 className="font-heading text-xl font-bold text-vault-amber">Fun Facts</h2>
+          </div>
+          <MarkdownContent content={game.aiFunFacts} />
+        </div>
       )}
 
       {game.aiStory && (
-        <details className="mt-8 card group" open>
-          <summary className="font-heading text-xl font-bold cursor-pointer list-none flex items-center justify-between">
-            Story &amp; Background
-            <span className="text-vault-muted text-sm group-open:rotate-180 transition-transform">&#9660;</span>
-          </summary>
-          <div className="mt-4"><MarkdownContent content={game.aiStory} /></div>
-        </details>
+        <div className="mt-6 rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/[0.08] to-transparent p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-lg">&#128214;</span>
+            <h2 className="font-heading text-xl font-bold text-indigo-400">Story &amp; Background</h2>
+          </div>
+          <MarkdownContent content={game.aiStory} />
+        </div>
       )}
 
       <EnrichWizard gameId={game.id} gameTitle={game.title} />
