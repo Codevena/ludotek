@@ -140,6 +140,7 @@ export function SearchBar() {
               className="w-full flex items-center gap-3 px-3 py-2 hover:bg-vault-bg cursor-pointer transition-colors text-left"
             >
               {game.coverUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={game.coverUrl}
                   alt=""

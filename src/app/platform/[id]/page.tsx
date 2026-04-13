@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { GameGrid } from "@/components/game-grid";
+import { InfiniteGameGrid } from "@/components/infinite-game-grid";
 import { SortSelect } from "@/components/sort-select";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { PlatformStats } from "@/components/platform-stats";
@@ -26,7 +26,6 @@ export default async function PlatformPage({ params, searchParams }: Props) {
 
   const sort = sp.sort || "title";
   const order = sp.order === "desc" ? "desc" as const : "asc" as const;
-  const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const tag = sp.tag || null;
   const limit = 48;
 
@@ -34,10 +33,8 @@ export default async function PlatformPage({ params, searchParams }: Props) {
   const orderBy: Record<string, string> = {};
   orderBy[validSorts.includes(sort) ? sort : "title"] = order;
 
-  // Base filter: platform. If tag is set, also filter by genre or theme (stored as JSON strings).
   const where: Record<string, unknown> = { platform: id };
   if (tag) {
-    // Match tag in genres OR themes JSON arrays (SQLite string contains)
     where.OR = [
       { genres: { contains: tag } },
       { themes: { contains: tag } },
@@ -48,13 +45,14 @@ export default async function PlatformPage({ params, searchParams }: Props) {
     prisma.game.findMany({
       where,
       orderBy,
-      skip: (page - 1) * limit,
       take: limit,
     }),
     prisma.game.count({ where }),
   ]);
 
-  const totalPages = Math.ceil(total / limit);
+  const fetchParams = new URLSearchParams({ platform: id, sort, order, limit: String(limit) });
+  if (tag) fetchParams.set("tag", tag);
+  const fetchUrl = `/api/games?${fetchParams.toString()}`;
 
   return (
     <div>
@@ -97,27 +95,7 @@ export default async function PlatformPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      <GameGrid games={games} />
-
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-8">
-          {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(
-            (p) => (
-              <a
-                key={p}
-                href={`?sort=${sort}&order=${order}&page=${p}${tag ? `&tag=${encodeURIComponent(tag)}` : ""}`}
-                className={`px-3 py-1 rounded text-sm ${
-                  p === page
-                    ? "bg-vault-amber text-black font-bold"
-                    : "bg-vault-surface text-vault-muted hover:text-vault-text"
-                }`}
-              >
-                {p}
-              </a>
-            )
-          )}
-        </div>
-      )}
+      <InfiniteGameGrid initialGames={games} total={total} fetchUrl={fetchUrl} />
     </div>
   );
 }

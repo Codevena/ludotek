@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export async function POST(
   request: NextRequest,
@@ -30,10 +31,10 @@ export async function POST(
 
     return NextResponse.json(game);
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
     console.error("Failed to update favorite status:", error);
-    return NextResponse.json(
-      { error: "Game not found or update failed" },
-      { status: 404 }
-    );
+    return NextResponse.json({ error: "Update failed" }, { status: 500 });
   }
 }

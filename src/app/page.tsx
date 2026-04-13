@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { GameGrid } from "@/components/game-grid";
 import { GameCard } from "@/components/game-card";
 import { SortSelect } from "@/components/sort-select";
 import { StatsDashboard } from "@/components/stats-dashboard";
+import { InfiniteGameGrid } from "@/components/infinite-game-grid";
 import { Suspense } from "react";
 
 interface Props {
@@ -61,7 +61,6 @@ export default async function HomePage({ searchParams }: Props) {
   const search = params.search;
   const sort = params.sort || "title";
   const order = params.order === "desc" ? "desc" as const : "asc" as const;
-  const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
   const favorites = params.favorites === "true";
   const limit = 48;
 
@@ -77,13 +76,16 @@ export default async function HomePage({ searchParams }: Props) {
     prisma.game.findMany({
       where,
       orderBy,
-      skip: (page - 1) * limit,
       take: limit,
     }),
     prisma.game.count({ where }),
   ]);
 
-  const totalPages = Math.ceil(total / limit);
+  // Build fetch URL for infinite scroll
+  const fetchParams = new URLSearchParams({ sort, order, limit: String(limit) });
+  if (search) fetchParams.set("search", search);
+  if (favorites) fetchParams.set("favorites", "true");
+  const fetchUrl = `/api/games?${fetchParams.toString()}`;
 
   return (
     <div>
@@ -112,33 +114,7 @@ export default async function HomePage({ searchParams }: Props) {
         </Suspense>
       </div>
 
-      <GameGrid games={games} />
-
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2 mt-8">
-          {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => i + 1).map(
-            (p) => (
-              <a
-                key={p}
-                href={`?${new URLSearchParams({
-                  ...(search ? { search } : {}),
-                  ...(favorites ? { favorites: "true" } : {}),
-                  sort,
-                  order,
-                  page: p.toString(),
-                }).toString()}`}
-                className={`px-3 py-1 rounded text-sm ${
-                  p === page
-                    ? "bg-vault-amber text-black font-bold"
-                    : "bg-vault-surface text-vault-muted hover:text-vault-text"
-                }`}
-              >
-                {p}
-              </a>
-            )
-          )}
-        </div>
-      )}
+      <InfiniteGameGrid initialGames={games} total={total} fetchUrl={fetchUrl} />
     </div>
   );
 }

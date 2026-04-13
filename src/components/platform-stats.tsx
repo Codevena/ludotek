@@ -9,20 +9,20 @@ interface PlatformStatsProps {
 }
 
 interface StatsData {
-  totalGames: number;
+  gameCount: number;
   avgScore: number | null;
   coverPercent: number;
   aiPercent: number;
-  genres: { name: string; count: number }[];
+  genreCounts: { genre: string; count: number }[];
 }
 
 interface MissingGame {
-  name: string;
-  cover?: string | null;
+  title: string;
+  coverUrl?: string | null;
   developer?: string | null;
   year?: number | null;
-  genre?: string | null;
-  igdbScore?: number | null;
+  genres?: string[];
+  score?: number | null;
 }
 
 /* ---------- Skeletons ---------- */
@@ -69,7 +69,10 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
 
   useEffect(() => {
     const fetchStats = fetch(`/api/platforms/${platformId}/stats`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Stats endpoint failed");
+        return res.json();
+      })
       .then((json) => setStats(json))
       .catch((err) => console.error("Failed to load platform stats:", err));
 
@@ -78,7 +81,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
         if (!res.ok) throw new Error("Missing endpoint failed");
         return res.json();
       })
-      .then((json) => setMissing(json))
+      .then((json) => setMissing(json.missing || []))
       .catch(() => setMissingError(true));
 
     Promise.allSettled([fetchStats, fetchMissing]).finally(() =>
@@ -94,7 +97,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
       {/* ---- Stats Row ---- */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard
-          value={stats.totalGames.toLocaleString()}
+          value={stats.gameCount.toLocaleString()}
           label="Games"
           color="text-vault-amber"
         />
@@ -116,18 +119,18 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
       </div>
 
       {/* ---- Genre Tags ---- */}
-      {stats.genres && stats.genres.length > 0 && (
+      {stats.genreCounts && stats.genreCounts.length > 0 && (
         <div className="mb-6">
           <p className="text-vault-muted text-xs font-medium uppercase tracking-wider mb-3">
-            Deine Top Genres
+            Your Top Genres
           </p>
           <div className="flex flex-wrap gap-2">
-            {stats.genres.map((genre) => (
+            {stats.genreCounts.map((g) => (
               <span
-                key={genre.name}
+                key={g.genre}
                 className="bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-full px-3 py-1 text-xs"
               >
-                {genre.name} ({genre.count})
+                {g.genre} ({g.count})
               </span>
             ))}
           </div>
@@ -150,22 +153,21 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
             <div className="flex items-center gap-2 mb-1">
               <span className="text-lg">🏆</span>
               <h3 className="font-heading text-sm font-bold text-vault-amber">
-                Top Rated die dir fehlen
+                Top Rated You&apos;re Missing
               </h3>
               <span className="text-[10px] font-medium uppercase tracking-wider bg-vault-amber/15 text-vault-amber border border-vault-amber/30 rounded px-1.5 py-0.5">
                 IGDB DATA
               </span>
             </div>
             <p className="text-vault-muted text-xs mb-4">
-              Laut IGDB die besten {platformId}-Spiele die nicht in deiner
-              Sammlung sind
+              Top-rated {platformId} games not in your collection according to IGDB
             </p>
 
             {/* Game Rows */}
             <div className="flex flex-col gap-2">
               {missing.map((game, i) => (
                 <div
-                  key={game.name}
+                  key={game.title}
                   className="bg-vault-bg rounded-lg p-3 border border-vault-border flex items-center gap-3"
                 >
                   {/* Rank */}
@@ -174,10 +176,11 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
                   </span>
 
                   {/* Cover */}
-                  {game.cover ? (
+                  {game.coverUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
                     <img
-                      src={game.cover}
-                      alt={game.name}
+                      src={game.coverUrl}
+                      alt={game.title}
                       className="w-8 h-[42px] rounded object-cover shrink-0"
                     />
                   ) : (
@@ -187,27 +190,27 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <p className="text-vault-text text-sm font-bold truncate">
-                      {game.name}
+                      {game.title}
                     </p>
                     <p className="text-vault-muted text-xs truncate">
-                      {[game.developer, game.year, game.genre]
+                      {[game.developer, game.year, game.genres?.[0]]
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
                   </div>
 
                   {/* Score */}
-                  {game.igdbScore != null && (
+                  {game.score != null && (
                     <span
                       className={`text-sm font-bold shrink-0 ${
-                        game.igdbScore >= 75
+                        game.score >= 75
                           ? "text-green-400"
-                          : game.igdbScore >= 50
+                          : game.score >= 50
                             ? "text-vault-amber"
                             : "text-vault-muted"
                       }`}
                     >
-                      {game.igdbScore}
+                      {Math.round(game.score)}
                     </span>
                   )}
                 </div>

@@ -71,7 +71,7 @@ limit 30;`,
       ownedGames.map((g) => g.title.toLowerCase().trim())
     );
 
-    // Filter out games already owned (fuzzy case-insensitive match)
+    // Filter out games already owned (case-insensitive exact match)
     const missingGames = igdbGames.filter(
       (g) => !ownedTitles.has(g.name.toLowerCase().trim())
     );

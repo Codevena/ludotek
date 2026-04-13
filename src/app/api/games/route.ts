@@ -12,9 +12,19 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "48", 10) || 48));
   const skip = (page - 1) * limit;
 
+  const favorites = searchParams.get("favorites");
+  const tag = searchParams.get("tag");
+
   const where: Record<string, unknown> = {};
   if (platform) where.platform = platform;
   if (search) where.title = { contains: search };
+  if (favorites === "true") where.isFavorite = true;
+  if (tag) {
+    where.OR = [
+      { genres: { contains: tag } },
+      { themes: { contains: tag } },
+    ];
+  }
 
   const orderBy: Record<string, string> = {};
   const validSorts = ["title", "igdbScore", "releaseDate", "createdAt"];
