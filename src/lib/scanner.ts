@@ -1,7 +1,7 @@
 import { Client } from "ssh2";
 import { cleanFilename } from "./filename-cleaner";
 import { getPlatformByDir, PLATFORM_CONFIG } from "./platforms";
-import { createConnection, DeviceConnection } from "./connection";
+import { createConnection } from "./connection";
 
 const SKIP_FILES = new Set(["metadata.txt", "systeminfo.txt", "media", ".sbi"]);
 
