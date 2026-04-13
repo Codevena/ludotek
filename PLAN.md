@@ -111,10 +111,11 @@ Keine Möglichkeit, die Collection zu sichern oder zu migrieren.
 - Fun Facts & Story Formatierung (prose-vault Typography, amber/indigo sub-headings)
 - Home Link im Header
 - Spielestatistiken Dashboard (Recharts: Bar Chart, Donut, 5 Stats-Karten)
+- Favoriten (Herz-Icon auf Cards + Detail-Seite, Sidebar-Filter, Toggle-API)
 
 ## Execution Order (remaining)
 
-1. **Favoriten & Bewertung** ← Next
+1. ~~Favoriten & Bewertung~~ Done
 2. Collection-Vergleich
 3. Theme Toggle
 4. Export/Backup

@@ -7,6 +7,7 @@ interface Game {
   platformLabel: string;
   igdbScore: number | null;
   metacriticScore: number | null;
+  isFavorite?: boolean;
 }
 
 export function GameGrid({ games }: { games: Game[] }) {
@@ -24,7 +25,7 @@ export function GameGrid({ games }: { games: Game[] }) {
       {games.map((game) => (
         <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
           platformLabel={game.platformLabel} igdbScore={game.igdbScore}
-          metacriticScore={game.metacriticScore} />
+          metacriticScore={game.metacriticScore} isFavorite={game.isFavorite} />
       ))}
     </div>
   );

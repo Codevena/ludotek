@@ -11,6 +11,7 @@ interface Props {
     sort?: string;
     order?: string;
     page?: string;
+    favorites?: string;
   }>;
 }
 
@@ -27,7 +28,7 @@ async function RecentlyAdded() {
         {games.map((game) => (
           <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
             platformLabel={game.platformLabel} igdbScore={game.igdbScore}
-            metacriticScore={game.metacriticScore} />
+            metacriticScore={game.metacriticScore} isFavorite={game.isFavorite} />
         ))}
       </div>
     </section>
@@ -48,7 +49,7 @@ async function TopRated() {
         {games.map((game) => (
           <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
             platformLabel={game.platformLabel} igdbScore={game.igdbScore}
-            metacriticScore={game.metacriticScore} />
+            metacriticScore={game.metacriticScore} isFavorite={game.isFavorite} />
         ))}
       </div>
     </section>
@@ -61,10 +62,12 @@ export default async function HomePage({ searchParams }: Props) {
   const sort = params.sort || "title";
   const order = params.order === "desc" ? "desc" as const : "asc" as const;
   const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
+  const favorites = params.favorites === "true";
   const limit = 48;
 
   const where: Record<string, unknown> = {};
   if (search) where.title = { contains: search };
+  if (favorites) where.isFavorite = true;
 
   const validSorts = ["title", "igdbScore", "releaseDate", "createdAt"];
   const orderBy: Record<string, string> = {};
@@ -86,7 +89,7 @@ export default async function HomePage({ searchParams }: Props) {
     <div>
       <StatsDashboard />
 
-      {!search && (
+      {!search && !favorites && (
         <>
           <Suspense>
             <RecentlyAdded />
@@ -99,7 +102,7 @@ export default async function HomePage({ searchParams }: Props) {
 
       <div className="flex items-center justify-between mb-6">
         <h2 className="font-heading text-xl font-bold">
-          {search ? `Results for "${search}"` : "All Games"}
+          {favorites ? "Favorites" : search ? `Results for "${search}"` : "All Games"}
           <span className="text-vault-muted text-sm font-normal ml-2">
             ({total.toLocaleString()})
           </span>
@@ -119,6 +122,7 @@ export default async function HomePage({ searchParams }: Props) {
                 key={p}
                 href={`?${new URLSearchParams({
                   ...(search ? { search } : {}),
+                  ...(favorites ? { favorites: "true" } : {}),
                   sort,
                   order,
                   page: p.toString(),

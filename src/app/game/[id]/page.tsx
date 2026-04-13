@@ -6,6 +6,7 @@ import { ScreenshotGallery } from "@/components/screenshot-gallery";
 import { MarkdownContent } from "@/components/markdown-content";
 import { EnrichWizard } from "@/components/enrich-wizard";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { FavoriteButton } from "@/components/favorite-button";
 
 function safeJsonParse(str: string | null): string[] {
   if (!str) return [];
@@ -70,7 +71,10 @@ export default async function GameDetailPage({ params }: Props) {
             )}
           </div>
           <div className="flex-1 min-w-0 pb-1">
-            <h1 className="font-heading text-2xl md:text-3xl font-bold text-white drop-shadow-lg">{game.title}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-heading text-2xl md:text-3xl font-bold text-white drop-shadow-lg">{game.title}</h1>
+              <FavoriteButton gameId={game.id} initialFavorite={game.isFavorite} />
+            </div>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <PlatformTag label={game.platformLabel} />
               {game.franchise && (
@@ -154,20 +158,6 @@ export default async function GameDetailPage({ params }: Props) {
           </div>
         )}
       </div>
-
-      {/* Artwork Gallery (skip first -- used as hero) */}
-      {artworks.length > 1 && (
-        <div className="mt-8">
-          <h2 className="font-heading text-xl font-bold mb-4">Artwork</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {artworks.slice(1).map((url, i) => (
-              <div key={i} className="aspect-video rounded-xl overflow-hidden bg-vault-surface">
-                <img src={url} alt={`${game.title} artwork ${i + 2}`} className="w-full h-full object-cover" loading="lazy" />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Videos */}
       {safeVideoIds.length > 0 && (

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlatformTag } from "./platform-tag";
+import { FavoriteButton } from "./favorite-button";
 
 interface GameCardProps {
   id: number;
@@ -9,6 +10,7 @@ interface GameCardProps {
   platformColor?: string;
   igdbScore: number | null;
   metacriticScore: number | null;
+  isFavorite?: boolean;
 }
 
 function scoreColor(score: number): string {
@@ -17,10 +19,11 @@ function scoreColor(score: number): string {
   return "bg-red-500/15 text-red-400";
 }
 
-export function GameCard({ id, title, coverUrl, platformLabel, platformColor, igdbScore, metacriticScore }: GameCardProps) {
+export function GameCard({ id, title, coverUrl, platformLabel, platformColor, igdbScore, metacriticScore, isFavorite = false }: GameCardProps) {
   return (
     <Link href={`/game/${id}`} className="card group block">
-      <div className="aspect-[3/4] bg-vault-bg rounded-lg overflow-hidden mb-3">
+      <div className="relative aspect-[3/4] bg-vault-bg rounded-lg overflow-hidden mb-3">
+        <FavoriteButton gameId={id} initialFavorite={isFavorite} />
         {coverUrl ? (
           <img src={coverUrl} alt={title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
