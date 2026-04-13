@@ -74,13 +74,13 @@ export function DiscoverResults({
           <div className="mb-4">
             <p className="text-xs text-vault-amber uppercase tracking-widest">
               {activeTab === "library"
-                ? "AI Empfehlungen"
-                : "Fehlt dir noch"}
+                ? "AI Recommendations"
+                : "Missing from your library"}
             </p>
             <h2 className="text-xl font-bold font-heading">
               {activeTab === "library"
-                ? `${activeGames.length} Games fuer dich`
-                : `${activeGames.length} Games die du lieben wuerdest`}
+                ? `${activeGames.length} games for you`
+                : `${activeGames.length} games you'd love`}
             </h2>
           </div>
 
@@ -97,8 +97,8 @@ export function DiscoverResults({
       ) : !isLoading ? (
         <p className="text-center text-vault-muted py-8">
           {activeTab === "library"
-            ? "Keine Empfehlungen gefunden. Versuch andere Genres!"
-            : "Keine Vorschlaege gefunden."}
+            ? "No recommendations found. Try different categories!"
+            : "No suggestions found."}
         </p>
       ) : null}
     </div>

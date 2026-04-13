@@ -169,12 +169,14 @@ export async function POST(request: NextRequest) {
           const transferJobs = filesToTransfer.map((f) => ({
             localPath: f.localPath,
             remotePath: remoteDirPath + f.name,
-            onProgress: (_bytes: number, total: number) => {
+            onProgress: (bytes: number, total: number) => {
               if (total > 0) {
                 send({
                   type: "transfer-progress",
                   gameId: game.id,
-                  percent: Math.round((_bytes / total) * 100),
+                  percent: Math.round((bytes / total) * 100),
+                  bytes,
+                  total,
                 });
               }
             },

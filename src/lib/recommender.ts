@@ -26,24 +26,24 @@ export function buildLibraryPrompt(
     )
     .join("\n");
 
-  const themesPart =
-    themes.length > 0 ? " und Themes: " + themes.join(", ") : "";
+  const categories = [...genres, ...themes].join(", ");
 
-  return `Du bist ein Gaming-Experte. Der User hat folgende Games:
+  return `You are a gaming expert. The user has the following games in their library:
 
 ${gameLines}
 
-Der User mag besonders: ${genres.join(", ")}${themesPart}
+The user is especially interested in: ${categories}
 
-Empfehle 5-8 Games aus dieser Library die der User unbedingt spielen sollte.
-Fokus auf versteckte Perlen und unterschaetzte Titel, nicht nur die offensichtlichen Klassiker.
+Recommend 5-8 games FROM THIS LIBRARY that the user absolutely should play.
+Focus on hidden gems and underrated titles, not just the obvious classics.
+The title MUST match exactly as listed above.
 
-Fuer jedes Game antworte mit diesem JSON-Format:
-[{"title":"Exakter Titel wie oben","platform":"platform-id","reason":"2-3 Saetze warum...","vibeTag":"Hidden Gem"}]
+For each game respond with this JSON format:
+[{"title":"Exact title from the list above","platform":"platform-id","reason":"2-3 sentences why they will love this","vibeTag":"Hidden Gem"}]
 
-Gueltige vibeTags: "Hidden Gem", "Absoluter Klassiker", "Unterschaetzt", "Must Play", "Geheimtipp", "Ueberraschung"
+Valid vibeTags: "Hidden Gem", "All-Time Classic", "Underrated", "Must Play", "Sleeper Hit", "Surprise Pick"
 
-Antworte NUR mit dem JSON-Array, kein anderer Text.`;
+Respond ONLY with the JSON array, no other text.`;
 }
 
 export function buildWishlistPrompt(
@@ -53,27 +53,25 @@ export function buildWishlistPrompt(
   themes: string[]
 ): string {
   const titleLines = gameTitles.map((t) => `- ${t}`).join("\n");
+  const categories = [...genres, ...themes].join(", ");
 
-  const themesPart =
-    themes.length > 0 ? " und Themes: " + themes.join(", ") : "";
-
-  return `Du bist ein Gaming-Experte. Der User hat bereits diese Games auf ${platforms.join(", ")}:
+  return `You are a gaming expert. The user already has these games on ${platforms.join(", ")}:
 
 ${titleLines}
 
-Der User mag besonders: ${genres.join(", ")}${themesPart}
+The user is especially interested in: ${categories}
 
-Empfehle 5-8 Games fuer diese Plattform(en) die der User NICHT hat aber lieben wuerde.
-Die Games muessen real existieren und fuer die genannte(n) Plattform(en) verfuegbar sein.
-Empfehle KEINE Games die der User bereits hat!
+Recommend 5-8 games for these platform(s) that the user does NOT have but would love.
+The games must actually exist and be available for the listed platform(s).
+Do NOT recommend any games the user already owns!
 
-Fuer jedes Game antworte mit diesem JSON-Format:
-[{"title":"Offizieller Spieletitel","platform":"platform-id","reason":"2-3 Saetze warum...","vibeTag":"Must Have"}]
+For each game respond with this JSON format:
+[{"title":"Official game title","platform":"platform-id","reason":"2-3 sentences why they will love this","vibeTag":"Must Have"}]
 
-Gueltige vibeTags: "Must Have", "Fehlt dir!", "Absolut genial", "Versteckter Klassiker", "Top Empfehlung"
-Gueltige platform-IDs: ${platforms.join(", ")}
+Valid vibeTags: "Must Have", "You're Missing Out!", "Absolute Gem", "Hidden Classic", "Top Pick"
+Valid platform IDs: ${platforms.join(", ")}
 
-Antworte NUR mit dem JSON-Array, kein anderer Text.`;
+Respond ONLY with the JSON array, no other text.`;
 }
 
 export function parseRecommendations(aiResponse: string): Recommendation[] {

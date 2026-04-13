@@ -119,7 +119,7 @@ export function RecommendationCard({ game }: RecommendationCardProps) {
 
           {/* Full reason */}
           <div>
-            <p className="text-vault-amber text-xs font-semibold mb-1">Warum du das feiern wirst:</p>
+            <p className="text-vault-amber text-xs font-semibold mb-1">Why you&apos;ll love this:</p>
             <p className="text-sm text-vault-muted leading-relaxed">{game.reason}</p>
           </div>
 
@@ -129,7 +129,7 @@ export function RecommendationCard({ game }: RecommendationCardProps) {
               href={`/game/${game.dbId}`}
               className="inline-block text-xs text-vault-amber hover:text-vault-amber-hover transition-colors"
             >
-              Zur Game-Seite &rarr;
+              View game details &rarr;
             </Link>
           )}
         </div>

@@ -9,6 +9,7 @@ export interface GameProgress {
   step?: "convert" | "transfer" | "scan" | "enrich";
   convertPercent?: number;
   transferPercent?: number;
+  transferSpeed?: string; // e.g. "12.5 MB/s"
   error?: string;
   dbId?: number;
   coverUrl?: string | null;
@@ -151,11 +152,17 @@ export default function UploadProgress({
             {game.status === "processing" &&
               game.step === "transfer" &&
               game.transferPercent !== undefined && (
-                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-vault-border">
-                  <div
-                    className="h-full rounded-full bg-green-500 transition-all"
-                    style={{ width: `${game.transferPercent}%` }}
-                  />
+                <div className="mt-2">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-vault-border">
+                    <div
+                      className="h-full rounded-full bg-green-500 transition-all"
+                      style={{ width: `${game.transferPercent}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-0.5 text-[10px] text-vault-muted">
+                    <span>{game.transferPercent}%</span>
+                    {game.transferSpeed && <span>{game.transferSpeed}</span>}
+                  </div>
                 </div>
               )}
 

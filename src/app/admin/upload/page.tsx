@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import UploadDropzone from "@/components/upload-dropzone";
@@ -22,6 +22,7 @@ export default function UploadPage() {
   const [failed, setFailed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const transferStarts = useRef<Record<string, number>>({});
 
   // Auth state
   const [authenticated, setAuthenticated] = useState(false);
@@ -183,10 +184,25 @@ export default function UploadPage() {
                 ),
               );
             } else if (data.type === "transfer-progress") {
+              // Calculate transfer speed from bytes and elapsed time
+              let transferSpeed: string | undefined;
+              if (data.bytes && data.total) {
+                const startKey = `_ts_${data.gameId}`;
+                if (!transferStarts.current[startKey]) {
+                  transferStarts.current[startKey] = Date.now();
+                }
+                const elapsed = (Date.now() - transferStarts.current[startKey]) / 1000;
+                if (elapsed > 0.5) {
+                  const speed = data.bytes / elapsed;
+                  if (speed >= 1e6) transferSpeed = `${(speed / 1e6).toFixed(1)} MB/s`;
+                  else if (speed >= 1e3) transferSpeed = `${(speed / 1e3).toFixed(0)} KB/s`;
+                  else transferSpeed = `${Math.round(speed)} B/s`;
+                }
+              }
               setGameProgress((prev) =>
                 prev.map((g) =>
                   g.gameId === data.gameId
-                    ? { ...g, transferPercent: data.percent }
+                    ? { ...g, transferPercent: data.percent, transferSpeed }
                     : g,
                 ),
               );
