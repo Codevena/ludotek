@@ -70,14 +70,25 @@ limit 30;`,
       where: { platform: id },
       select: { title: true },
     });
-    const ownedTitles = new Set(
-      ownedGames.map((g) => g.title.toLowerCase().trim())
-    );
+    // Normalize titles for fuzzy matching: lowercase, strip punctuation, articles, extra spaces
+    const normalize = (title: string): string =>
+      title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .replace(/\b(the|a|an)\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
 
-    // Filter out games already owned (case-insensitive exact match)
-    const missingGames = igdbGames.filter(
-      (g) => !ownedTitles.has(g.name.toLowerCase().trim())
-    );
+    const ownedNormalized = ownedGames.map((g) => normalize(g.title));
+
+    // Filter out games already owned (fuzzy normalized match)
+    const missingGames = igdbGames.filter((g) => {
+      const norm = normalize(g.name);
+      return !ownedNormalized.some((owned) =>
+        owned === norm ||
+        (norm.length >= 5 && (owned.includes(norm) || norm.includes(owned)))
+      );
+    });
 
     const result = missingGames.slice(0, 10).map((g) => {
       const coverUrl = g.cover?.image_id

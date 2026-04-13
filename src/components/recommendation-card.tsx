@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 
 export interface RecommendationGame {
@@ -32,7 +32,37 @@ function scoreColor(score: number): string {
 
 export function RecommendationCard({ game }: RecommendationCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [onWishlist, setOnWishlist] = useState(false);
+  const [wishlistId, setWishlistId] = useState<number | null>(null);
   const score = game.igdbScore ?? game.metacriticScore ?? null;
+
+  const toggleWishlist = useCallback(async () => {
+    if (onWishlist && wishlistId) {
+      setOnWishlist(false);
+      try {
+        await fetch(`/api/wishlist/${wishlistId}`, { method: "DELETE" });
+      } catch { setOnWishlist(true); }
+    } else {
+      setOnWishlist(true);
+      try {
+        const res = await fetch("/api/wishlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: game.title,
+            platform: game.platform,
+            platformLabel: game.platformLabel,
+            coverUrl: game.coverUrl || null,
+            igdbScore: game.igdbScore || null,
+            summary: game.summary || null,
+            genres: game.genres ? JSON.stringify(game.genres) : null,
+          }),
+        });
+        const data = await res.json();
+        if (data.id) setWishlistId(data.id);
+      } catch { setOnWishlist(false); }
+    }
+  }, [onWishlist, wishlistId, game]);
   const safeVideoId = game.videoId && /^[a-zA-Z0-9_-]{6,15}$/.test(game.videoId) ? game.videoId : null;
 
   return (
@@ -123,14 +153,25 @@ export function RecommendationCard({ game }: RecommendationCardProps) {
             <p className="text-sm text-vault-muted leading-relaxed">{game.reason}</p>
           </div>
 
-          {/* Link to game detail */}
-          {game.dbId && (
+          {/* Link to game detail OR wishlist button */}
+          {game.dbId ? (
             <Link
               href={`/game/${game.dbId}`}
               className="inline-block text-xs text-vault-amber hover:text-vault-amber-hover transition-colors"
             >
               View game details &rarr;
             </Link>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleWishlist(); }}
+              className={`w-full py-2 rounded-lg text-sm font-medium transition-all ${
+                onWishlist
+                  ? "bg-vault-amber/20 text-vault-amber border border-vault-amber/30"
+                  : "bg-vault-amber text-black hover:bg-vault-amber-hover"
+              }`}
+            >
+              {onWishlist ? "On Wishlist" : "+ Add to Wishlist"}
+            </button>
           )}
         </div>
       )}

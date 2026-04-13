@@ -371,7 +371,8 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
   const [loading, setLoading] = useState(true);
 
   // Missing section collapsed by default
-  const [missingExpanded, setMissingExpanded] = useState(false);
+  const [missingExpanded, setMissingExpanded] = useState(true);
+  const carouselRef = useRef<HTMLDivElement>(null);
 
   // Detail modal
   const [selectedGame, setSelectedGame] = useState<MissingGame | null>(null);
@@ -625,22 +626,37 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
                 <style>{`
                   .missing-carousel::-webkit-scrollbar { display: none; }
                 `}</style>
-                <div
-                  className="missing-carousel flex gap-4 overflow-x-auto pb-2"
-                  style={{
-                    scrollSnapType: "x mandatory",
-                    scrollbarWidth: "none",
-                  }}
-                >
-                  {missing.map((game) => (
-                    <GameCard
-                      key={game.title}
-                      game={game}
-                      isWishlisted={isWishlisted(game.title)}
-                      onToggleWishlist={(e) => toggleWishlist(game, e)}
-                      onSelect={() => setSelectedGame(game)}
-                    />
-                  ))}
+                <div className="relative overflow-hidden">
+                  <div
+                    ref={carouselRef}
+                    className="missing-carousel flex gap-4 overflow-x-auto pb-2"
+                    style={{
+                      scrollSnapType: "x mandatory",
+                      scrollbarWidth: "none",
+                    }}
+                  >
+                    {missing.map((game) => (
+                      <GameCard
+                        key={game.title}
+                        game={game}
+                        isWishlisted={isWishlisted(game.title)}
+                        onToggleWishlist={(e) => toggleWishlist(game, e)}
+                        onSelect={() => setSelectedGame(game)}
+                      />
+                    ))}
+                  </div>
+                  {/* Scroll right button */}
+                  <button
+                    onClick={() => {
+                      carouselRef.current?.scrollBy({ left: 420, behavior: "smooth" });
+                    }}
+                    className="absolute right-0 top-0 bottom-2 w-10 bg-gradient-to-l from-vault-surface/90 to-transparent flex items-center justify-end pr-1 text-vault-muted hover:text-vault-text transition-colors"
+                    aria-label="Scroll right"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <path d="M7 4l6 6-6 6" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             )}
