@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PlatformTag } from "@/components/platform-tag";
 import { ScreenshotGallery } from "@/components/screenshot-gallery";
@@ -113,10 +114,16 @@ export default async function GameDetailPage({ params }: Props) {
             <div className="flex-1" />
             <div className="flex gap-1.5 flex-wrap justify-end">
               {genres.map((g) => (
-                <span key={g} className="text-xs bg-vault-bg px-2.5 py-0.5 rounded-full text-vault-muted">{g}</span>
+                <Link key={g} href={`/platform/${game.platform}?tag=${encodeURIComponent(g)}`}
+                  className="text-xs bg-vault-bg px-2.5 py-0.5 rounded-full text-vault-muted hover:text-vault-text hover:bg-vault-surface transition-colors">
+                  {g}
+                </Link>
               ))}
               {themes.map((t) => (
-                <span key={t} className="text-xs bg-indigo-500/10 px-2.5 py-0.5 rounded-full text-indigo-400">{t}</span>
+                <Link key={t} href={`/platform/${game.platform}?tag=${encodeURIComponent(t)}`}
+                  className="text-xs bg-indigo-500/10 px-2.5 py-0.5 rounded-full text-indigo-400 hover:bg-indigo-500/20 transition-colors">
+                  {t}
+                </Link>
               ))}
             </div>
           </>
