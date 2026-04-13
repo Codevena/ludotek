@@ -37,7 +37,8 @@ export default async function GameDetailPage({ params }: Props) {
   const themes = safeJsonParse(game.themes);
 
   const platform = await prisma.platform.findUnique({ where: { id: game.platform } });
-  const platformColor = platform?.color || "#6366f1";
+  const HEX_RE = /^#[0-9a-fA-F]{3,8}$/;
+  const platformColor = (platform?.color && HEX_RE.test(platform.color)) ? platform.color : "#6366f1";
   const heroImage = artworks[0] || null;
 
   return (
@@ -47,7 +48,7 @@ export default async function GameDetailPage({ params }: Props) {
       </Link>
 
       {/* Hero Banner */}
-      <div className="relative rounded-xl overflow-hidden mb-0" style={{ height: "280px" }}>
+      <div className="relative rounded-xl overflow-hidden mb-0 h-[200px] md:h-[280px]">
         {heroImage ? (
           <img src={heroImage} alt={game.title} className="w-full h-full object-cover" />
         ) : (
