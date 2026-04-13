@@ -63,7 +63,16 @@ export function Sidebar() {
                   : "text-vault-muted hover:text-vault-text hover:bg-vault-bg"
               }`}
             >
-              <span>{p.icon}</span>
+              <img
+                src={`/platforms/${p.id}.png`}
+                alt={p.label}
+                className="w-6 h-6 object-contain flex-shrink-0"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                  (e.target as HTMLImageElement).nextElementSibling!.classList.remove("hidden");
+                }}
+              />
+              <span className="hidden text-base">{p.icon}</span>
               <span className="flex-1 truncate">{p.label}</span>
               <span className="text-xs opacity-60">{p.gameCount}</span>
             </Link>
