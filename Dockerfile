@@ -23,9 +23,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     mame-tools openssl \
     && rm -rf /var/lib/apt/lists/*
 # DolphinTool for GameCube ISO->RVZ (optional)
-# Place a Linux DolphinTool binary in repo root; it will be copied automatically.
-# The converter gracefully skips RVZ if DolphinTool is absent.
-COPY DolphinToo[l] /usr/local/bin/DolphinTool
+# To enable: place a Linux DolphinTool binary in the repo root, then uncomment:
+# COPY DolphinTool /usr/local/bin/DolphinTool
+# RUN chmod +x /usr/local/bin/DolphinTool
+# The converter gracefully skips RVZ conversion if DolphinTool is absent.
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma

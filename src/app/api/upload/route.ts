@@ -29,11 +29,19 @@ async function cleanupOldSessions() {
   }
 }
 
+let lastCleanup = 0;
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // At most once per hour
+
 export async function POST(request: NextRequest) {
-  // Best-effort cleanup of stale sessions (non-blocking)
-  cleanupOldSessions();
   const authError = requireAuth(request);
   if (authError) return authError;
+
+  // Best-effort cleanup of stale sessions (non-blocking, throttled, after auth)
+  const now = Date.now();
+  if (now - lastCleanup > CLEANUP_INTERVAL_MS) {
+    lastCleanup = now;
+    cleanupOldSessions();
+  }
 
   try {
     const formData = await request.formData();
