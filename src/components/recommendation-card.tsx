@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 
 export interface RecommendationGame {
@@ -29,123 +30,24 @@ function scoreColor(score: number): string {
   return "text-red-400";
 }
 
-function ScoreBadge({ game }: { game: RecommendationGame }) {
+export function RecommendationCard({ game }: RecommendationCardProps) {
+  const [expanded, setExpanded] = useState(false);
   const score = game.igdbScore ?? game.metacriticScore ?? null;
-  if (score === null) return null;
-  const rounded = Math.round(score);
+  const safeVideoId = game.videoId && /^[a-zA-Z0-9_-]{6,15}$/.test(game.videoId) ? game.videoId : null;
+
   return (
-    <span className={`text-2xl font-bold tabular-nums ${scoreColor(rounded)}`}>
-      {rounded}
-    </span>
-  );
-}
-
-function CompactScoreBadge({ game }: { game: RecommendationGame }) {
-  const score = game.igdbScore ?? game.metacriticScore ?? null;
-  if (score === null) return null;
-  const rounded = Math.round(score);
-  return (
-    <span className={`text-lg font-bold tabular-nums ${scoreColor(rounded)}`}>
-      {rounded}
-    </span>
-  );
-}
-
-function VibeTag({ label }: { label: string }) {
-  return (
-    <span className="bg-vault-amber/20 text-vault-amber text-xs px-2 py-0.5 rounded-full font-medium">
-      {label}
-    </span>
-  );
-}
-
-function FeaturedCard({ game }: { game: RecommendationGame }) {
-  return (
-    <div className="card overflow-hidden p-0">
-      {/* Hero artwork area */}
-      <div className="relative h-[160px] overflow-hidden">
-        {game.artworkUrl ? (
-          <img
-            src={game.artworkUrl}
-            alt=""
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-vault-surface to-vault-bg" />
-        )}
-        {/* Gradient overlay fading to vault-bg */}
-        <div className="absolute inset-0 bg-gradient-to-t from-vault-surface via-vault-surface/60 to-transparent" />
-      </div>
-
-      {/* Content area overlapping the hero */}
-      <div className="relative px-4 pb-4 -mt-10">
-        <div className="flex items-end gap-3">
-          {/* Cover image */}
-          <div className="w-16 h-[85px] flex-shrink-0 rounded-lg overflow-hidden border-2 border-vault-border bg-vault-bg">
-            {game.coverUrl ? (
-              <img
-                src={game.coverUrl}
-                alt={game.title}
-                className="w-full h-full object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-vault-muted text-[10px]">
-                No Cover
-              </div>
-            )}
-          </div>
-
-          {/* Title + meta */}
-          <div className="flex-1 min-w-0">
-            <h3 className="text-xl font-bold text-white drop-shadow line-clamp-1">
-              {game.title}
-            </h3>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs text-vault-muted">{game.platformLabel}</span>
-              <span className="text-vault-border">·</span>
-              <VibeTag label={game.vibeTag} />
-            </div>
-          </div>
-
-          {/* Score */}
-          <div className="flex-shrink-0">
-            <ScoreBadge game={game} />
-          </div>
-        </div>
-
-        {/* AI reason */}
-        <div className="mt-3 pt-3 border-t border-vault-border">
-          <p className="text-vault-amber text-xs font-semibold mb-1">
-            Warum du das feiern wirst:
-          </p>
-          <p className="text-vault-muted text-sm leading-relaxed">
-            {game.reason}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CompactCard({ game }: { game: RecommendationGame }) {
-  return (
-    <div className="card">
-      <div className="flex gap-3">
+    <div className="card overflow-hidden">
+      {/* Main row — always visible */}
+      <div
+        className="flex gap-3 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
         {/* Cover */}
-        <div className="w-12 h-16 flex-shrink-0 rounded overflow-hidden bg-vault-bg">
+        <div className="w-14 h-[75px] flex-shrink-0 rounded-lg overflow-hidden bg-vault-bg">
           {game.coverUrl ? (
-            <img
-              src={game.coverUrl}
-              alt={game.title}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
+            <img src={game.coverUrl} alt={game.title} className="w-full h-full object-cover" loading="lazy" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-vault-muted text-[10px]">
-              No Cover
-            </div>
+            <div className="w-full h-full flex items-center justify-center text-vault-muted text-[9px]">No Cover</div>
           )}
         </div>
 
@@ -153,39 +55,85 @@ function CompactCard({ game }: { game: RecommendationGame }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h3 className="font-semibold text-sm text-white line-clamp-1">
-                {game.title}
-              </h3>
-              <p className="text-xs text-vault-muted mt-0.5">
-                {game.platformLabel}
-              </p>
+              <h3 className="font-semibold text-sm text-white line-clamp-1">{game.title}</h3>
+              <p className="text-xs text-vault-muted mt-0.5">{game.platformLabel}</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <VibeTag label={game.vibeTag} />
-              <CompactScoreBadge game={game} />
+              <span className="bg-vault-amber/20 text-vault-amber text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                {game.vibeTag}
+              </span>
+              {score !== null && (
+                <span className={`text-lg font-bold tabular-nums ${scoreColor(Math.round(score))}`}>
+                  {Math.round(score)}
+                </span>
+              )}
             </div>
           </div>
+          <p className="text-xs text-vault-muted mt-1.5 leading-relaxed line-clamp-2">{game.reason}</p>
+        </div>
 
-          {/* Reason */}
-          <p className="text-xs text-vault-muted mt-1.5 line-clamp-2 leading-relaxed">
-            {game.reason}
-          </p>
+        {/* Expand indicator */}
+        <div className="flex items-center flex-shrink-0">
+          <span className={`text-vault-muted text-xs transition-transform ${expanded ? "rotate-180" : ""}`}>
+            &#9660;
+          </span>
         </div>
       </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-vault-border space-y-3">
+          {/* Artwork */}
+          {game.artworkUrl && (
+            <div className="aspect-video rounded-lg overflow-hidden bg-vault-bg">
+              <img src={game.artworkUrl} alt={`${game.title} artwork`} className="w-full h-full object-cover" loading="lazy" />
+            </div>
+          )}
+
+          {/* Video */}
+          {safeVideoId && (
+            <div className="aspect-video rounded-lg overflow-hidden bg-vault-bg">
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${safeVideoId}`}
+                title={`${game.title} Trailer`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full"
+              />
+            </div>
+          )}
+
+          {/* Summary */}
+          {game.summary && (
+            <p className="text-sm text-vault-muted leading-relaxed">{game.summary}</p>
+          )}
+
+          {/* Genres */}
+          {game.genres && game.genres.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {game.genres.map((g) => (
+                <span key={g} className="text-xs bg-vault-bg px-2 py-0.5 rounded-full text-vault-muted">{g}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Full reason */}
+          <div>
+            <p className="text-vault-amber text-xs font-semibold mb-1">Warum du das feiern wirst:</p>
+            <p className="text-sm text-vault-muted leading-relaxed">{game.reason}</p>
+          </div>
+
+          {/* Link to game detail */}
+          {game.dbId && (
+            <Link
+              href={`/game/${game.dbId}`}
+              className="inline-block text-xs text-vault-amber hover:text-vault-amber-hover transition-colors"
+            >
+              Zur Game-Seite &rarr;
+            </Link>
+          )}
+        </div>
+      )}
     </div>
   );
-}
-
-export function RecommendationCard({ game, featured = false }: RecommendationCardProps) {
-  const inner = featured ? <FeaturedCard game={game} /> : <CompactCard game={game} />;
-
-  if (game.dbId) {
-    return (
-      <Link href={`/game/${game.dbId}`} className="block group">
-        {inner}
-      </Link>
-    );
-  }
-
-  return inner;
 }

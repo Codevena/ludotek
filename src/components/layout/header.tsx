@@ -14,6 +14,12 @@ export function Header() {
         Discover
       </Link>
       <Link
+        href="/admin/upload"
+        className="px-4 py-2 text-sm text-vault-muted hover:text-vault-text transition-colors"
+      >
+        Upload
+      </Link>
+      <Link
         href="/admin"
         className="px-4 py-2 text-sm text-vault-muted hover:text-vault-text transition-colors"
       >

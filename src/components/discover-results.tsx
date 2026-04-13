@@ -85,12 +85,11 @@ export function DiscoverResults({
           </div>
 
           {/* Cards */}
-          <div className="space-y-4">
-            {activeGames.map((game, index) => (
+          <div className="space-y-3">
+            {activeGames.map((game) => (
               <RecommendationCard
                 key={`${game.title}-${game.platform}`}
                 game={game}
-                featured={index === 0}
               />
             ))}
           </div>

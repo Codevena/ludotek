@@ -126,7 +126,8 @@ export function DiscoverWizard({
                       : "border-vault-border bg-vault-surface text-vault-muted hover:border-vault-amber hover:text-vault-text"
                   }`}
                 >
-                  {platform.icon} {platform.label}
+                  <img src={`/platforms/${platform.id}.png`} alt="" className="w-5 h-5 object-contain inline-block mr-1.5 -mt-0.5" />
+                  {platform.label}
                 </button>
               );
             })}

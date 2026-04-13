@@ -117,13 +117,17 @@ export async function POST(request: NextRequest) {
         );
         const recommendations = parseRecommendations(aiResponse);
 
-        // Enrich library recommendations with DB data
+        // Enrich library recommendations with DB data (fuzzy matching)
         const enrichedLibrary = [];
         for (const rec of recommendations) {
+          const recTitle = rec.title.toLowerCase();
+          // Try exact match first, then fuzzy (title contains or starts with)
           const dbGame = games.find(
-            (g) =>
-              g.title.toLowerCase() === rec.title.toLowerCase() &&
-              g.platform === rec.platform
+            (g) => g.title.toLowerCase() === recTitle && g.platform === rec.platform
+          ) || games.find(
+            (g) => g.title.toLowerCase() === recTitle
+          ) || games.find(
+            (g) => g.title.toLowerCase().includes(recTitle) || recTitle.includes(g.title.toLowerCase())
           );
           if (dbGame) {
             enrichedLibrary.push({
