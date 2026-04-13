@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PlatformTag } from "@/components/platform-tag";
 import { ScreenshotGallery } from "@/components/screenshot-gallery";
 import { MarkdownContent } from "@/components/markdown-content";
 import { EnrichWizard } from "@/components/enrich-wizard";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 
 function safeJsonParse(str: string | null): string[] {
   if (!str) return [];
@@ -43,9 +43,11 @@ export default async function GameDetailPage({ params }: Props) {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <Link href="/" className="text-vault-muted hover:text-vault-text text-sm mb-6 inline-block">
-        &larr; Back to library
-      </Link>
+      <Breadcrumbs items={[
+        { label: "Home", href: "/" },
+        { label: game.platformLabel, href: `/platform/${game.platform}` },
+        { label: game.title },
+      ]} />
 
       {/* Hero Banner */}
       <div className="relative rounded-xl overflow-hidden mb-0 h-[200px] md:h-[280px]">

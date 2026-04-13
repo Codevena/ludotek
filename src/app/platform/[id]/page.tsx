@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { GameGrid } from "@/components/game-grid";
 import { SortSelect } from "@/components/sort-select";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Suspense } from "react";
 
 interface Props {
@@ -48,12 +48,10 @@ export default async function PlatformPage({ params, searchParams }: Props) {
 
   return (
     <div>
-      <Link
-        href="/"
-        className="text-vault-muted hover:text-vault-text text-sm mb-4 inline-block"
-      >
-        &larr; All platforms
-      </Link>
+      <Breadcrumbs items={[
+        { label: "Home", href: "/" },
+        { label: platform.label },
+      ]} />
 
       <div className="flex items-center justify-between mb-6">
         <div>

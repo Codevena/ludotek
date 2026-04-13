@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 
 interface Settings {
   deckHost: string;
@@ -286,9 +287,10 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <Link href="/" className="text-vault-muted hover:text-vault-text text-sm mb-6 inline-block">
-        ← Back to library
-      </Link>
+      <Breadcrumbs items={[
+        { label: "Home", href: "/" },
+        { label: "Admin" },
+      ]} />
 
       <h1 className="font-heading text-2xl font-bold mb-8">Admin</h1>
 

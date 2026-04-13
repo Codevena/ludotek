@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import UploadDropzone from "@/components/upload-dropzone";
 import UploadPreview from "@/components/upload-preview";
 import UploadProgress, { type GameProgress } from "@/components/upload-progress";
@@ -279,12 +280,11 @@ export default function UploadPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <Link
-        href="/admin"
-        className="text-vault-muted hover:text-vault-text text-sm mb-6 inline-block"
-      >
-        ← Back to Admin
-      </Link>
+      <Breadcrumbs items={[
+        { label: "Home", href: "/" },
+        { label: "Admin", href: "/admin" },
+        { label: "Upload ROMs" },
+      ]} />
 
       <h1 className="font-heading text-2xl font-bold mb-8">Upload ROMs</h1>
 
