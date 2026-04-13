@@ -37,7 +37,7 @@ export default async function GameDetailPage({ params }: Props) {
   const themes = safeJsonParse(game.themes);
 
   const platform = await prisma.platform.findUnique({ where: { id: game.platform } });
-  const HEX_RE = /^#[0-9a-fA-F]{3,8}$/;
+  const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
   const platformColor = (platform?.color && HEX_RE.test(platform.color)) ? platform.color : "#6366f1";
   const heroImage = artworks[0] || null;
 

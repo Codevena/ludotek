@@ -60,43 +60,6 @@ async function igdbQuery(clientId: string, token: string, endpoint: string, body
   return res.json();
 }
 
-export async function searchIgdb(
-  title: string,
-  platform: string,
-  clientId: string,
-  clientSecret: string
-): Promise<IgdbGameData | null> {
-  const token = await getIgdbToken(clientId, clientSecret);
-  const platformId = IGDB_PLATFORM_MAP[platform];
-
-  const safeTitle = title.replace(/"/g, '\\"');
-  const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
-
-  // Try with platform filter first
-  let results: Array<{
-    id: number; name: string; rating?: number; aggregated_rating?: number; genres?: number[];
-    first_release_date?: number; summary?: string; cover?: number;
-    involved_companies?: number[]; screenshots?: number[];
-    videos?: number[]; artworks?: number[]; franchise?: number; themes?: number[];
-  }> = [];
-
-  if (platformId) {
-    results = (await igdbQuery(clientId, token, "games",
-      `search "${safeTitle}"; ${fields} where platforms = (${platformId}); limit 5;`
-    )) as typeof results;
-  }
-
-  // Fallback: search without platform filter
-  if (results.length === 0) {
-    results = (await igdbQuery(clientId, token, "games",
-      `search "${safeTitle}"; ${fields} limit 5;`
-    )) as typeof results;
-  }
-
-  if (results.length === 0) return null;
-  return resolveIgdbGame(clientId, token, results[0]);
-}
-
 type RawIgdbGame = {
   id: number; name: string; rating?: number; aggregated_rating?: number; genres?: number[];
   first_release_date?: number; summary?: string; cover?: number;
@@ -200,6 +163,36 @@ async function resolveIgdbGame(clientId: string, token: string, game: RawIgdbGam
     franchise,
     themes: themeNames,
   };
+}
+
+export async function searchIgdb(
+  title: string,
+  platform: string,
+  clientId: string,
+  clientSecret: string
+): Promise<IgdbGameData | null> {
+  const token = await getIgdbToken(clientId, clientSecret);
+  const platformId = IGDB_PLATFORM_MAP[platform];
+
+  const safeTitle = title.replace(/"/g, '\\"');
+  const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
+
+  let results: RawIgdbGame[] = [];
+
+  if (platformId) {
+    results = (await igdbQuery(clientId, token, "games",
+      `search "${safeTitle}"; ${fields} where platforms = (${platformId}); limit 5;`
+    )) as RawIgdbGame[];
+  }
+
+  if (results.length === 0) {
+    results = (await igdbQuery(clientId, token, "games",
+      `search "${safeTitle}"; ${fields} limit 5;`
+    )) as RawIgdbGame[];
+  }
+
+  if (results.length === 0) return null;
+  return resolveIgdbGame(clientId, token, results[0]);
 }
 
 export async function fetchIgdbById(

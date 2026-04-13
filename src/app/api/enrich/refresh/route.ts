@@ -32,7 +32,6 @@ export async function POST(request: NextRequest) {
   // Filter to games with at least one missing field
   const games = allGamesWithIgdb.filter((game) => {
     if (game.metacriticScore == null) return true;
-    if (!game.franchise) return true;
     if (safeJsonParse(game.videoIds).length === 0) return true;
     if (safeJsonParse(game.artworkUrls).length === 0) return true;
     if (safeJsonParse(game.themes).length === 0) return true;
