@@ -12,6 +12,9 @@ interface IgdbMissingGame {
     developer: boolean;
     company: { name: string };
   }[];
+  summary?: string;
+  screenshots?: { image_id?: string }[];
+  videos?: { video_id?: string }[];
 }
 
 export async function GET(
@@ -46,7 +49,7 @@ export async function GET(
         Authorization: `Bearer ${token}`,
         "Content-Type": "text/plain",
       },
-      body: `fields name, total_rating, cover.image_id, first_release_date, genres.name, involved_companies.company.name, involved_companies.developer;
+      body: `fields name, total_rating, cover.image_id, first_release_date, genres.name, involved_companies.company.name, involved_companies.developer, summary, screenshots.image_id, videos.video_id;
 where platforms = (${igdbPlatformId}) & total_rating > 75 & total_rating_count > 10;
 sort total_rating desc;
 limit 30;`,
@@ -78,7 +81,7 @@ limit 30;`,
 
     const result = missingGames.slice(0, 10).map((g) => {
       const coverUrl = g.cover?.image_id
-        ? `https://images.igdb.com/igdb/image/upload/t_cover_small/${g.cover.image_id}.jpg`
+        ? `https://images.igdb.com/igdb/image/upload/t_cover_big/${g.cover.image_id}.jpg`
         : null;
 
       const devCompany = g.involved_companies?.find((c) => c.developer);
@@ -90,6 +93,19 @@ limit 30;`,
 
       const genres = g.genres?.map((genre) => genre.name) ?? [];
 
+      const screenshots = (g.screenshots ?? [])
+        .filter((s) => s.image_id)
+        .slice(0, 4)
+        .map(
+          (s) =>
+            `https://images.igdb.com/igdb/image/upload/t_screenshot_big/${s.image_id}.jpg`
+        );
+
+      const videoIds = (g.videos ?? [])
+        .filter((v) => v.video_id)
+        .slice(0, 2)
+        .map((v) => v.video_id as string);
+
       return {
         title: g.name,
         score: g.total_rating ? Math.round(g.total_rating * 10) / 10 : null,
@@ -97,6 +113,9 @@ limit 30;`,
         year,
         developer,
         genres,
+        summary: g.summary || null,
+        screenshots,
+        videoIds,
       };
     });
 

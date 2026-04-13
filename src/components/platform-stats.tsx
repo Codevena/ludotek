@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 /* ---------- Types ---------- */
 
@@ -23,6 +23,15 @@ interface MissingGame {
   year?: number | null;
   genres?: string[];
   score?: number | null;
+  summary?: string | null;
+  screenshots?: string[];
+  videoIds?: string[];
+}
+
+interface WishlistItem {
+  id: number;
+  title: string;
+  platform: string;
 }
 
 /* ---------- Skeletons ---------- */
@@ -59,6 +68,300 @@ function StatCard({
   );
 }
 
+/* ---------- Score Badge Color ---------- */
+
+function scoreColor(score: number): string {
+  if (score >= 75) return "bg-green-500";
+  if (score >= 50) return "bg-amber-500";
+  return "bg-red-500";
+}
+
+function scoreTextColor(score: number): string {
+  if (score >= 75) return "text-green-400";
+  if (score >= 50) return "text-vault-amber";
+  return "text-red-400";
+}
+
+/* ---------- Game Card ---------- */
+
+function GameCard({
+  game,
+  isWishlisted,
+  onToggleWishlist,
+  onSelect,
+}: {
+  game: MissingGame;
+  isWishlisted: boolean;
+  onToggleWishlist: (e: React.MouseEvent) => void;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      className="w-[200px] flex-shrink-0 bg-vault-surface border border-vault-border rounded-xl overflow-hidden hover:border-vault-amber/50 transition-all cursor-pointer"
+      style={{ scrollSnapAlign: "start" }}
+    >
+      {/* Cover */}
+      <div className="relative w-full h-[260px]">
+        {game.coverUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={game.coverUrl}
+            alt={game.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-vault-amber/20 to-purple-500/20" />
+        )}
+
+        {/* Score badge */}
+        {game.score != null && (
+          <span
+            className={`absolute top-0 left-0 ${scoreColor(game.score)} text-black text-xs font-bold px-2 py-0.5 rounded-br-lg`}
+          >
+            {Math.round(game.score)}
+          </span>
+        )}
+
+        {/* Wishlist heart */}
+        <button
+          onClick={onToggleWishlist}
+          className="absolute top-1 right-1 p-1.5 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+          aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
+        >
+          {isWishlisted ? (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="w-4 h-4 text-vault-amber"
+            >
+              <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
+            </svg>
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-4 h-4 text-white/80"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+              />
+            </svg>
+          )}
+        </button>
+      </div>
+
+      {/* Info */}
+      <div className="p-3">
+        <p className="text-vault-text text-sm font-bold truncate">
+          {game.title}
+        </p>
+        <p className="text-vault-muted text-xs truncate">
+          {[game.developer, game.year].filter(Boolean).join(" · ")}
+        </p>
+        {game.summary && (
+          <p
+            className="text-vault-muted text-xs mt-1 overflow-hidden"
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+            }}
+          >
+            {game.summary}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Detail Modal ---------- */
+
+function DetailModal({
+  game,
+  platformId,
+  isWishlisted,
+  onToggleWishlist,
+  onClose,
+}: {
+  game: MissingGame;
+  platformId: string;
+  isWishlisted: boolean;
+  onToggleWishlist: () => void;
+  onClose: () => void;
+}) {
+  // Close on Escape
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-vault-surface border border-vault-border rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+        {/* Close button */}
+        <div className="sticky top-0 z-10 flex justify-end p-3">
+          <button
+            onClick={onClose}
+            className="bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 transition-colors"
+            aria-label="Close"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-5 h-5"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Cover + Title Header */}
+        <div className="flex gap-4 px-6 -mt-4">
+          {game.coverUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={game.coverUrl}
+              alt={game.title}
+              className="w-28 h-[160px] rounded-lg object-cover flex-shrink-0"
+            />
+          ) : (
+            <div className="w-28 h-[160px] rounded-lg bg-gradient-to-br from-vault-amber/20 to-purple-500/20 flex-shrink-0" />
+          )}
+          <div className="flex-1 min-w-0 pt-2">
+            <h2 className="font-heading text-xl font-bold text-vault-text">
+              {game.title}
+            </h2>
+            <p className="text-vault-muted text-sm mt-1">
+              {[game.developer, game.year, platformId]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+            {game.genres && game.genres.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {game.genres.map((g) => (
+                  <span
+                    key={g}
+                    className="bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-full px-2 py-0.5 text-[10px]"
+                  >
+                    {g}
+                  </span>
+                ))}
+              </div>
+            )}
+            {game.score != null && (
+              <div className="mt-2 flex items-center gap-2">
+                <span
+                  className={`${scoreColor(game.score)} text-black text-sm font-bold px-2.5 py-0.5 rounded-md`}
+                >
+                  {Math.round(game.score)}
+                </span>
+                <span className={`text-sm font-medium ${scoreTextColor(game.score)}`}>
+                  IGDB Score
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Summary */}
+        {game.summary && (
+          <div className="px-6 mt-4">
+            <p className="text-vault-muted text-sm leading-relaxed">
+              {game.summary}
+            </p>
+          </div>
+        )}
+
+        {/* Screenshots */}
+        {game.screenshots && game.screenshots.length > 0 && (
+          <div className="mt-4 px-6">
+            <p className="text-vault-muted text-xs font-medium uppercase tracking-wider mb-2">
+              Screenshots
+            </p>
+            <div
+              className="flex gap-3 overflow-x-auto pb-2"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {game.screenshots.map((url, i) => (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  key={i}
+                  src={url}
+                  alt={`${game.title} screenshot ${i + 1}`}
+                  className="h-36 rounded-lg object-cover flex-shrink-0"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Videos */}
+        {game.videoIds && game.videoIds.length > 0 && (
+          <div className="mt-4 px-6">
+            <p className="text-vault-muted text-xs font-medium uppercase tracking-wider mb-2">
+              Videos
+            </p>
+            <div className="flex flex-col gap-3">
+              {game.videoIds.map((vid) => (
+                <div
+                  key={vid}
+                  className="relative w-full rounded-lg overflow-hidden"
+                  style={{ paddingBottom: "56.25%" }}
+                >
+                  <iframe
+                    src={`https://www.youtube.com/embed/${vid}`}
+                    title={`${game.title} video`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="absolute inset-0 w-full h-full"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Wishlist Button */}
+        <div className="px-6 py-5">
+          <button
+            onClick={onToggleWishlist}
+            className={`w-full py-2.5 rounded-xl font-medium text-sm transition-colors ${
+              isWishlisted
+                ? "bg-vault-amber/20 text-vault-amber border border-vault-amber/40 hover:bg-vault-amber/30"
+                : "bg-vault-amber text-black hover:bg-vault-amber/90"
+            }`}
+          >
+            {isWishlisted ? "Remove from Wishlist" : "Add to Wishlist"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Main Component ---------- */
 
 export function PlatformStats({ platformId }: PlatformStatsProps) {
@@ -67,6 +370,24 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
   const [missingError, setMissingError] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Missing section collapsed by default
+  const [missingExpanded, setMissingExpanded] = useState(false);
+
+  // Detail modal
+  const [selectedGame, setSelectedGame] = useState<MissingGame | null>(null);
+
+  // Wishlist state: map of "title::platform" -> wishlist item id
+  const [wishlistMap, setWishlistMap] = useState<Map<string, number>>(
+    new Map()
+  );
+  const wishlistLoaded = useRef(false);
+
+  const wishlistKey = useCallback(
+    (title: string) => `${title}::${platformId}`,
+    [platformId]
+  );
+
+  // Fetch stats + missing games
   useEffect(() => {
     const fetchStats = fetch(`/api/platforms/${platformId}/stats`)
       .then((res) => {
@@ -89,6 +410,116 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
     );
   }, [platformId]);
 
+  // Fetch wishlist on mount
+  useEffect(() => {
+    if (wishlistLoaded.current) return;
+    wishlistLoaded.current = true;
+
+    fetch("/api/wishlist")
+      .then((res) => {
+        if (!res.ok) throw new Error("Wishlist fetch failed");
+        return res.json();
+      })
+      .then((json) => {
+        const items = json.items as WishlistItem[];
+        const map = new Map<string, number>();
+        for (const item of items) {
+          map.set(`${item.title}::${item.platform}`, item.id);
+        }
+        setWishlistMap(map);
+      })
+      .catch((err) => console.error("Failed to fetch wishlist:", err));
+  }, []);
+
+  const isWishlisted = useCallback(
+    (title: string) => wishlistMap.has(wishlistKey(title)),
+    [wishlistMap, wishlistKey]
+  );
+
+  const toggleWishlist = useCallback(
+    async (game: MissingGame, e?: React.MouseEvent) => {
+      if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+
+      const key = wishlistKey(game.title);
+      const existingId = wishlistMap.get(key);
+
+      if (existingId) {
+        // Optimistic remove
+        setWishlistMap((prev) => {
+          const next = new Map(prev);
+          next.delete(key);
+          return next;
+        });
+
+        try {
+          const res = await fetch(`/api/wishlist/${existingId}`, {
+            method: "DELETE",
+          });
+          if (!res.ok) throw new Error("Delete failed");
+        } catch (err) {
+          console.error("Failed to remove from wishlist:", err);
+          // Revert
+          setWishlistMap((prev) => {
+            const next = new Map(prev);
+            next.set(key, existingId);
+            return next;
+          });
+        }
+      } else {
+        // Optimistic add with temp id
+        const tempId = -Date.now();
+        setWishlistMap((prev) => {
+          const next = new Map(prev);
+          next.set(key, tempId);
+          return next;
+        });
+
+        try {
+          const res = await fetch("/api/wishlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: game.title,
+              platform: platformId,
+              platformLabel: platformId,
+              coverUrl: game.coverUrl ?? null,
+              igdbScore: game.score ?? null,
+              summary: game.summary ?? null,
+              genres: game.genres ? JSON.stringify(game.genres) : null,
+              screenshots: game.screenshots
+                ? JSON.stringify(game.screenshots)
+                : null,
+              videoIds: game.videoIds
+                ? JSON.stringify(game.videoIds)
+                : null,
+              developer: game.developer ?? null,
+              year: game.year ?? null,
+            }),
+          });
+          if (!res.ok) throw new Error("Add failed");
+          const created = await res.json();
+          setWishlistMap((prev) => {
+            const next = new Map(prev);
+            next.set(key, created.id);
+            return next;
+          });
+        } catch (err) {
+          console.error("Failed to add to wishlist:", err);
+          // Revert
+          setWishlistMap((prev) => {
+            const next = new Map(prev);
+            next.delete(key);
+            return next;
+          });
+        }
+      }
+    },
+    [wishlistMap, wishlistKey, platformId]
+  );
+
   if (loading) return <SkeletonCards />;
   if (!stats) return null;
 
@@ -102,7 +533,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
           color="text-vault-amber"
         />
         <StatCard
-          value={stats.avgScore !== null ? String(stats.avgScore) : "—"}
+          value={stats.avgScore !== null ? String(stats.avgScore) : "\u2014"}
           label="Avg Score"
           color="text-vault-amber"
         />
@@ -148,76 +579,84 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
       ) : (
         missing &&
         missing.length > 0 && (
-          <div className="mb-6 bg-gradient-to-br from-vault-amber/[0.05] to-transparent border border-vault-amber/20 rounded-xl p-4">
-            {/* Header */}
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">🏆</span>
+          <div className="mb-6 bg-gradient-to-br from-vault-amber/[0.05] to-transparent border border-vault-amber/20 rounded-xl overflow-hidden">
+            {/* Collapsible Header Bar */}
+            <button
+              onClick={() => setMissingExpanded((prev) => !prev)}
+              className="w-full flex items-center gap-2 px-4 py-3 hover:bg-vault-amber/[0.03] transition-colors"
+            >
+              <span className="text-lg">&#127942;</span>
               <h3 className="font-heading text-sm font-bold text-vault-amber">
                 Top Rated You&apos;re Missing
               </h3>
               <span className="text-[10px] font-medium uppercase tracking-wider bg-vault-amber/15 text-vault-amber border border-vault-amber/30 rounded px-1.5 py-0.5">
-                IGDB DATA
+                {missing.length} games
               </span>
-            </div>
-            <p className="text-vault-muted text-xs mb-4">
-              Top-rated {platformId} games not in your collection according to IGDB
-            </p>
+              <span className="ml-auto text-vault-muted text-xs font-medium">
+                {missingExpanded ? "Hide" : "Show"}
+              </span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                className={`w-4 h-4 text-vault-muted transition-transform ${
+                  missingExpanded ? "rotate-180" : ""
+                }`}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                />
+              </svg>
+            </button>
 
-            {/* Game Rows */}
-            <div className="flex flex-col gap-2">
-              {missing.map((game, i) => (
+            {/* Expanded Carousel */}
+            {missingExpanded && (
+              <div className="px-4 pb-4">
+                <p className="text-vault-muted text-xs mb-3">
+                  Top-rated {platformId} games not in your collection according
+                  to IGDB
+                </p>
+
+                {/* Carousel Container */}
+                <style>{`
+                  .missing-carousel::-webkit-scrollbar { display: none; }
+                `}</style>
                 <div
-                  key={game.title}
-                  className="bg-vault-bg rounded-lg p-3 border border-vault-border flex items-center gap-3"
+                  className="missing-carousel flex gap-4 overflow-x-auto pb-2"
+                  style={{
+                    scrollSnapType: "x mandatory",
+                    scrollbarWidth: "none",
+                  }}
                 >
-                  {/* Rank */}
-                  <span className="text-vault-muted text-xs font-medium w-6 text-right shrink-0">
-                    #{i + 1}
-                  </span>
-
-                  {/* Cover */}
-                  {game.coverUrl ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={game.coverUrl}
-                      alt={game.title}
-                      className="w-8 h-[42px] rounded object-cover shrink-0"
+                  {missing.map((game) => (
+                    <GameCard
+                      key={game.title}
+                      game={game}
+                      isWishlisted={isWishlisted(game.title)}
+                      onToggleWishlist={(e) => toggleWishlist(game, e)}
+                      onSelect={() => setSelectedGame(game)}
                     />
-                  ) : (
-                    <div className="w-8 h-[42px] rounded bg-vault-surface shrink-0" />
-                  )}
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-vault-text text-sm font-bold truncate">
-                      {game.title}
-                    </p>
-                    <p className="text-vault-muted text-xs truncate">
-                      {[game.developer, game.year, game.genres?.[0]]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  </div>
-
-                  {/* Score */}
-                  {game.score != null && (
-                    <span
-                      className={`text-sm font-bold shrink-0 ${
-                        game.score >= 75
-                          ? "text-green-400"
-                          : game.score >= 50
-                            ? "text-vault-amber"
-                            : "text-vault-muted"
-                      }`}
-                    >
-                      {Math.round(game.score)}
-                    </span>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         )
+      )}
+
+      {/* ---- Detail Modal ---- */}
+      {selectedGame && (
+        <DetailModal
+          game={selectedGame}
+          platformId={platformId}
+          isWishlisted={isWishlisted(selectedGame.title)}
+          onToggleWishlist={() => toggleWishlist(selectedGame)}
+          onClose={() => setSelectedGame(null)}
+        />
       )}
     </div>
   );

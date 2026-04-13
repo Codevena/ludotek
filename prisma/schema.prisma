@@ -40,6 +40,24 @@ model Game {
   @@index([title])
 }
 
+model WishlistItem {
+  id            Int      @id @default(autoincrement())
+  title         String
+  platform      String
+  platformLabel String
+  coverUrl      String?
+  igdbScore     Float?
+  summary       String?
+  genres        String?  // JSON array
+  screenshots   String?  // JSON array of URLs
+  videoIds      String?  // JSON array of YouTube IDs
+  developer     String?
+  year          Int?
+  createdAt     DateTime @default(now())
+
+  @@unique([title, platform])
+}
+
 model Platform {
   id        String @id
   label     String
