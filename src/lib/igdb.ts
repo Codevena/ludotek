@@ -32,6 +32,7 @@ export interface IgdbGameData {
   igdbId: number;
   coverUrl: string | null;
   igdbScore: number | null;
+  metacriticScore: number | null;
   genres: string[];
   developer: string | null;
   publisher: string | null;
@@ -65,11 +66,11 @@ export async function searchIgdb(
   const platformId = IGDB_PLATFORM_MAP[platform];
 
   const safeTitle = title.replace(/"/g, '\\"');
-  const fields = "fields name,rating,genres,first_release_date,summary,cover,involved_companies,screenshots;";
+  const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots;";
 
   // Try with platform filter first
   let results: Array<{
-    id: number; name: string; rating?: number; genres?: number[];
+    id: number; name: string; rating?: number; aggregated_rating?: number; genres?: number[];
     first_release_date?: number; summary?: string; cover?: number;
     involved_companies?: number[]; screenshots?: number[];
   }> = [];
@@ -142,6 +143,7 @@ export async function searchIgdb(
     igdbId: game.id,
     coverUrl,
     igdbScore: game.rating ?? null,
+    metacriticScore: game.aggregated_rating ? Math.round(game.aggregated_rating) : null,
     genres: genreNames,
     developer,
     publisher,

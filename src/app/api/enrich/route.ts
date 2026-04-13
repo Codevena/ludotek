@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
                 igdbId: igdbData.igdbId,
                 coverUrl,
                 igdbScore: igdbData.igdbScore,
+                metacriticScore: igdbData.metacriticScore,
                 genres: JSON.stringify(igdbData.genres),
                 developer: igdbData.developer,
                 publisher: igdbData.publisher,
