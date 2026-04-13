@@ -292,9 +292,14 @@ export default function AdminPage() {
         </button>
       </div>
 
-      <div className="flex gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <button onClick={() => runStreamingAction("/api/enrich/metacritic", setEnriching)}
+          disabled={scanning || enriching || aiEnriching || cleaning}
+          className={`${btnClass} bg-cyan-600 text-white hover:bg-cyan-500`}>
+          {enriching ? "Fetching..." : "Fetch Critic Scores"}
+        </button>
         <button onClick={runCleanup} disabled={scanning || enriching || aiEnriching || cleaning}
-          className={`${btnClass} flex-1 bg-red-600/80 text-white hover:bg-red-500`}>
+          className={`${btnClass} bg-red-600/80 text-white hover:bg-red-500`}>
           {cleaning ? "Cleaning..." : "Cleanup Duplicates & .m3u"}
         </button>
       </div>
