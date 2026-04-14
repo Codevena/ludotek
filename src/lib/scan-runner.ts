@@ -173,14 +173,14 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
         }
 
         // Clean up stale GameDevice links for games no longer on this device
-        if (scannedGameIds.length > 0) {
-          await prisma.gameDevice.deleteMany({
-            where: {
-              deviceId: device.id,
-              gameId: { notIn: scannedGameIds },
-            },
-          });
-        }
+        await prisma.gameDevice.deleteMany({
+          where: {
+            deviceId: device.id,
+            ...(scannedGameIds.length > 0
+              ? { gameId: { notIn: scannedGameIds } }
+              : {}),
+          },
+        });
 
         totalNew += newCount;
         totalUpdated += updatedCount;

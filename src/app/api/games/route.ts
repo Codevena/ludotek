@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       { themes: { contains: tag } },
     ];
   }
-  if (deviceId) {
+  if (deviceId && deviceId !== "all") {
     const parsedDeviceId = parseInt(deviceId, 10);
     if (isNaN(parsedDeviceId)) {
       return NextResponse.json({ error: "Invalid deviceId" }, { status: 400 });
