@@ -79,22 +79,9 @@
 
 ---
 
-### 3.2 Auto-Organization
+### ~~3.2 Auto-Organization~~ — SKIPPED
 
-**Warum jetzt:** Ergänzt die Duplicate Detection und nutzt die SyncQueue-Infrastruktur die schon existiert.
-
-**Scope:**
-- **Naming Convention Engine**: Der User wählt eine Konvention:
-  - **No-Intro**: `Title (Region) (Rev X).ext`
-  - **TOSEC**: `Title (Year)(Publisher)(Region).ext`
-  - **Clean**: `Title.ext` (simpelste Form, Region/Tags entfernt)
-  - **Custom**: User definiert ein Pattern mit Platzhaltern `{title}`, `{region}`, `{year}`, `{rev}`
-- **Rename Preview**: Zeigt eine Vorschau aller Umbenennungen bevor sie passieren:
-  - `Super_Mario_World_(U)_[!].smc` → `Super Mario World (USA).smc`
-  - Conflicts werden hervorgehoben (wenn zwei Files zum gleichen Namen konvergieren)
-- **Batch-Rename via SyncQueue**: Alle Umbenennungen werden in die bestehende SyncQueue gestaged → User reviewed im SyncPanel → Apply.
-- **Ordnerstruktur-Vorschläge**: Falls ROMs nicht in den erwarteten Plattform-Ordnern liegen, schlägt das Tool Verschiebungen vor.
-- **Nicht im Scope:** Automatisches Umbenennen ohne Preview. Immer Queue → Review → Apply.
+**Entscheidung (2026-04-14):** Übersprungen. Game Vault zeigt bereits saubere Titel via `cleanFilename()` + IGDB-Enrichment — das Rename-Problem existiert nur auf Filesystem-Ebene. Batch-Rename birgt reales Risiko: ES-DE/RetroArch-Scraper-Mappings brechen bei Dateinamens-Änderungen. No-Intro/TOSEC-Sets kommen bereits korrekt benannt. Einzel-Rename existiert bereits im Game-Detail via SyncQueue. Aufwand-Nutzen-Verhältnis rechtfertigt das Feature nicht.
 
 ---
 
@@ -145,7 +132,7 @@
 | ~~2.1~~ | ~~Sammlung-Insights~~ | ~~1.1 (cached data)~~ | ~~DONE~~ |
 | ~~2.2~~ | ~~Smart Recommendations~~ | ~~2.1 (Insights-Daten)~~ | ~~SKIPPED~~ |
 | ~~3.1~~ | ~~Epoch-Navigation~~ | ~~2.1 (Ären-Daten, Release-Dates)~~ | ~~DONE~~ |
-| 3.2 | Auto-Organization | — | Mittel |
+| ~~3.2~~ | ~~Auto-Organization~~ | ~~—~~ | ~~SKIPPED~~ |
 | 4.1 | Onboarding & DX | Alle Features stehen | Mittel |
 | 4.2 | PWA (optional) | 1.1 (Offline-Cache) | Niedrig |
 

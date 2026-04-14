@@ -42,18 +42,22 @@
 ### Review Fixes Applied (Round 2)
 - Counts fetch error: error state + retry statt permanent skeleton
 
-## Next Up: Phase 3.2 — Auto-Organization
+### Phase 3.2: Auto-Organization — SKIPPED
+- Game Vault zeigt bereits saubere Titel via cleanFilename() + IGDB-Enrichment
+- Batch-Rename birgt Risiko (bricht ES-DE/RetroArch-Scraper-Mappings)
+- Einzel-Rename existiert bereits im Game-Detail via SyncQueue
 
-**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 3.2)
+## Next Up: Phase 4.1 — Onboarding & DX
+
+**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 4.1)
 
 ### Summary
-1. **Naming Convention Engine**: User wählt Konvention (No-Intro, TOSEC, Clean, Custom)
-2. **Rename Preview**: Vorschau aller Umbenennungen, Conflict-Highlighting
-3. **Batch-Rename via SyncQueue**: Umbenennungen in bestehende SyncQueue stagen → Review → Apply
-4. **Ordnerstruktur-Vorschläge**: Falls ROMs nicht in erwarteten Plattform-Ordnern liegen
+1. **Setup-Wizard** (First-Run): Sprache, API-Keys, Device, Scan-Paths, erster Scan
+2. **One-Click Deploy**: Docker-Compose überarbeiten, Unraid Template
+3. **README Overhaul**: Hero-Screenshot, Feature-GIFs, Quick-Start, Tech-Stack
+4. **Contributor Docs**: CONTRIBUTING.md, Architecture Overview
 
 ## Remaining Roadmap
-- Phase 3.2: Auto-Organization (Naming Conventions, Batch Rename via SyncQueue)
 - Phase 4.1: Onboarding & DX (Setup Wizard, Docker, README, Contributor Docs)
 - Phase 4.2: PWA (optional)
 
