@@ -88,13 +88,6 @@ export function EnrichWizard({ gameId, gameTitle }: { gameId: number; gameTitle:
         >
           Get Metadata
         </button>
-        <button
-          onClick={regenerateAi}
-          disabled={enriching}
-          className="px-4 py-2 rounded-lg text-sm bg-purple-600/20 border border-purple-500/30 text-purple-400 hover:bg-purple-600/30 transition-colors disabled:opacity-50"
-        >
-          {enriching ? "Generating..." : "Regenerate AI Stories"}
-        </button>
       </div>
     );
   }
@@ -176,6 +169,17 @@ export function EnrichWizard({ gameId, gameTitle }: { gameId: number; gameTitle:
           {status}
         </p>
       )}
+
+      {/* Regenerate AI */}
+      <div className="pt-2 border-t border-vault-border">
+        <button
+          onClick={regenerateAi}
+          disabled={enriching}
+          className="px-4 py-2 rounded-lg text-sm bg-vault-surface border border-vault-border text-vault-muted hover:text-vault-text hover:border-vault-amber transition-colors disabled:opacity-50"
+        >
+          {enriching ? "Working..." : "Regenerate AI Fun Facts & Story"}
+        </button>
+      </div>
 
       {enriching && (
         <div className="flex items-center gap-2">
