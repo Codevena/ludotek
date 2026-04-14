@@ -7,16 +7,6 @@ export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  // Remove .m3u and .cue entries
-  const junkDeleted = await prisma.game.deleteMany({
-    where: {
-      OR: [
-        { originalFile: { endsWith: ".m3u" } },
-        { originalFile: { endsWith: ".cue" } },
-      ],
-    },
-  });
-
   // Re-clean all titles from originalFile (fixes missing extensions like .sms)
   const allGames = await prisma.game.findMany({
     select: { id: true, title: true, originalFile: true, platform: true },
@@ -81,7 +71,6 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    junkRemoved: junkDeleted.count,
     titlesCleaned,
     duplicatesRemoved: dupesDeleted,
     totalGamesNow: await prisma.game.count(),
