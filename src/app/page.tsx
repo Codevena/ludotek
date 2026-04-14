@@ -16,19 +16,36 @@ interface Props {
 }
 
 async function RecentlyAdded() {
+  const settings = await prisma.settings.findFirst();
+  const deviceId = settings?.activeDeviceId;
+  const where: Record<string, unknown> = {};
+  if (deviceId) where.devices = { some: { deviceId } };
+
   const games = await prisma.game.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     take: 6,
+    include: {
+      devices: {
+        include: { device: { select: { id: true, name: true, type: true } } },
+      },
+    },
   });
-  if (games.length === 0) return null;
+  const gamesWithDevices = games.map((g) => ({
+    ...g,
+    devices: g.devices.map((gd) => gd.device),
+  }));
+
+  if (gamesWithDevices.length === 0) return null;
   return (
     <section className="mb-8">
       <h2 className="font-heading text-xl font-bold mb-4">Recently Added</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        {games.map((game) => (
+        {gamesWithDevices.map((game) => (
           <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
             platformLabel={game.platformLabel} igdbScore={game.igdbScore}
-            metacriticScore={game.metacriticScore} isFavorite={game.isFavorite} />
+            metacriticScore={game.metacriticScore} isFavorite={game.isFavorite}
+            devices={game.devices} />
         ))}
       </div>
     </section>
@@ -36,20 +53,36 @@ async function RecentlyAdded() {
 }
 
 async function TopRated() {
+  const settings = await prisma.settings.findFirst();
+  const deviceId = settings?.activeDeviceId;
+  const where: Record<string, unknown> = { igdbScore: { not: null } };
+  if (deviceId) where.devices = { some: { deviceId } };
+
   const games = await prisma.game.findMany({
-    where: { igdbScore: { not: null } },
+    where,
     orderBy: { igdbScore: "desc" },
     take: 6,
+    include: {
+      devices: {
+        include: { device: { select: { id: true, name: true, type: true } } },
+      },
+    },
   });
-  if (games.length === 0) return null;
+  const gamesWithDevices = games.map((g) => ({
+    ...g,
+    devices: g.devices.map((gd) => gd.device),
+  }));
+
+  if (gamesWithDevices.length === 0) return null;
   return (
     <section className="mb-8">
       <h2 className="font-heading text-xl font-bold mb-4">Top Rated</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-        {games.map((game) => (
+        {gamesWithDevices.map((game) => (
           <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
             platformLabel={game.platformLabel} igdbScore={game.igdbScore}
-            metacriticScore={game.metacriticScore} isFavorite={game.isFavorite} />
+            metacriticScore={game.metacriticScore} isFavorite={game.isFavorite}
+            devices={game.devices} />
         ))}
       </div>
     </section>
@@ -64,9 +97,13 @@ export default async function HomePage({ searchParams }: Props) {
   const favorites = params.favorites === "true";
   const limit = 48;
 
+  const settings = await prisma.settings.findFirst();
+  const activeDeviceId = settings?.activeDeviceId;
+
   const where: Record<string, unknown> = {};
   if (search) where.title = { contains: search };
   if (favorites) where.isFavorite = true;
+  if (activeDeviceId) where.devices = { some: { deviceId: activeDeviceId } };
 
   const validSorts = ["title", "igdbScore", "releaseDate", "createdAt"];
   const orderBy: Record<string, string> = {};
@@ -77,14 +114,25 @@ export default async function HomePage({ searchParams }: Props) {
       where,
       orderBy,
       take: limit,
+      include: {
+        devices: {
+          include: { device: { select: { id: true, name: true, type: true } } },
+        },
+      },
     }),
     prisma.game.count({ where }),
   ]);
+
+  const gamesWithDevices = games.map((g) => ({
+    ...g,
+    devices: g.devices.map((gd) => gd.device),
+  }));
 
   // Build fetch URL for infinite scroll
   const fetchParams = new URLSearchParams({ sort, order, limit: String(limit) });
   if (search) fetchParams.set("search", search);
   if (favorites) fetchParams.set("favorites", "true");
+  if (activeDeviceId) fetchParams.set("deviceId", String(activeDeviceId));
   const fetchUrl = `/api/games?${fetchParams.toString()}`;
 
   return (
@@ -114,7 +162,7 @@ export default async function HomePage({ searchParams }: Props) {
         </Suspense>
       </div>
 
-      <InfiniteGameGrid initialGames={games} total={total} fetchUrl={fetchUrl} />
+      <InfiniteGameGrid initialGames={gamesWithDevices} total={total} fetchUrl={fetchUrl} />
     </div>
   );
 }

@@ -29,6 +29,9 @@ export default async function PlatformPage({ params, searchParams }: Props) {
   const tag = sp.tag || null;
   const limit = 48;
 
+  const settings = await prisma.settings.findFirst();
+  const activeDeviceId = settings?.activeDeviceId;
+
   const validSorts = ["title", "igdbScore", "releaseDate", "createdAt"];
   const orderBy: Record<string, string> = {};
   orderBy[validSorts.includes(sort) ? sort : "title"] = order;
@@ -40,18 +43,30 @@ export default async function PlatformPage({ params, searchParams }: Props) {
       { themes: { contains: tag } },
     ];
   }
+  if (activeDeviceId) where.devices = { some: { deviceId: activeDeviceId } };
 
   const [games, total] = await Promise.all([
     prisma.game.findMany({
       where,
       orderBy,
       take: limit,
+      include: {
+        devices: {
+          include: { device: { select: { id: true, name: true, type: true } } },
+        },
+      },
     }),
     prisma.game.count({ where }),
   ]);
 
+  const gamesWithDevices = games.map((g) => ({
+    ...g,
+    devices: g.devices.map((gd) => gd.device),
+  }));
+
   const fetchParams = new URLSearchParams({ platform: id, sort, order, limit: String(limit) });
   if (tag) fetchParams.set("tag", tag);
+  if (activeDeviceId) fetchParams.set("deviceId", String(activeDeviceId));
   const fetchUrl = `/api/games?${fetchParams.toString()}`;
 
   return (
@@ -95,7 +110,7 @@ export default async function PlatformPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      <InfiniteGameGrid initialGames={games} total={total} fetchUrl={fetchUrl} />
+      <InfiniteGameGrid initialGames={gamesWithDevices} total={total} fetchUrl={fetchUrl} />
     </div>
   );
 }

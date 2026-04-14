@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
 
   const favorites = searchParams.get("favorites");
   const tag = searchParams.get("tag");
+  const deviceId = searchParams.get("deviceId");
 
   const where: Record<string, unknown> = {};
   if (platform) where.platform = platform;
@@ -25,18 +26,37 @@ export async function GET(request: NextRequest) {
       { themes: { contains: tag } },
     ];
   }
+  if (deviceId) {
+    where.devices = { some: { deviceId: parseInt(deviceId, 10) } };
+  }
 
   const orderBy: Record<string, string> = {};
   const validSorts = ["title", "igdbScore", "releaseDate", "createdAt"];
   orderBy[validSorts.includes(sort) ? sort : "title"] = order;
 
   const [games, total] = await Promise.all([
-    prisma.game.findMany({ where, orderBy, skip, take: limit }),
+    prisma.game.findMany({
+      where,
+      orderBy,
+      skip,
+      take: limit,
+      include: {
+        devices: {
+          include: { device: { select: { id: true, name: true, type: true } } },
+        },
+      },
+    }),
     prisma.game.count({ where }),
   ]);
 
+  // Flatten device associations for frontend
+  const gamesWithDevices = games.map((game) => ({
+    ...game,
+    devices: game.devices.map((gd) => gd.device),
+  }));
+
   return NextResponse.json({
-    games,
+    games: gamesWithDevices,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 }
