@@ -46,8 +46,9 @@ export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
   const [tokenInput, setTokenInput] = useState("");
-  const [devices, setDevices] = useState<Array<{ id: number; name: string; type: string; host: string; protocol: string }>>([]);
+  const [devices, setDevices] = useState<Array<{ id: number; name: string; type: string; host: string; port: number; user: string; protocol: string }>>([]);
   const [showDeviceForm, setShowDeviceForm] = useState(false);
+  const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
@@ -98,7 +99,7 @@ export default function AdminPage() {
   function loadDevices() {
     fetch("/api/devices")
       .then((r) => r.json())
-      .then((data: Array<{ id: number; name: string; type: string; host: string; protocol: string }>) => setDevices(data))
+      .then((data: Array<{ id: number; name: string; type: string; host: string; port: number; user: string; protocol: string }>) => setDevices(data))
       .catch((err) => console.error("Failed to load devices:", err));
   }
 
@@ -455,48 +456,90 @@ export default function AdminPage() {
           {devices.length > 0 && (
             <div className="space-y-2">
               {devices.map((device) => (
-                <div
-                  key={device.id}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg border border-vault-border bg-vault-bg"
-                >
-                  <div className="text-sm">
-                    <span className="text-vault-text font-medium">{device.name}</span>
-                    <span className="text-vault-muted ml-2">{device.host} ({device.protocol})</span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await fetch(`/api/devices/${device.id}`, { method: "DELETE" });
-                        loadDevices();
-                      } catch (err) {
-                        console.error("Failed to delete device:", err);
-                      }
-                    }}
-                    className="text-red-400 hover:text-red-300 text-sm transition-colors"
-                  >
-                    Delete
-                  </button>
+                <div key={device.id}>
+                  {editingDeviceId === device.id ? (
+                    <div className="border border-vault-border rounded-xl p-4 bg-vault-bg">
+                      <DeviceForm
+                        initial={{
+                          name: device.name,
+                          type: device.type,
+                          protocol: device.protocol,
+                          host: device.host,
+                          port: device.port,
+                          user: device.user,
+                          password: "",
+                        }}
+                        onSubmit={async (data) => {
+                          const body: Record<string, unknown> = { ...data };
+                          if (!data.password) delete body.password;
+                          await fetch(`/api/devices/${device.id}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body),
+                          });
+                          setEditingDeviceId(null);
+                          loadDevices();
+                        }}
+                        onCancel={() => setEditingDeviceId(null)}
+                        submitLabel="Save Changes"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-vault-border bg-vault-bg">
+                      <div className="text-sm">
+                        <span className="text-vault-text font-medium">{device.name}</span>
+                        <span className="text-vault-muted ml-2">{device.host} ({device.protocol})</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => {
+                            setEditingDeviceId(device.id);
+                            setShowDeviceForm(false);
+                          }}
+                          className="text-vault-amber hover:text-vault-amber-hover text-sm transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (confirm(`Delete device "${device.name}"?`)) {
+                              await fetch(`/api/devices/${device.id}`, { method: "DELETE" });
+                              loadDevices();
+                            }
+                          }}
+                          className="text-red-400 hover:text-red-300 text-sm transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
           {showDeviceForm ? (
-            <DeviceForm
-              onSubmit={async (data) => {
-                await fetch("/api/devices", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(data),
-                });
-                setShowDeviceForm(false);
-                loadDevices();
-              }}
-              onCancel={() => setShowDeviceForm(false)}
-              submitLabel="Add Device"
-            />
+            <div className="border border-vault-border rounded-xl p-4 bg-vault-bg">
+              <DeviceForm
+                onSubmit={async (data) => {
+                  await fetch("/api/devices", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data),
+                  });
+                  setShowDeviceForm(false);
+                  loadDevices();
+                }}
+                onCancel={() => setShowDeviceForm(false)}
+                submitLabel="Add Device"
+              />
+            </div>
           ) : (
             <button
-              onClick={() => setShowDeviceForm(true)}
+              onClick={() => {
+                setShowDeviceForm(true);
+                setEditingDeviceId(null);
+              }}
               className="px-4 py-2 text-sm font-medium rounded-lg border border-vault-border text-vault-muted hover:border-vault-muted transition-colors"
             >
               + Add Device
