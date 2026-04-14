@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { FilePanel } from "@/components/file-panel";
 import { FilePreviewModal } from "@/components/file-preview-modal";
 import { TransferBar } from "@/components/transfer-bar";
@@ -31,6 +31,7 @@ export default function FilesPage() {
   const [refreshLeft, setRefreshLeft] = useState(0);
   const [refreshRight, setRefreshRight] = useState(0);
   const [transferring, setTransferring] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     async function loadDevices() {
@@ -52,6 +53,12 @@ export default function FilesPage() {
       }
     }
     loadDevices();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
   }, []);
 
   const startTransfer = useCallback(
@@ -110,21 +117,24 @@ export default function FilesPage() {
             const statusRes = await fetch("/api/devices/transfer/status");
             if (!statusRes.ok) {
               setTransferring(false);
+              pollRef.current = null;
               return;
             }
             const status = await statusRes.json();
             if (!status.transferring) {
               setTransferring(false);
+              pollRef.current = null;
               setRefreshLeft((n) => n + 1);
               setRefreshRight((n) => n + 1);
               return;
             }
-            setTimeout(poll, 1000);
+            pollRef.current = setTimeout(poll, 1000);
           } catch {
             setTransferring(false);
+            pollRef.current = null;
           }
         };
-        setTimeout(poll, 1000);
+        pollRef.current = setTimeout(poll, 1000);
       } catch {
         setTransferring(false);
       }

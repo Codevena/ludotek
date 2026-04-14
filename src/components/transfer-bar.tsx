@@ -20,6 +20,8 @@ declare global {
 
 export function TransferBar() {
   const [data, setData] = useState<TransferProgress | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const errorCountRef = useRef(0);
 
@@ -76,8 +78,37 @@ export function TransferBar() {
     return stopPolling;
   }, [startPolling, stopPolling]);
 
+  // Auto-dismiss error after 10 seconds
+  useEffect(() => {
+    if (data && !data.transferring && data.error) {
+      const timer = setTimeout(() => setDismissed(true), 10000);
+      return () => clearTimeout(timer);
+    }
+    setDismissed(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.transferring, data?.error]);
+
+  // Auto-dismiss success after 3 seconds
+  useEffect(() => {
+    if (data && !data.transferring && !data.error && data.completedFiles > 0) {
+      setShowSuccess(true);
+      const timer = setTimeout(() => setShowSuccess(false), 3000);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.transferring, data?.error, data?.completedFiles]);
+
+  // Success message
+  if (showSuccess) {
+    return (
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-vault-surface border-t border-vault-border px-6 py-3">
+        <div className="text-sm text-green-400">Transfer complete ({data?.completedFiles} files)</div>
+      </div>
+    );
+  }
+
   // Nothing to show
-  if (!data || (!data.transferring && !data.error)) return null;
+  if (!data || (!data.transferring && !data.error) || dismissed) return null;
 
   const { transferring, currentFile, progress, completedFiles, totalFiles, mode, error } = data;
 
@@ -92,7 +123,17 @@ export function TransferBar() {
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-vault-surface border-t border-vault-border px-6 py-3 shadow-lg">
       <div className="max-w-5xl mx-auto">
         {error ? (
-          <p className="text-sm text-red-400">{error}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-red-400">{error}</p>
+            <button
+              type="button"
+              onClick={() => setDismissed(true)}
+              className="ml-4 text-vault-muted hover:text-vault-text text-sm"
+              title="Dismiss"
+            >
+              &#10005;
+            </button>
+          </div>
         ) : transferring ? (
           <>
             <div className="flex items-center justify-between text-sm mb-1.5">

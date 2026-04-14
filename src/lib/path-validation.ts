@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-export function validateRemotePath(path: string): NextResponse | null {
+export function validateRemotePath(path: string, allowRoot = false): NextResponse | null {
   if (typeof path !== "string" || !path || path.trim() === "") {
     return NextResponse.json({ error: "Path is required" }, { status: 400 });
   }
@@ -13,7 +13,7 @@ export function validateRemotePath(path: string): NextResponse | null {
       { status: 400 },
     );
   }
-  if (path === "/") {
+  if (!allowRoot && path === "/") {
     return NextResponse.json(
       { error: "Cannot operate on root path" },
       { status: 400 },

@@ -100,8 +100,7 @@ export function FilePanel({
         selectedDeviceId,
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
+  }, [selected, currentPath, selectedDeviceId, onSelectionChange]);
 
   function toggleSelect(name: string) {
     setSelected((prev) => {

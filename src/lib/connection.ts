@@ -223,6 +223,13 @@ class SshConnection implements DeviceConnection {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let totalRead = 0;
+      let resolved = false;
+
+      function finish() {
+        if (resolved) return;
+        resolved = true;
+        resolve(Buffer.concat(chunks));
+      }
 
       const stream = sftp.createReadStream(path);
 
@@ -244,9 +251,13 @@ class SshConnection implements DeviceConnection {
         }
       });
 
-      stream.on("end", () => resolve(Buffer.concat(chunks)));
-      stream.on("close", () => resolve(Buffer.concat(chunks)));
-      stream.on("error", reject);
+      stream.on("end", finish);
+      stream.on("close", finish);
+      stream.on("error", (err: Error) => {
+        if (resolved) return;
+        resolved = true;
+        reject(err);
+      });
     });
   }
 

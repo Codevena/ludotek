@@ -147,6 +147,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (!Number.isInteger(body.sourceDeviceId) || body.sourceDeviceId <= 0 ||
+      !Number.isInteger(body.targetDeviceId) || body.targetDeviceId <= 0) {
+    clearTransferProgress();
+    return NextResponse.json(
+      { error: "sourceDeviceId and targetDeviceId must be positive integers" },
+      { status: 400 },
+    );
+  }
+
   const mode: "copy" | "move" =
     body.mode === "move" ? "move" : "copy";
 
@@ -162,7 +171,7 @@ export async function POST(request: NextRequest) {
       return pathError;
     }
   }
-  const targetPathError = validateRemotePath(body.targetPath);
+  const targetPathError = validateRemotePath(body.targetPath, true);
   if (targetPathError) {
     clearTransferProgress();
     return targetPathError;
