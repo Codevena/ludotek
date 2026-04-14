@@ -56,32 +56,26 @@
 
 ## Phase 3: Erlebnis
 
-### 3.1 Epoch-Navigation (Timeline)
+### 3.1 Epoch-Navigation (Timeline) — COMPLETE (2026-04-14)
 
-**Warum jetzt:** Das ist das Feature das Game Vault visuell von allen anderen ROM-Managern unterscheidet. Es bringt das "Zeitreise"-Gefühl.
+**Status:** Implementiert und committed. Spec: `docs/superpowers/specs/2026-04-14-epoch-navigation-design.md`
 
-**Scope:**
-- **Timeline-View** (`/timeline`): Horizontaler Zeitstrahl von 1977 bis heute.
-  - Jede Gaming-Ära ist eine visuell distinkte Zone mit eigenem Farbschema:
-    - **1977–1983** "Dawn of Gaming" — Atari-braun, Woodgrain-Textur, grobe Pixel
-    - **1983–1989** "8-Bit Era" — NES-Grau/Rot, Pixel-Art-Borders
-    - **1989–1994** "16-Bit Golden Age" — SNES-Lila/Mega-Drive-Blau, lebhaftere Farben
-    - **1994–1998** "The 3D Revolution" — PS1-Grau, N64-Bunt, Low-Poly-Ästhetik
-    - **1998–2005** "The Golden Era" — Dreamcast-Orange, PS2-Blau, GBA-Lila
-    - **2005–2012** "HD Generation" — Xbox360-Grün, Wii-Weiß, clean & modern
-    - **2012–heute** "Modern Era" — Switch-Neon, PS4-Blau, flaches Design
-  - Jede Ära zeigt:
-    - Konsolen-Icons die in diese Ära fallen
-    - Anzahl der Spiele die der User aus dieser Ära besitzt
-    - Top 3 Spiele (nach Score) als Mini-Cover
-    - Click → Expanded View mit allen Spielen dieser Ära als Grid
-  - **Scroll-Interaktion**: Horizontales Scrollen (oder Drag) durch die Zeitleiste. Beim Scrollen verändert sich subtil der Hintergrund/die Farbtemperatur der gesamten Seite.
-  - **Plattform-Swimlanes** (optional toggle): Statt Ären kann man auf Plattform-Lanes umschalten — jede Konsole als horizontale Lane mit ihren Spielen chronologisch aufgereiht.
-- **Datenquelle**: `releaseDate` aus IGDB (bereits in DB). Spiele ohne Release-Date werden in "Unknown Era" gruppiert.
-- **Retro-Touches**:
-  - Ära-spezifische CSS: Scanline-Overlay für 8-Bit, Gradient-Glow für 16-Bit, Glossy-Buttons für PS2-Ära
-  - Hover über ein Spiel zeigt einen Tooltip im Stil der jeweiligen Ära
-  - Transition-Animationen beim Ära-Wechsel (Farben morphen, nicht springen)
+**Was gebaut wurde:**
+- Shared `src/lib/eras.ts` mit ERA_BUCKETS (7 Ären, Slug, Farbe, Jahresbereich)
+- `/api/games?era=` Filter (releaseDate-Range, 400 bei ungültigem Slug)
+- `/api/timeline/counts` — Leichtgewichtiger Endpoint für Ära-Counts (parallel DB-Queries)
+- `/timeline` Seite: Sticky Ära-Pills (EraBar) + Ära-Header + InfiniteGameGrid
+- Subtiler Ära-Farbgradient auf dem Hintergrund (500ms Transition)
+- AbortController für Race-Condition-Schutz bei schnellem Ära-Wechsel
+- Error-States mit Retry für beide Fetch-Pfade (Counts + Games)
+- Sidebar: Timeline-Link mit Clock-Icon nach Insights
+- Loading-Skeletons, aria-pressed für Accessibility
+- 4-Agent-Review bestanden (2x Codex, 2x Claude, 2 Runden)
+
+**Nicht gebaut (bewusst entschieden):**
+- Scanlines, Retro-Texturen, Ära-spezifische Fonts (YAGNI, ggf. späteres Enhancement)
+- Plattform-Swimlanes Toggle
+- "Unknown Era" Bucket (Spiele ohne releaseDate nur auf Home/Platform sichtbar)
 
 ---
 
@@ -150,7 +144,7 @@
 | ~~1.2~~ | ~~Duplicate Detection~~ | ~~—~~ | ~~SKIPPED~~ |
 | ~~2.1~~ | ~~Sammlung-Insights~~ | ~~1.1 (cached data)~~ | ~~DONE~~ |
 | ~~2.2~~ | ~~Smart Recommendations~~ | ~~2.1 (Insights-Daten)~~ | ~~SKIPPED~~ |
-| 3.1 | Epoch-Navigation | 2.1 (Ären-Daten, Release-Dates) | Hoch |
+| ~~3.1~~ | ~~Epoch-Navigation~~ | ~~2.1 (Ären-Daten, Release-Dates)~~ | ~~DONE~~ |
 | 3.2 | Auto-Organization | — | Mittel |
 | 4.1 | Onboarding & DX | Alle Features stehen | Mittel |
 | 4.2 | PWA (optional) | 1.1 (Offline-Cache) | Niedrig |

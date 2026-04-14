@@ -1,54 +1,58 @@
 # Next Session Plan
 
-## What was done this session (2026-04-14, Session 3)
+## What was done this session (2026-04-14, Session 4)
 
-### Phase 1.2 Duplicate Detection — SKIPPED
-- Existing `cleanFilename()` + `deduplicateGames()` already handle most duplicate cases (region variants, format variants, multi-disc)
-- Fuzzy matching rarely needed with consistent ROM sets (No-Intro, TOSEC)
-- Cross-platform info folded into Phase 2.1 Insights instead
+### Phase 2.2 Smart Recommendations — SKIPPED
+- Existing Discover page (`/discover`) already covers all planned use-cases: Genre-Exploration (Wizard), Hidden Gems (Library tab), Cross-Platform (Wishlist tab)
+- AI-powered approach via OpenRouter delivers better results than pure data-driven logic
+- Cross-platform info already shown in Insights
 
-### Phase 2.1: Sammlung-Insights — COMPLETE
-- **Design Spec**: `docs/superpowers/specs/2026-04-14-sammlung-insights-design.md`
-- **Implementation Plan**: `docs/superpowers/plans/2026-04-14-sammlung-insights.md`
-- **New API Route**:
-  - `GET /api/insights` — Server-side aggregation: genres (top 10 + Other), eras (7 buckets + Unknown), franchises/developers/publishers (top 10 each), cross-platform games, totalGames, enrichedGames
+### Phase 3.1: Epoch-Navigation (Timeline) — COMPLETE
+- **Design Spec**: `docs/superpowers/specs/2026-04-14-epoch-navigation-design.md`
+- **Implementation Plan**: `docs/superpowers/plans/2026-04-14-epoch-navigation.md`
+- **New Shared Module**:
+  - `src/lib/eras.ts` — ERA_BUCKETS with slug, shortName, color, minYear/maxYear. Used by both Insights and Timeline.
+- **New API Routes**:
+  - `GET /api/timeline/counts` — Returns `[{slug, count}]` per era (parallel DB COUNT queries)
+  - `GET /api/games?era=<slug>` — Era filter on existing games endpoint (releaseDate range, 400 on invalid slug)
 - **New Page**:
-  - `/insights` — Client component with Recharts:
-    - Genre Distribution (Donut Chart with tooltip: count + %)
-    - Era Distribution (Horizontal Bar Chart, era-specific colors: Atari-brown, NES-red, SNES-purple, PS1-grey, Dreamcast-orange, Xbox-green, Switch-rose)
-    - Top 10 Franchises / Developers / Publishers (Ranked Cards)
-    - Cross-Platform Games (compact list, conditional)
-    - Loading skeletons, error state, empty states
+  - `/timeline` — Client component with:
+    - Sticky EraBar (horizontal pills with era colors, shortName + count, aria-pressed)
+    - EraHeader (era name colored, date range, game count, platform tags)
+    - InfiniteGameGrid reuse with era filter
+    - Subtle radial background gradient in era color (500ms transition)
+    - AbortController for race condition protection
+    - Error states with retry for both counts and games fetches
+    - Loading skeletons
 - **Modified**:
-  - `src/components/layout/sidebar.tsx` — "Insights" nav link with bar-chart SVG icon
-- **No new Prisma models** — all aggregation on-the-fly from existing Game fields
-- **4-Agent Review passed** (2x Codex, 2x Claude)
+  - `src/app/api/insights/route.ts` — Imports ERA_BUCKETS from shared `eras.ts`
+  - `src/components/layout/sidebar.tsx` — Timeline link with clock icon after Insights
+- **No new Prisma models** — uses existing releaseDate field
+- **4-Agent Review passed** (2x Codex, 2x Claude, 2 rounds)
 
-### Review Fixes Applied
-- `Dawn of Gaming` era bucket minYear: 0 → 1977 (prevents pre-1977 corrupted dates from wrong classification)
-- Era tooltip: removed percentage display (spec says count only for eras)
-- Fetch error handling: `r.ok` guard + explicit error state UI
-- Reverted prisma/schema.prisma formatting noise
+### Review Fixes Applied (Round 1)
+- fetchUrl: URLSearchParams statt string interpolation (URL encoding)
+- Invalid era slug: returns 400 statt silent ignore
+- Race condition: AbortController + cleanup
+- Error state: clear stale games + retry button
+- Empty reduce guard: early return on empty counts
+- aria-pressed on era pill buttons
+- Counts endpoint: parallel prisma.count statt O(n*eras) in-memory
 
-## Next Up: Phase 2.2 — Smart Recommendations
+### Review Fixes Applied (Round 2)
+- Counts fetch error: error state + retry statt permanent skeleton
 
-**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 2.2)
+## Next Up: Phase 3.2 — Auto-Organization
+
+**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 3.2)
 
 ### Summary
-1. **Franchise-Completion**: "Du hast 8 Zelda-Spiele — dir fehlen: Zelda II, Minish Cap, Spirit Tracks" (IGDB Franchise-API + Library-Abgleich)
-2. **Genre-Exploration**: "Du liebst JRPGs — hast aber kein Tactical RPG. Probier: Fire Emblem, FFT, Disgaea" (Genre-Gap-Analyse)
-3. **Hidden Gems**: Spiele mit hohem Score die kein bekanntes Franchise sind
-4. **Cross-Platform**: "Super Mario RPG gibt's auch für SNES — du hast nur die Switch-Version"
-5. **Integration**: Home-Page "Suggested for you" + Discover-Page Tab
-
-### Key Design Decisions Still Needed
-- IGDB Franchise-API Calls: bei Enrichment oder lazy bei Seitenaufruf?
-- OpenRouter-Integration für "What to play next"
-- Wie viele Recommendations pro Kategorie?
-- Caching-Strategie für Franchise-Daten
+1. **Naming Convention Engine**: User wählt Konvention (No-Intro, TOSEC, Clean, Custom)
+2. **Rename Preview**: Vorschau aller Umbenennungen, Conflict-Highlighting
+3. **Batch-Rename via SyncQueue**: Umbenennungen in bestehende SyncQueue stagen → Review → Apply
+4. **Ordnerstruktur-Vorschläge**: Falls ROMs nicht in erwarteten Plattform-Ordnern liegen
 
 ## Remaining Roadmap
-- Phase 3.1: Epoch-Navigation (Timeline UI mit Ären-spezifischem Styling)
 - Phase 3.2: Auto-Organization (Naming Conventions, Batch Rename via SyncQueue)
 - Phase 4.1: Onboarding & DX (Setup Wizard, Docker, README, Contributor Docs)
 - Phase 4.2: PWA (optional)
@@ -75,3 +79,4 @@
 - DB: SQLite at prisma/dev.db
 - Clear `.next` cache if build gives cryptic errors: `rm -rf .next`
 - Review process: 4-agent review (2x Codex, 2x Claude) mandatory before completion
+- Note: DB has 2504 games but 0 with releaseDate — Timeline will populate after IGDB enrichment
