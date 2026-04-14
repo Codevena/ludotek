@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { fetchIgdbById } from "@/lib/igdb";
+import { fetchIgdbById, searchIgdb } from "@/lib/igdb";
 import { searchSteamGridDb } from "@/lib/steamgriddb";
 import { generateGameAiContent } from "@/lib/openrouter";
 import { cacheGameImages } from "@/lib/image-cache";
@@ -31,9 +31,11 @@ export async function POST(
   // Determine which igdbId to use: explicit from body, or stored game's igdbId when force=true
   const resolvedIgdbId = igdbId ?? (force && game.igdbId ? game.igdbId : null);
 
-  // If igdbId available, fetch full data from IGDB using shared resolver
-  if (resolvedIgdbId && settings?.igdbClientId && settings?.igdbClientSecret) {
-    const igdbData = await fetchIgdbById(resolvedIgdbId, settings.igdbClientId, settings.igdbClientSecret);
+  // Fetch IGDB data: by ID if available, otherwise search by title (same as bulk enricher)
+  if (settings?.igdbClientId && settings?.igdbClientSecret) {
+    const igdbData = resolvedIgdbId
+      ? await fetchIgdbById(resolvedIgdbId, settings.igdbClientId, settings.igdbClientSecret)
+      : await searchIgdb(game.title, game.platform, settings.igdbClientId, settings.igdbClientSecret);
 
     if (igdbData) {
       let coverUrl = igdbData.coverUrl;

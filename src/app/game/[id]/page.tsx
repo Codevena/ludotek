@@ -4,10 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { PlatformTag } from "@/components/platform-tag";
 import { ScreenshotGallery } from "@/components/screenshot-gallery";
 import { MarkdownContent } from "@/components/markdown-content";
-import { EnrichWizard } from "@/components/enrich-wizard";
+
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { FavoriteButton } from "@/components/favorite-button";
-import { RefreshMetadataButton } from "@/components/refresh-metadata-button";
+import { RefreshMetadataButton, RefreshAiFactsButton } from "@/components/refresh-metadata-button";
 import { GameFiles } from "@/components/game-files";
 import { coverUrl, screenshotUrls, artworkUrls } from "@/lib/image-url";
 
@@ -149,16 +149,10 @@ export default async function GameDetailPage({ params }: Props) {
           <>
             <div className="flex-1" />
             <div className="flex gap-1.5 flex-wrap justify-end">
-              {genres.map((g) => (
-                <Link key={g} href={`/platform/${game.platform}?tag=${encodeURIComponent(g)}`}
-                  className="text-xs bg-vault-bg px-2.5 py-0.5 rounded-full text-vault-muted hover:text-vault-text hover:bg-vault-surface transition-colors">
-                  {g}
-                </Link>
-              ))}
-              {themes.map((t) => (
-                <Link key={t} href={`/platform/${game.platform}?tag=${encodeURIComponent(t)}`}
+              {[...genres, ...themes].map((tag) => (
+                <Link key={tag} href={`/platform/${game.platform}?tag=${encodeURIComponent(tag)}`}
                   className="text-xs bg-indigo-500/10 px-2.5 py-0.5 rounded-full text-indigo-400 hover:bg-indigo-500/20 transition-colors">
-                  {t}
+                  {tag}
                 </Link>
               ))}
             </div>
@@ -183,7 +177,10 @@ export default async function GameDetailPage({ params }: Props) {
               </div>
             )}
           </div>
-          <RefreshMetadataButton gameId={game.id} />
+          <div className="flex items-center gap-2">
+            <RefreshMetadataButton gameId={game.id} gameTitle={game.title} />
+            <RefreshAiFactsButton gameId={game.id} />
+          </div>
         </div>
 
         {game.summary && (
@@ -245,7 +242,6 @@ export default async function GameDetailPage({ params }: Props) {
 
       <GameFiles gameId={game.id} files={deviceFiles} />
 
-      <EnrichWizard gameId={game.id} gameTitle={game.title} />
     </div>
   );
 }
