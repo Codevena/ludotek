@@ -107,8 +107,11 @@ export default function DevicesPage() {
     try {
       const res = await fetch(`/api/devices/${selectedDevice.id}/scan`, { method: "POST" });
       const data = await res.json();
-      if (res.ok) {
-        setScanResult({ message: data.message ?? "Scan completed successfully", isError: false });
+      if (res.ok && data.success) {
+        setScanResult({
+          message: `Found ${data.total} games (${data.new} new, ${data.updated} updated)`,
+          isError: false,
+        });
       } else {
         setScanResult({ message: data.error ?? "Scan failed", isError: true });
       }
