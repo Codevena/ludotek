@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const items = await prisma.syncQueue.findMany({
-    where: { status: { in: ["pending", "failed"] } },
+    where: { status: { in: ["pending", "in_progress", "failed"] } },
     include: {
       device: { select: { id: true, name: true } },
       game: { select: { id: true, title: true, platform: true } },
@@ -16,7 +16,12 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
-  const pendingCount = items.filter((i) => i.status === "pending").length;
+  const pendingCount = items.filter(
+    (i) =>
+      i.status === "pending" ||
+      i.status === "in_progress" ||
+      i.status === "failed",
+  ).length;
 
   return NextResponse.json({ items, count: pendingCount });
 }
@@ -74,8 +79,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const isWithinScanPaths = (p: string) =>
-    scanRoots.some((root) => p.startsWith(root + "/"));
+  const isWithinScanPaths = (p: string) => {
+    // Reject path traversal attempts
+    if (p.includes("..") || p.includes("\0")) return false;
+    return scanRoots.some((root) => p.startsWith(root + "/"));
+  };
 
   if (!isWithinScanPaths(filePath)) {
     return NextResponse.json(
@@ -91,7 +99,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // For rename: replace existing pending rename for same file+device (only latest counts)
+  // For rename: replace existing pending/failed rename for same file+device (only latest counts)
   if (type === "rename") {
     await prisma.syncQueue.deleteMany({
       where: {
@@ -99,7 +107,7 @@ export async function POST(request: NextRequest) {
         gameId: Number(gameId),
         filePath,
         type: "rename",
-        status: "pending",
+        status: { in: ["pending", "failed"] },
       },
     });
   }
@@ -140,7 +148,7 @@ export async function DELETE(request: NextRequest) {
   if (authError) return authError;
 
   const { count } = await prisma.syncQueue.deleteMany({
-    where: { status: { in: ["pending", "failed"] } },
+    where: { status: { in: ["pending", "in_progress", "failed"] } },
   });
 
   return NextResponse.json({ cleared: count });

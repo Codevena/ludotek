@@ -8,21 +8,31 @@ export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  // Atomically claim all pending items to prevent concurrent apply races
+  // Recover stale in_progress items from previous crashed apply runs
   await prisma.syncQueue.updateMany({
-    where: { status: "pending" },
-    data: { status: "in_progress" },
+    where: {
+      status: "in_progress",
+      createdAt: { lt: new Date(Date.now() - 5 * 60 * 1000) },
+    },
+    data: { status: "failed", error: "Interrupted by previous apply run" },
   });
+
+  // Atomically claim all pending and failed items to prevent concurrent apply races
+  // Failed items are included for retry as per spec
+  const claimed = await prisma.syncQueue.updateMany({
+    where: { status: { in: ["pending", "failed"] } },
+    data: { status: "in_progress", error: null },
+  });
+
+  if (claimed.count === 0) {
+    return NextResponse.json({ applied: 0, failed: 0, orphansRemoved: 0, results: [] });
+  }
 
   const pending = await prisma.syncQueue.findMany({
     where: { status: "in_progress" },
     include: { device: true, game: true },
     orderBy: { createdAt: "asc" },
   });
-
-  if (pending.length === 0) {
-    return NextResponse.json({ applied: 0, failed: 0, results: [] });
-  }
 
   // Group by device so we open one connection per device
   const byDevice = new Map<number, typeof pending>();

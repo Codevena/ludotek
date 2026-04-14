@@ -54,8 +54,15 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
     }[] = [];
 
     for (const device of devices) {
-      const scanPaths = JSON.parse(device.scanPaths) as { path: string; type: "rom" | "steam" }[];
-      const blacklist = JSON.parse(device.blacklist) as string[];
+      let scanPaths: { path: string; type: "rom" | "steam" }[];
+      let blacklist: string[];
+      try {
+        scanPaths = JSON.parse(device.scanPaths);
+        blacklist = JSON.parse(device.blacklist);
+      } catch {
+        console.error(`Device ${device.name} has invalid JSON config, skipping`);
+        continue;
+      }
       totalPaths += scanPaths.length;
       deviceConfigs.push({ device, scanPaths, blacklist });
     }
@@ -186,7 +193,7 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
           await prisma.syncQueue.deleteMany({
             where: {
               deviceId: device.id,
-              status: "pending",
+              status: { in: ["pending", "failed"] },
               gameId: { notIn: scannedGameIds },
             },
           });
