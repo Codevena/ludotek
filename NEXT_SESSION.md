@@ -1,100 +1,94 @@
 # Next Session Plan
 
-## What was done this session
+## What was done this session (2026-04-14, Session 2)
 
-### ROM Management & Sync — COMPLETE
-- SyncQueue Prisma model, Queue API (GET/POST/DELETE), Apply API with atomic claim + crash recovery
-- GameFiles component on game detail page (rename/delete staging with inline editor)
-- SyncPanel drawer in header (badge, queue grouped by device, apply all, clear all, retry failed)
-- Security: path traversal validation, race condition prevention, in_progress item protection
-- Multi-device rename guard (only updates originalFile on single-device games)
-- Orphan game cleanup in scan-runner and apply
+### Feature Roadmap Created
+- Comprehensive 4-phase roadmap at `docs/superpowers/specs/2026-04-14-feature-roadmap.md`
+- 7 features prioritized by dependency order
+- Phase 1: Fundament (Offline-First, Duplicate Detection)
+- Phase 2: Intelligenz (Insights, Recommendations)
+- Phase 3: Erlebnis (Epoch-Navigation, Auto-Organization)
+- Phase 4: Polish (Onboarding/DX, PWA)
 
-### Symlink Support — COMPLETE
-- SSH listDir uses SFTP readdir to detect symlinks via mode bits
-- FTP and Local connections also detect symlinks
-- Symlinks shown with link icon in file manager, navigable like directories
-- Scanner follows symlinked platform directories
+### Phase 1.1: Offline-First / Metadata Cache — COMPLETE
+- **Design Spec**: `docs/superpowers/specs/2026-04-14-offline-first-cache-design.md`
+- **New Prisma Models**: `CacheEntry` (image tracking), `ApiCache` (API response cache with TTL)
+- **New Game Fields**: `localCoverPath`, `localScreenshotPaths`, `localArtworkPaths`
+- **New Modules**:
+  - `src/lib/image-cache.ts` — download/store/clear images, batch cache, stats
+  - `src/lib/api-cache.ts` — generic TTL cache for API responses, lazy cleanup
+  - `src/lib/image-url.ts` — helper functions (local path → /api/cache/ URL, remote fallback per-index)
+- **New API Routes**:
+  - `GET /api/cache/[...path]` — serve cached images with immutable headers
+  - `POST /api/cache/batch` — SSE batch download with progress
+  - `GET /api/cache/stats` — cache statistics
+  - `DELETE /api/cache` — clear image cache (returns deletedFiles, freedBytes)
+  - `DELETE /api/cache/api-responses` — clear API response cache
+- **New Components**:
+  - `cache-manager.tsx` — admin UI for cache stats, batch download, clear buttons
+  - `refresh-metadata-button.tsx` — per-game metadata refresh
+  - `platform-refresh-button.tsx` — per-platform batch refresh
+- **IGDB Integration**: `searchIgdb` (24h TTL), `fetchIgdbById` (7d TTL) wrapped with API cache
+- **Auto-caching**: Images cached automatically after enrichment (all 3 enrich routes)
+- **Component Migration**: All game image rendering uses local paths with remote fallback
+- **Docker**: `data/` volume added to docker-compose.yml
+- **Security**: Path traversal prevention with `DATA_DIR + path.sep` check
 
-### Scanner Overhaul — COMPLETE
-- Extension filtering: only platform-valid extensions + .7z/.zip universally accepted
-- Multi-disc: .m3u playlists imported as game entries (disc-based platforms only)
-- -multidisc directories skipped (discs represented by .m3u in parent dir)
-- Directories filtered via type !== "dir" (not just extension check)
-- Expanded skip list: .txt, .log, .sh, .lua, .toml, .ini, .bak, .pat, .ps
-- deduplicateGames collapses disc variants by title+platform
+### Review (4-agent, all passed after fixes)
+- Path traversal bypass fixed (startsWith boundary issue)
+- RefreshMetadataButton fixed (now uses stored igdbId via force=true)
+- Per-game enrich route calls cacheGameImages
+- Batch enrich supports force param for re-enrichment
+- cacheAllImages covers screenshots/artwork gaps
+- Sparse array holes eliminated (push instead of index assignment)
+- Per-index fallback in image-url.ts
+- batchRunning flag has 30min auto-reset timeout
+- DELETE /api/cache returns stats
+- Stale cover detection (re-downloads when coverUrl changes)
 
-### Admin Improvements
-- Danger Zone: Wipe per-device or all games (with double-confirm)
-- Scan button uses ScanContext for progress feedback (ScanBar)
-- Settings API auto-creates record on first access (upsert)
-- "Enrich" renamed to "Metadata" everywhere for clarity
-- "Surprise Me" replaced with "Get Metadata" on platform pages
-- Empty library hint replaces confusing "Device filter not working" warning
+## Next Up: Phase 1.2 — Duplicate Detection
 
-### Platform Icons
-- 5 Wikimedia Commons logos downloaded (wii, nds, neogeo, ps3, xbox)
-- Download script for remaining ~30 platforms: `bash scripts/download-platform-icons.sh`
-
-### Security (4 rounds of 4-agent review)
-- Path traversal validation on all endpoints (browse, sync queue, file operations)
-- Atomic claim pattern in sync apply (prevents concurrent apply races)
-- Crash recovery for stale in_progress items (5min timeout)
-- DELETE queue/[id] rejects in_progress items
-- Filename validation (rejects /, \, ..)
-- JSON body validation with try/catch
-- Zero-game scan guard (skips cleanup on empty scan)
-
-## Priority 0: Scanner ES-DE Parity
-
-**Plan**: `docs/superpowers/plans/2026-04-14-scanner-es-de-parity.md`
+**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 1.2)
 
 ### Summary
-1. **Expand platforms.ts** from 51 to ~95 systems with complete extensions + `subdir` field
-2. **Recursive scan** within platform directories (depth 2) for ROMs in subdirectories
-3. **IGDB mappings** for new systems
+1. **Scan-Time Detection** — During device scans, mark potential duplicates:
+   - Same title, different regions (USA vs Europe)
+   - Same title, different formats (.iso vs .chd)
+   - Same title on different devices (cross-device dupes)
+   - Different versions (Rev A, Rev B, Beta, Proto)
+2. **Fuzzy Matching** — Title normalization + Levenshtein distance
+3. **Dedupe Dashboard** — New `/duplicates` page with grouped dupes, format/region info, "keep best" recommendations, one-click queue-for-deletion via SyncQueue
+4. **No auto-delete** — Always manual review
 
-### Key Details
-- Xbox, Wii U, Xbox 360, Model 2 have ROMs in `{platform}/roms/` subdirectory — new `subdir` field handles this
-- Many platforms need additional dir aliases (megadrivejp, saturnjp, sega32xjp, etc.)
-- Extensions need completion from ES-DE defaults (NES: .fds/.unf, SNES: .swc/.fig, N3DS: .3dsx/.cci/.cxi, etc.)
-- New platforms: Atari Jaguar CD, Atari ST, Atari 800, Sega Model 2, Odyssey 2, Channel F, BBC Micro, X68000, PICO-8
-- Steam Deck has 185 ROM directories, ~25 with actual content
+### Key Design Decisions Still Needed
+- Where to store duplicate group data (new model? computed on-the-fly?)
+- Threshold for fuzzy matching
+- How to handle multi-disc games (already deduplicated by scanner, but cross-device?)
+- Integration with existing scan-runner flow
 
-### Steam Deck ROM Structure (reference)
-```
-/home/deck/EmuVirtual/Emulation/roms/
-├── xbox/roms/*.iso          ← subdir: "roms"
-├── xbox360/roms/*.iso       ← subdir: "roms"  
-├── wiiu/roms/*.wux          ← subdir: "roms"
-├── model2/roms/*.zip        ← subdir: "roms"
-├── snes/*.7z                ← direct (most platforms)
-├── psx/*.chd + *.m3u        ← .m3u for multi-disc
-├── psx-multidisc/*.chd      ← skipped (handled by .m3u)
-└── 3ds -> n3ds              ← symlink (already handled)
-```
+## Remaining Roadmap
+- Phase 2.1: Sammlung-Insights (genre/era/franchise analytics)
+- Phase 2.2: Smart Recommendations (franchise completion, genre gaps, hidden gems)
+- Phase 3.1: Epoch-Navigation (timeline UI with era-specific styling)
+- Phase 3.2: Auto-Organization (naming conventions, batch rename)
+- Phase 4.1: Onboarding & DX (setup wizard, Docker, README, contributor docs)
+- Phase 4.2: PWA (optional)
 
-## Priority 1: Remaining from PLAN.md
-- Theme Toggle (Dark/Light)
-- Export/Backup (JSON/CSV)
-- Platform icons: run `bash scripts/download-platform-icons.sh` when Wikimedia rate limit clears
-
-## Known Issues
-- Pokemon "Blaue Edition" (German ROM) not recognized in IGDB
-- Plaintext device passwords in SQLite
-- ScanBar, EnrichmentBar, TransferBar can overlap
-- Buffer-based file transfer (max 2GB)
-- FTP readFile with maxBytes doesn't abort transfer
-- Concurrent transfers rejected (409) instead of queued
-- Path reconstruction uses first platform dir alias (dirs[0]) — wrong if ROM is in alternate alias
-- Badge updates via 5s polling (not immediate after staging)
+## Bestehendes Backlog
+- [ ] Scanner ES-DE Parity (Priority 0 — plan at `docs/superpowers/plans/2026-04-14-scanner-es-de-parity.md`)
+- [ ] Theme Toggle (Dark/Light)
+- [ ] Export/Backup (JSON/CSV)
+- [ ] Platform Icons vervollständigen
+- [ ] Plaintext Device-Passwörter verschlüsseln
+- [ ] Progress-Bar Overlap fixen (ScanBar/EnrichmentBar/TransferBar)
+- [ ] Buffer-basierter File-Transfer (2GB Limit)
+- [ ] Concurrent Transfer Queue statt 409
 
 ## Git State
 - Branch: `master`
 - All changes committed locally, NOT pushed to origin
-- 22 new commits this session
 - Devices: Steam Deck (192.168.178.131), Retroid Pocket (192.168.178.21)
-- DB was reset this session — devices need reconfiguring after fresh clone
+- DB was reset last session — devices need reconfiguring after fresh clone
 
 ## Dev Notes
 - Use `pnpm build` before every commit (pre-commit hooks enforce console.warn/error)
@@ -102,3 +96,4 @@
 - Prisma 6.x only (not 7.x)
 - DB: SQLite at prisma/dev.db
 - Clear `.next` cache if build gives cryptic errors: `rm -rf .next`
+- Review process: 4-agent review (2x Codex, 2x Claude) mandatory before completion

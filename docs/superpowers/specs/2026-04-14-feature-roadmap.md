@@ -6,22 +6,19 @@
 
 ## Phase 1: Fundament
 
-### 1.1 Offline-First / Metadata Cache
+### 1.1 Offline-First / Metadata Cache — COMPLETE (2026-04-14)
 
-**Warum zuerst:** Jedes spätere Feature (Insights, Recommendations, Duplicate Detection) profitiert davon, dass Daten lokal vorliegen und nicht bei jedem Request IGDB/OpenRouter angefragt werden müssen. Außerdem ist ein ROM-Tool das ohne Internet nicht funktioniert ein Anti-Pattern.
+**Status:** Implementiert und committed. Spec: `docs/superpowers/specs/2026-04-14-offline-first-cache-design.md`
 
-**Scope:**
-- **Metadata-Cache-Layer** — Beim ersten IGDB-Fetch werden alle Felder (Cover, Scores, Genres, Screenshots, Franchise, Themes, Developer, Publisher) bereits in der DB gespeichert. Das passiert schon heute. Was fehlt:
-  - **Cover-Bild-Cache**: Cover-URLs zeigen aktuell auf IGDB CDN. Bilder lokal in `public/covers/` oder `data/covers/` cachen, damit die App offline Covers anzeigt.
-  - **Screenshot-Cache**: Gleich wie Covers — `data/screenshots/{gameId}/` lokal speichern.
-  - **Artwork-Cache**: `data/artwork/{gameId}/` lokal speichern.
-  - **API-Response-Cache**: IGDB-Suchergebnisse für 24h cachen (vermeidet Rate-Limits und beschleunigt Re-Enrichment).
-  - **Graceful Degradation**: Wenn IGDB/OpenRouter nicht erreichbar sind, zeigt die App cached Daten an statt Fehler. Enrichment-Buttons werden disabled mit Hinweis "Offline — cached data shown".
-- **Cache-Invalidierung**: Manuell per Game ("Refresh Metadata") oder per Plattform ("Re-enrich all").
-- **Storage**: Lokales Filesystem (`data/` Verzeichnis) + SQLite-Spalten für lokale Pfade. Kein externer Cache-Service.
-- **Migration**: Einmal-Job der alle bestehenden Cover/Screenshot-URLs herunterlädt.
-
-**Nicht im Scope:** Service Worker / PWA (zu komplex, kommt evtl. als eigenes Feature).
+**Was gebaut wurde:**
+- `CacheEntry` + `ApiCache` Prisma-Models, Game-Felder für lokale Pfade
+- Image-Cache: Covers/Screenshots/Artwork in `data/` speichern, via `/api/cache/` ausliefern
+- API-Response-Cache: IGDB-Suchen (24h TTL), Game-Details (7d TTL)
+- Auto-Caching nach Enrichment (initial + refresh)
+- Alle Components nutzen lokale Pfade mit Remote-URL-Fallback
+- Admin-UI: Cache-Statistiken, Batch-Download, Clear-Buttons
+- Game-Detail: "Refresh Metadata"-Button
+- Platform-Seite: "Refresh All Metadata"-Button
 
 ---
 
@@ -172,7 +169,7 @@
 
 | Phase | Feature | Abhängigkeiten | Aufwand |
 |-------|---------|----------------|---------|
-| 1.1 | Offline-First / Metadata Cache | — | Mittel |
+| ~~1.1~~ | ~~Offline-First / Metadata Cache~~ | ~~—~~ | ~~DONE~~ |
 | 1.2 | Duplicate Detection | — | Mittel |
 | 2.1 | Sammlung-Insights | 1.1 (cached data) | Mittel |
 | 2.2 | Smart Recommendations | 2.1 (Insights-Daten) | Mittel-Hoch |
