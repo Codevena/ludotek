@@ -4,7 +4,9 @@ import { Suspense } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { EnrichmentProvider } from "@/context/enrichment-context";
+import { ScanProvider } from "@/context/scan-context";
 import { EnrichmentBar } from "@/components/enrichment-bar";
+import { ScanBar } from "@/components/scan-bar";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -33,16 +35,19 @@ export default function RootLayout({
         className={`${spaceGrotesk.variable} ${inter.variable} font-body bg-vault-bg text-vault-text min-h-screen flex`}
       >
         <EnrichmentProvider>
-          <Suspense>
-            <Sidebar />
-          </Suspense>
-          <div className="flex-1 flex flex-col min-h-screen min-w-0">
+          <ScanProvider>
             <Suspense>
-              <Header />
+              <Sidebar />
             </Suspense>
-            <main className="flex-1 p-6 pb-20">{children}</main>
-          </div>
-          <EnrichmentBar />
+            <div className="flex-1 flex flex-col min-h-screen min-w-0">
+              <Suspense>
+                <Header />
+              </Suspense>
+              <main className="flex-1 p-6 pb-20">{children}</main>
+            </div>
+            <EnrichmentBar />
+            <ScanBar />
+          </ScanProvider>
         </EnrichmentProvider>
       </body>
     </html>
