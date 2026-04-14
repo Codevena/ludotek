@@ -1,77 +1,56 @@
 # Next Session Plan
 
-## What was done this session (2026-04-14, Session 2)
+## What was done this session (2026-04-14, Session 3)
 
-### Feature Roadmap Created
-- Comprehensive 4-phase roadmap at `docs/superpowers/specs/2026-04-14-feature-roadmap.md`
-- 7 features prioritized by dependency order
-- Phase 1: Fundament (Offline-First, Duplicate Detection)
-- Phase 2: Intelligenz (Insights, Recommendations)
-- Phase 3: Erlebnis (Epoch-Navigation, Auto-Organization)
-- Phase 4: Polish (Onboarding/DX, PWA)
+### Phase 1.2 Duplicate Detection — SKIPPED
+- Existing `cleanFilename()` + `deduplicateGames()` already handle most duplicate cases (region variants, format variants, multi-disc)
+- Fuzzy matching rarely needed with consistent ROM sets (No-Intro, TOSEC)
+- Cross-platform info folded into Phase 2.1 Insights instead
 
-### Phase 1.1: Offline-First / Metadata Cache — COMPLETE
-- **Design Spec**: `docs/superpowers/specs/2026-04-14-offline-first-cache-design.md`
-- **New Prisma Models**: `CacheEntry` (image tracking), `ApiCache` (API response cache with TTL)
-- **New Game Fields**: `localCoverPath`, `localScreenshotPaths`, `localArtworkPaths`
-- **New Modules**:
-  - `src/lib/image-cache.ts` — download/store/clear images, batch cache, stats
-  - `src/lib/api-cache.ts` — generic TTL cache for API responses, lazy cleanup
-  - `src/lib/image-url.ts` — helper functions (local path → /api/cache/ URL, remote fallback per-index)
-- **New API Routes**:
-  - `GET /api/cache/[...path]` — serve cached images with immutable headers
-  - `POST /api/cache/batch` — SSE batch download with progress
-  - `GET /api/cache/stats` — cache statistics
-  - `DELETE /api/cache` — clear image cache (returns deletedFiles, freedBytes)
-  - `DELETE /api/cache/api-responses` — clear API response cache
-- **New Components**:
-  - `cache-manager.tsx` — admin UI for cache stats, batch download, clear buttons
-  - `refresh-metadata-button.tsx` — per-game metadata refresh
-  - `platform-refresh-button.tsx` — per-platform batch refresh
-- **IGDB Integration**: `searchIgdb` (24h TTL), `fetchIgdbById` (7d TTL) wrapped with API cache
-- **Auto-caching**: Images cached automatically after enrichment (all 3 enrich routes)
-- **Component Migration**: All game image rendering uses local paths with remote fallback
-- **Docker**: `data/` volume added to docker-compose.yml
-- **Security**: Path traversal prevention with `DATA_DIR + path.sep` check
+### Phase 2.1: Sammlung-Insights — COMPLETE
+- **Design Spec**: `docs/superpowers/specs/2026-04-14-sammlung-insights-design.md`
+- **Implementation Plan**: `docs/superpowers/plans/2026-04-14-sammlung-insights.md`
+- **New API Route**:
+  - `GET /api/insights` — Server-side aggregation: genres (top 10 + Other), eras (7 buckets + Unknown), franchises/developers/publishers (top 10 each), cross-platform games, totalGames, enrichedGames
+- **New Page**:
+  - `/insights` — Client component with Recharts:
+    - Genre Distribution (Donut Chart with tooltip: count + %)
+    - Era Distribution (Horizontal Bar Chart, era-specific colors: Atari-brown, NES-red, SNES-purple, PS1-grey, Dreamcast-orange, Xbox-green, Switch-rose)
+    - Top 10 Franchises / Developers / Publishers (Ranked Cards)
+    - Cross-Platform Games (compact list, conditional)
+    - Loading skeletons, error state, empty states
+- **Modified**:
+  - `src/components/layout/sidebar.tsx` — "Insights" nav link with bar-chart SVG icon
+- **No new Prisma models** — all aggregation on-the-fly from existing Game fields
+- **4-Agent Review passed** (2x Codex, 2x Claude)
 
-### Review (4-agent, all passed after fixes)
-- Path traversal bypass fixed (startsWith boundary issue)
-- RefreshMetadataButton fixed (now uses stored igdbId via force=true)
-- Per-game enrich route calls cacheGameImages
-- Batch enrich supports force param for re-enrichment
-- cacheAllImages covers screenshots/artwork gaps
-- Sparse array holes eliminated (push instead of index assignment)
-- Per-index fallback in image-url.ts
-- batchRunning flag has 30min auto-reset timeout
-- DELETE /api/cache returns stats
-- Stale cover detection (re-downloads when coverUrl changes)
+### Review Fixes Applied
+- `Dawn of Gaming` era bucket minYear: 0 → 1977 (prevents pre-1977 corrupted dates from wrong classification)
+- Era tooltip: removed percentage display (spec says count only for eras)
+- Fetch error handling: `r.ok` guard + explicit error state UI
+- Reverted prisma/schema.prisma formatting noise
 
-## Next Up: Phase 1.2 — Duplicate Detection
+## Next Up: Phase 2.2 — Smart Recommendations
 
-**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 1.2)
+**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 2.2)
 
 ### Summary
-1. **Scan-Time Detection** — During device scans, mark potential duplicates:
-   - Same title, different regions (USA vs Europe)
-   - Same title, different formats (.iso vs .chd)
-   - Same title on different devices (cross-device dupes)
-   - Different versions (Rev A, Rev B, Beta, Proto)
-2. **Fuzzy Matching** — Title normalization + Levenshtein distance
-3. **Dedupe Dashboard** — New `/duplicates` page with grouped dupes, format/region info, "keep best" recommendations, one-click queue-for-deletion via SyncQueue
-4. **No auto-delete** — Always manual review
+1. **Franchise-Completion**: "Du hast 8 Zelda-Spiele — dir fehlen: Zelda II, Minish Cap, Spirit Tracks" (IGDB Franchise-API + Library-Abgleich)
+2. **Genre-Exploration**: "Du liebst JRPGs — hast aber kein Tactical RPG. Probier: Fire Emblem, FFT, Disgaea" (Genre-Gap-Analyse)
+3. **Hidden Gems**: Spiele mit hohem Score die kein bekanntes Franchise sind
+4. **Cross-Platform**: "Super Mario RPG gibt's auch für SNES — du hast nur die Switch-Version"
+5. **Integration**: Home-Page "Suggested for you" + Discover-Page Tab
 
 ### Key Design Decisions Still Needed
-- Where to store duplicate group data (new model? computed on-the-fly?)
-- Threshold for fuzzy matching
-- How to handle multi-disc games (already deduplicated by scanner, but cross-device?)
-- Integration with existing scan-runner flow
+- IGDB Franchise-API Calls: bei Enrichment oder lazy bei Seitenaufruf?
+- OpenRouter-Integration für "What to play next"
+- Wie viele Recommendations pro Kategorie?
+- Caching-Strategie für Franchise-Daten
 
 ## Remaining Roadmap
-- Phase 2.1: Sammlung-Insights (genre/era/franchise analytics)
-- Phase 2.2: Smart Recommendations (franchise completion, genre gaps, hidden gems)
-- Phase 3.1: Epoch-Navigation (timeline UI with era-specific styling)
-- Phase 3.2: Auto-Organization (naming conventions, batch rename)
-- Phase 4.1: Onboarding & DX (setup wizard, Docker, README, contributor docs)
+- Phase 3.1: Epoch-Navigation (Timeline UI mit Ären-spezifischem Styling)
+- Phase 3.2: Auto-Organization (Naming Conventions, Batch Rename via SyncQueue)
+- Phase 4.1: Onboarding & DX (Setup Wizard, Docker, README, Contributor Docs)
 - Phase 4.2: PWA (optional)
 
 ## Bestehendes Backlog
@@ -88,7 +67,6 @@
 - Branch: `master`
 - All changes committed locally, NOT pushed to origin
 - Devices: Steam Deck (192.168.178.131), Retroid Pocket (192.168.178.21)
-- DB was reset last session — devices need reconfiguring after fresh clone
 
 ## Dev Notes
 - Use `pnpm build` before every commit (pre-commit hooks enforce console.warn/error)

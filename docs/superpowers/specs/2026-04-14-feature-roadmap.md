@@ -30,23 +30,21 @@
 
 ## Phase 2: Intelligenz
 
-### 2.1 Sammlung-Insights
+### 2.1 Sammlung-Insights — COMPLETE (2026-04-14)
 
-**Warum jetzt:** Bildet die Datenbasis für Recommendations und macht die Sammlung für den Nutzer greifbar.
+**Status:** Implementiert und committed. Spec: `docs/superpowers/specs/2026-04-14-sammlung-insights-design.md`
 
-**Scope:**
-- **Collection DNA**: Analyse der gesamten Sammlung:
-  - Genre-Verteilung (Pie/Donut Chart): "52% RPGs, 20% Platformer, 15% Action..."
-  - Ären-Verteilung (Bar Chart): "45 Spiele aus den 90ern, 30 aus den 2000ern..."
-  - Franchise-Tiefe: "Du hast 8/12 Zelda-Spiele, 5/15 Final Fantasy..."
-  - Developer/Publisher-Affinität: "Top 5: Nintendo (42), Capcom (18), Square (15)..."
-  - Plattform-Completion: "SNES: 85 Spiele (Top 3% der Sammler)"
-- **Insight-Karten**: Natürlichsprachliche Zusammenfassungen auf der Home-Page:
-  - "Deine Sammlung hat einen starken Fokus auf JRPGs der PS1/SNES-Ära"
-  - "Du hast 3 Zelda-Spiele auf der Wishlist — dir fehlen noch Majora's Mask und Wind Waker"
-  - "Dein am wenigsten erforschtes Genre ist Racing — nur 2 Spiele"
-- **Data Source**: Rein aus bestehenden DB-Feldern (genres, themes, releaseDate, franchise, developer, publisher). Kein API-Call nötig.
-- **UI**: Erweiterung der `/` StatsDashboard Sektion + neue `/insights` Seite für Deep-Dive.
+**Was gebaut wurde:**
+- `GET /api/insights` — Server-Side-Aggregation aus bestehenden Game-Feldern (genres, releaseDate, franchise, developer, publisher)
+- `/insights` Seite mit Recharts:
+  - Genre-Verteilung (Donut Chart, Top 10 + "Other", Tooltip mit Count + %)
+  - Ären-Verteilung (Horizontal Bar Chart, 7 Ära-Buckets + Unknown, era-spezifische Farben)
+  - Top 10 Franchises, Developers, Publishers (Ranked Cards)
+  - Cross-Platform Games (kompakte Liste)
+- Loading-Skeletons, Error-State, Empty-States (keine Games / keine enriched Games)
+- Sidebar-Navigation: "Insights" Link mit Bar-Chart-Icon
+- Kein neues Prisma-Model, keine API-Calls, on-the-fly Aggregation
+- 4-Agent-Review bestanden
 
 ---
 
@@ -158,7 +156,7 @@
 |-------|---------|----------------|---------|
 | ~~1.1~~ | ~~Offline-First / Metadata Cache~~ | ~~—~~ | ~~DONE~~ |
 | ~~1.2~~ | ~~Duplicate Detection~~ | ~~—~~ | ~~SKIPPED~~ |
-| 2.1 | Sammlung-Insights | 1.1 (cached data) | Mittel |
+| ~~2.1~~ | ~~Sammlung-Insights~~ | ~~1.1 (cached data)~~ | ~~DONE~~ |
 | 2.2 | Smart Recommendations | 2.1 (Insights-Daten) | Mittel-Hoch |
 | 3.1 | Epoch-Navigation | 2.1 (Ären-Daten, Release-Dates) | Hoch |
 | 3.2 | Auto-Organization | — | Mittel |
