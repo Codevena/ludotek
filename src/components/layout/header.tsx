@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { SearchBar } from "@/components/search-bar";
 
@@ -10,6 +11,7 @@ interface DeviceOption {
 }
 
 export function Header() {
+  const router = useRouter();
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [activeDeviceId, setActiveDeviceId] = useState<number | null>(null);
 
@@ -45,6 +47,7 @@ export function Header() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ activeDeviceId: value }),
       });
+      router.refresh();
     } catch (err) {
       console.error("Failed to update active device:", err);
     }
