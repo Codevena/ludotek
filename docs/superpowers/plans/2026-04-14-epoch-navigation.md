@@ -18,7 +18,7 @@
 - Create: `src/lib/eras.ts`
 - Modify: `src/app/api/insights/route.ts` (lines 7–15 — replace local ERA_BUCKETS with import)
 
-- [ ] **Step 1: Create `src/lib/eras.ts`**
+- [x] **Step 1: Create `src/lib/eras.ts`**
 
 ```typescript
 export const ERA_BUCKETS = [
@@ -39,7 +39,7 @@ export function findEraBySlug(slug: string): EraBucket | undefined {
 }
 ```
 
-- [ ] **Step 2: Update insights route to import from shared module**
+- [x] **Step 2: Update insights route to import from shared module**
 
 In `src/app/api/insights/route.ts`, replace the local `ERA_BUCKETS` const (lines 7–15) with:
 
@@ -49,12 +49,12 @@ import { ERA_BUCKETS } from "@/lib/eras";
 
 Remove the old local `const ERA_BUCKETS = [ ... ] as const;` block entirely.
 
-- [ ] **Step 3: Verify build passes**
+- [x] **Step 3: Verify build passes**
 
 Run: `pnpm build`
 Expected: Build succeeds with no TypeScript errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/lib/eras.ts src/app/api/insights/route.ts
@@ -68,7 +68,7 @@ git commit -m "refactor: extract ERA_BUCKETS into shared src/lib/eras.ts"
 **Files:**
 - Modify: `src/app/api/games/route.ts` (add import + era filter logic after line 18)
 
-- [ ] **Step 1: Add era filter to games route**
+- [x] **Step 1: Add era filter to games route**
 
 In `src/app/api/games/route.ts`, add the import at the top:
 
@@ -97,12 +97,12 @@ After the `deviceId` filter block (after line 35), add the era filter:
   }
 ```
 
-- [ ] **Step 2: Verify build passes**
+- [x] **Step 2: Verify build passes**
 
 Run: `pnpm build`
 Expected: Build succeeds.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/app/api/games/route.ts
@@ -116,7 +116,7 @@ git commit -m "feat(api): add era query parameter to /api/games"
 **Files:**
 - Create: `src/app/api/timeline/counts/route.ts`
 
-- [ ] **Step 1: Create the counts endpoint**
+- [x] **Step 1: Create the counts endpoint**
 
 ```typescript
 import { NextResponse } from "next/server";
@@ -148,12 +148,12 @@ export async function GET() {
 }
 ```
 
-- [ ] **Step 2: Verify build passes**
+- [x] **Step 2: Verify build passes**
 
 Run: `pnpm build`
 Expected: Build succeeds.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/app/api/timeline/counts/route.ts
@@ -167,7 +167,7 @@ git commit -m "feat(api): add /api/timeline/counts endpoint"
 **Files:**
 - Create: `src/components/timeline/era-bar.tsx`
 
-- [ ] **Step 1: Create the EraBar component**
+- [x] **Step 1: Create the EraBar component**
 
 ```typescript
 "use client";
@@ -215,12 +215,12 @@ export function EraBar({ eras, activeEra, onEraChange }: EraBarProps) {
 }
 ```
 
-- [ ] **Step 2: Verify build passes**
+- [x] **Step 2: Verify build passes**
 
 Run: `pnpm build`
 Expected: Build succeeds (component not yet used, but must compile).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/timeline/era-bar.tsx
@@ -234,7 +234,7 @@ git commit -m "feat(timeline): add EraBar sticky pill component"
 **Files:**
 - Create: `src/components/timeline/era-header.tsx`
 
-- [ ] **Step 1: Create the EraHeader component**
+- [x] **Step 1: Create the EraHeader component**
 
 ```typescript
 "use client";
@@ -283,12 +283,12 @@ export function EraHeader({ era, gameCount, platforms }: EraHeaderProps) {
 }
 ```
 
-- [ ] **Step 2: Verify build passes**
+- [x] **Step 2: Verify build passes**
 
 Run: `pnpm build`
 Expected: Build succeeds.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/timeline/era-header.tsx
@@ -302,7 +302,7 @@ git commit -m "feat(timeline): add EraHeader component"
 **Files:**
 - Create: `src/app/timeline/page.tsx`
 
-- [ ] **Step 1: Create the timeline page**
+- [x] **Step 1: Create the timeline page**
 
 ```typescript
 "use client";
@@ -502,12 +502,12 @@ export default function TimelinePage() {
 }
 ```
 
-- [ ] **Step 2: Verify build passes**
+- [x] **Step 2: Verify build passes**
 
 Run: `pnpm build`
 Expected: Build succeeds.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/app/timeline/page.tsx
@@ -521,7 +521,7 @@ git commit -m "feat(timeline): add /timeline page with era filtering"
 **Files:**
 - Modify: `src/components/layout/sidebar.tsx` (add link after Insights, ~line 132)
 
-- [ ] **Step 1: Add Timeline link after Insights link**
+- [x] **Step 1: Add Timeline link after Insights link**
 
 After the Insights `</Link>` (after line 132) and before the `{platforms.map(` (line 134), add:
 
@@ -551,12 +551,12 @@ After the Insights `</Link>` (after line 132) and before the `{platforms.map(` (
           </Link>
 ```
 
-- [ ] **Step 2: Verify build passes**
+- [x] **Step 2: Verify build passes**
 
 Run: `pnpm build`
 Expected: Build succeeds.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/components/layout/sidebar.tsx
@@ -570,12 +570,12 @@ git commit -m "feat(sidebar): add Timeline navigation link"
 **Files:**
 - No new files. Manual verification.
 
-- [ ] **Step 1: Run full build**
+- [x] **Step 1: Run full build**
 
 Run: `pnpm build`
 Expected: Build succeeds with zero errors.
 
-- [ ] **Step 2: Start dev server and verify**
+- [x] **Step 2: Start dev server and verify**
 
 Run: `pnpm dev`
 
@@ -591,7 +591,7 @@ Verify in browser:
 9. Platform tags in header show platforms from the selected era
 10. Existing pages (Home, Insights, Discover) still work correctly
 
-- [ ] **Step 3: Commit any fixes**
+- [x] **Step 3: Commit any fixes**
 
 If any issues found during verification, fix and commit:
 
