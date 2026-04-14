@@ -31,20 +31,29 @@ export async function POST(request: NextRequest) {
 
   // Re-fetch games after title cleanup for deduplication
   const updatedGames = await prisma.game.findMany({
-    select: { id: true, title: true, platform: true },
+    select: { id: true, title: true, platform: true, originalFile: true },
     orderBy: { id: "asc" },
   });
 
-  // Find and remove title+platform duplicates (keep lowest ID)
-  const seen = new Map<string, number>();
+  // Find and remove title+platform duplicates
+  // Prefer .m3u entries (canonical multi-disc representation) over per-disc entries
+  const seen = new Map<string, { id: number; isM3u: boolean }>();
   const dupeIds: number[] = [];
 
   for (const game of updatedGames) {
     const key = `${game.title}|${game.platform}`;
-    if (seen.has(key)) {
-      dupeIds.push(game.id);
+    const isM3u = game.originalFile.endsWith(".m3u");
+    const existing = seen.get(key);
+    if (existing) {
+      if (isM3u && !existing.isM3u) {
+        // New entry is .m3u, old is not — replace, mark old as dupe
+        dupeIds.push(existing.id);
+        seen.set(key, { id: game.id, isM3u });
+      } else {
+        dupeIds.push(game.id);
+      }
     } else {
-      seen.set(key, game.id);
+      seen.set(key, { id: game.id, isM3u });
     }
   }
 

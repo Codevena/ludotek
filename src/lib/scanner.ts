@@ -11,7 +11,7 @@ const ARCHIVE_EXTENSIONS = new Set([".7z", ".zip"]);
 const PLAYLIST_EXTENSION = ".m3u";
 const DISC_PLATFORMS = new Set([
   "psx", "ps2", "ps3", "saturn", "segacd", "dreamcast", "gc", "wii",
-  "3do", "pcengine", "pcfx", "neogeocd", "x68000",
+  "3do", "pcengine", "pcfx", "neogeocd", "jaguarcd", "x68000",
 ]);
 
 export function matchesBlacklist(name: string, blacklist: string[]): boolean {

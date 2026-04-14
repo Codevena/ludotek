@@ -657,7 +657,7 @@ export default function AdminPage() {
               </button>
               <button onClick={runCleanup} disabled={scanning || enrichmentRunning || cleaning}
                 className={`${btnClass} bg-red-600/80 text-white hover:bg-red-500`}>
-                {cleaning ? "Cleaning..." : "Cleanup Duplicates & .m3u"}
+                {cleaning ? "Cleaning..." : "Cleanup Duplicates"}
               </button>
             </div>
           </>
