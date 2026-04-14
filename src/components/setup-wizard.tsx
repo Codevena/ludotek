@@ -315,7 +315,7 @@ function StepPaths({
           <p className="text-sm font-medium text-vault-text">Added paths:</p>
           {scanPaths.map((p, i) => (
             <div
-              key={p.path}
+              key={`${p.path}-${p.type}`}
               className="flex items-center justify-between bg-vault-bg rounded-lg border border-vault-border/50 px-3 py-2"
             >
               <div className="flex items-center gap-2 min-w-0">
