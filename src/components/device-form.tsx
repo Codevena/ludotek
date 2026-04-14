@@ -22,12 +22,14 @@ interface DeviceFormProps {
 const TYPE_DEFAULTS: Record<string, { protocol: string; port: number; user: string }> = {
   steamdeck: { protocol: "ssh", port: 22, user: "deck" },
   android: { protocol: "ftp", port: 21, user: "" },
+  local: { protocol: "local", port: 0, user: "" },
   custom: { protocol: "ssh", port: 22, user: "" },
 };
 
 const PROTOCOL_PORT: Record<string, number> = {
   ssh: 22,
   ftp: 21,
+  local: 0,
 };
 
 const inputClass =
@@ -99,7 +101,15 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
     e.preventDefault();
     setSubmitting(true);
     try {
-      await onSubmit({ name, type, protocol, host, port, user, password });
+      await onSubmit({
+        name,
+        type,
+        protocol,
+        host: protocol === "local" ? "localhost" : host,
+        port: protocol === "local" ? 0 : port,
+        user: protocol === "local" ? "" : user,
+        password: protocol === "local" ? "" : password,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -127,6 +137,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
           {[
             { value: "steamdeck", label: "Steam Deck" },
             { value: "android", label: "Android" },
+            { value: "local", label: "Local PC" },
             { value: "custom", label: "Custom" },
           ].map((opt) => (
             <button
@@ -148,6 +159,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
           {[
             { value: "ssh", label: "SSH" },
             { value: "ftp", label: "FTP" },
+            { value: "local", label: "Local" },
           ].map((opt) => (
             <button
               key={opt.value}
@@ -161,74 +173,84 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
         </div>
       </div>
 
-      {/* Host + Port */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="col-span-2">
-          <label className="block text-sm text-vault-muted mb-1">Host</label>
-          <input
-            type="text"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
-            placeholder="192.168.1.100"
-            className={inputClass}
-            required
-          />
+      {protocol === "local" && (
+        <div className="rounded-lg bg-vault-bg border border-vault-border/50 px-4 py-3 text-sm text-vault-muted">
+          Local mode browses files directly on this server. No connection settings needed.
         </div>
-        <div>
-          <label className="block text-sm text-vault-muted mb-1">Port</label>
-          <input
-            type="number"
-            value={port}
-            onChange={(e) => setPort(Number(e.target.value))}
-            className={inputClass}
-            required
-            min={1}
-            max={65535}
-          />
-        </div>
-      </div>
+      )}
 
-      {/* User + Password */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm text-vault-muted mb-1">User</label>
-          <input
-            type="text"
-            value={user}
-            onChange={(e) => setUser(e.target.value)}
-            placeholder="username"
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-vault-muted mb-1">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className={inputClass}
-          />
-        </div>
-      </div>
+      {protocol !== "local" && (
+        <>
+          {/* Host + Port */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="block text-sm text-vault-muted mb-1">Host</label>
+              <input
+                type="text"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder="192.168.1.100"
+                className={inputClass}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-vault-muted mb-1">Port</label>
+              <input
+                type="number"
+                value={port}
+                onChange={(e) => setPort(Number(e.target.value))}
+                className={inputClass}
+                required
+                min={1}
+                max={65535}
+              />
+            </div>
+          </div>
 
-      {/* Test Connection */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleTestConnection}
-          disabled={testStatus === "testing" || !host}
-          className="px-4 py-2 text-sm rounded-lg border border-vault-border text-vault-muted hover:border-vault-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {testStatus === "testing" ? "Testing..." : "Test Connection"}
-        </button>
-        {testStatus === "success" && (
-          <span className="text-sm text-green-400">{testMessage}</span>
-        )}
-        {testStatus === "error" && (
-          <span className="text-sm text-red-400">{testMessage}</span>
-        )}
-      </div>
+          {/* User + Password */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-vault-muted mb-1">User</label>
+              <input
+                type="text"
+                value={user}
+                onChange={(e) => setUser(e.target.value)}
+                placeholder="username"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-vault-muted mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* Test Connection */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={testStatus === "testing" || !host}
+              className="px-4 py-2 text-sm rounded-lg border border-vault-border text-vault-muted hover:border-vault-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {testStatus === "testing" ? "Testing..." : "Test Connection"}
+            </button>
+            {testStatus === "success" && (
+              <span className="text-sm text-green-400">{testMessage}</span>
+            )}
+            {testStatus === "error" && (
+              <span className="text-sm text-red-400">{testMessage}</span>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Submit + Cancel */}
       <div className="flex gap-3 pt-2">

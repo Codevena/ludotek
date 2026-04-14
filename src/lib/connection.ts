@@ -49,7 +49,7 @@ export interface DeviceConnection {
 }
 
 export interface ConnectionConfig {
-  protocol: "ssh" | "ftp";
+  protocol: "ssh" | "ftp" | "local";
   host: string;
   port: number;
   user: string;
@@ -421,6 +421,102 @@ class FtpConnection implements DeviceConnection {
 }
 
 // ---------------------------------------------------------------------------
+// Local Connection (filesystem on the server)
+// ---------------------------------------------------------------------------
+
+class LocalConnection implements DeviceConnection {
+  async listDir(path: string): Promise<DirEntry[]> {
+    const fs = await import("fs/promises");
+    const items = await fs.readdir(path, { withFileTypes: true });
+    const entries: DirEntry[] = items
+      .filter((item) => item.name !== "." && item.name !== "..")
+      .slice(0, MAX_ENTRIES)
+      .map((item) => ({
+        name: item.name,
+        type: item.isDirectory() ? "dir" as const : "file" as const,
+      }));
+    return sortEntries(entries);
+  }
+
+  async listDirDetailed(path: string): Promise<DetailedDirEntry[]> {
+    const fs = await import("fs/promises");
+    const nodePath = await import("path");
+    const items = await fs.readdir(path, { withFileTypes: true });
+    const entries: DetailedDirEntry[] = [];
+
+    for (const item of items.slice(0, MAX_ENTRIES)) {
+      if (item.name === "." || item.name === "..") continue;
+      let size = 0;
+      let modifiedAt: string | undefined;
+      try {
+        const stats = await fs.stat(nodePath.join(path, item.name));
+        size = stats.isDirectory() ? 0 : stats.size;
+        modifiedAt = stats.mtime.toISOString();
+      } catch {
+        // stat can fail for permission-denied items
+      }
+      entries.push({
+        name: item.name,
+        type: item.isDirectory() ? "dir" : "file",
+        size,
+        modifiedAt,
+      });
+    }
+
+    return sortEntries(entries as unknown as DirEntry[]) as unknown as DetailedDirEntry[];
+  }
+
+  async mkdir(path: string): Promise<void> {
+    const fs = await import("fs/promises");
+    await fs.mkdir(path, { recursive: false });
+  }
+
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    const fs = await import("fs/promises");
+    await fs.rename(oldPath, newPath);
+  }
+
+  async remove(path: string): Promise<void> {
+    const fs = await import("fs/promises");
+    await fs.rm(path, { recursive: true, force: true });
+  }
+
+  async readFile(path: string, maxBytes?: number): Promise<Buffer> {
+    const fs = await import("fs/promises");
+    if (maxBytes !== undefined) {
+      const fh = await fs.open(path, "r");
+      try {
+        const buf = Buffer.alloc(maxBytes);
+        const { bytesRead } = await fh.read(buf, 0, maxBytes, 0);
+        return buf.subarray(0, bytesRead);
+      } finally {
+        await fh.close();
+      }
+    }
+    return fs.readFile(path);
+  }
+
+  async writeFile(remotePath: string, data: Buffer): Promise<void> {
+    const fs = await import("fs/promises");
+    await fs.writeFile(remotePath, data);
+  }
+
+  async stat(path: string): Promise<FileStat> {
+    const fs = await import("fs/promises");
+    const stats = await fs.stat(path);
+    return {
+      size: stats.size,
+      modifiedAt: stats.mtime.toISOString(),
+      isDirectory: stats.isDirectory(),
+    };
+  }
+
+  disconnect(): void {
+    // No-op for local connections
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -477,6 +573,9 @@ export async function createConnection(
   }
   if (config.protocol === "ftp") {
     return connectFtp(config);
+  }
+  if (config.protocol === "local") {
+    return new LocalConnection();
   }
   throw new Error(`Unsupported protocol: ${String(config.protocol)}`);
 }

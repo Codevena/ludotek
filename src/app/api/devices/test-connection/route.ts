@@ -11,6 +11,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { protocol, host, port, user, password } = body;
 
+    if (protocol === "local") {
+      // Local connections always work — just verify filesystem access
+      const fs = await import("fs/promises");
+      await fs.access("/");
+      return NextResponse.json({ ok: true });
+    }
+
     if (!host || !user) {
       return NextResponse.json(
         { error: "host and user are required" },
