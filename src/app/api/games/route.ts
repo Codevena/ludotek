@@ -37,13 +37,14 @@ export async function GET(request: NextRequest) {
   }
   if (era) {
     const bucket = findEraBySlug(era);
-    if (bucket) {
-      where.releaseDate = {
-        gte: new Date(bucket.minYear, 0, 1),
-        lt: new Date(bucket.maxYear === 9999 ? 2100 : bucket.maxYear + 1, 0, 1),
-        not: null,
-      };
+    if (!bucket) {
+      return NextResponse.json({ error: "Invalid era" }, { status: 400 });
     }
+    where.releaseDate = {
+      gte: new Date(bucket.minYear, 0, 1),
+      lt: new Date(bucket.maxYear === 9999 ? 2100 : bucket.maxYear + 1, 0, 1),
+      not: null,
+    };
   }
 
   const orderBy: Record<string, string> = {};

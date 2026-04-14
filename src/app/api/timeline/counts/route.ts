@@ -6,18 +6,21 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const games = await prisma.game.findMany({
-      where: { releaseDate: { not: null } },
-      select: { releaseDate: true },
-    });
-
-    const counts = ERA_BUCKETS.map((bucket) => {
-      const count = games.filter((g) => {
-        const year = new Date(g.releaseDate!).getFullYear();
-        return year >= bucket.minYear && year <= bucket.maxYear;
-      }).length;
-      return { slug: bucket.slug, count };
-    });
+    // Count games per era with individual DB queries (avoids loading all games into memory)
+    const counts = await Promise.all(
+      ERA_BUCKETS.map(async (bucket) => {
+        const count = await prisma.game.count({
+          where: {
+            releaseDate: {
+              gte: new Date(bucket.minYear, 0, 1),
+              lt: new Date(bucket.maxYear === 9999 ? 2100 : bucket.maxYear + 1, 0, 1),
+              not: null,
+            },
+          },
+        });
+        return { slug: bucket.slug, count };
+      })
+    );
 
     return NextResponse.json(counts);
   } catch (error) {

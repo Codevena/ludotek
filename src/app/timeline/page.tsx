@@ -39,6 +39,8 @@ function TimelineContent() {
   const [total, setTotal] = useState(0);
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Fetch era counts on mount
   useEffect(() => {
@@ -48,6 +50,7 @@ function TimelineContent() {
         return r.json();
       })
       .then((counts: EraCount[]) => {
+        if (counts.length === 0) return;
         setEraCounts(counts);
         // Select era with most games
         const maxEra = counts.reduce((max, c) =>
@@ -62,6 +65,9 @@ function TimelineContent() {
   useEffect(() => {
     if (!activeEra) return;
     setLoading(true);
+    setError(null);
+
+    const controller = new AbortController();
 
     const params = new URLSearchParams({
       era: activeEra,
@@ -71,7 +77,7 @@ function TimelineContent() {
     });
     if (search) params.set("search", search);
 
-    fetch(`/api/games?${params.toString()}`)
+    fetch(`/api/games?${params.toString()}`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error("Failed to fetch games");
         return r.json();
@@ -79,7 +85,7 @@ function TimelineContent() {
       .then((data) => {
         setGames(data.games || []);
         setTotal(data.pagination?.total ?? 0);
-        // Extract distinct platform labels
+        // Extract distinct platform labels (from first page — representative, not exhaustive)
         const labels = new Set<string>();
         for (const g of data.games || []) {
           if (g.platformLabel) labels.add(g.platformLabel);
@@ -88,10 +94,17 @@ function TimelineContent() {
         setLoading(false);
       })
       .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("Failed to load games:", err);
+        setGames([]);
+        setTotal(0);
+        setPlatforms([]);
+        setError("Spiele konnten nicht geladen werden.");
         setLoading(false);
       });
-  }, [activeEra, sort, order, search]);
+
+    return () => controller.abort();
+  }, [activeEra, sort, order, search, retryCount]);
 
   const currentBucket = activeEra ? findEraBySlug(activeEra) : undefined;
 
@@ -106,9 +119,12 @@ function TimelineContent() {
     [eraCounts]
   );
 
-  const fetchUrl = activeEra
-    ? `/api/games?era=${activeEra}&sort=${sort}&order=${order}${search ? `&search=${search}` : ""}&limit=48`
-    : "";
+  const fetchUrl = useMemo(() => {
+    if (!activeEra) return "";
+    const p = new URLSearchParams({ era: activeEra, sort, order, limit: "48" });
+    if (search) p.set("search", search);
+    return `/api/games?${p.toString()}`;
+  }, [activeEra, sort, order, search]);
 
   const activeCount = eraCounts.find((c) => c.slug === activeEra)?.count ?? 0;
 
@@ -163,7 +179,17 @@ function TimelineContent() {
         </Suspense>
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="text-center py-12">
+          <p className="text-red-400 text-sm mb-3">{error}</p>
+          <button
+            onClick={() => setRetryCount((c) => c + 1)}
+            className="px-4 py-2 bg-vault-surface border border-vault-border rounded-lg text-sm text-vault-text hover:border-vault-amber transition-colors"
+          >
+            Erneut versuchen
+          </button>
+        </div>
+      ) : loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="aspect-[3/4] rounded-lg bg-vault-surface animate-pulse" />

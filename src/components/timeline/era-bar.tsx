@@ -25,6 +25,7 @@ export function EraBar({ eras, activeEra, onEraChange }: EraBarProps) {
             <button
               key={era.slug}
               onClick={() => onEraChange(era.slug)}
+              aria-pressed={isActive}
               className="flex-shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-200"
               style={{
                 background: `${era.color}${isActive ? "40" : "1a"}`,
