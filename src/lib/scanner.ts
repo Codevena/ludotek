@@ -72,12 +72,14 @@ export async function scanDevice(
               : basePath;
 
             // Collect ROM files — scan top-level + one level of subdirectories
+            // Prefix with subdir so path reconstruction (scanPath/platformDir/originalFile) works
+            const subdirPrefix = platformDef?.subdir ? `${platformDef.subdir}/` : "";
             const allFiles: string[] = [];
             try {
               const entries = await conn.listDir(romPath);
               for (const entry of entries) {
                 if (entry.type === "file" || entry.type === "symlink") {
-                  allFiles.push(entry.name);
+                  allFiles.push(`${subdirPrefix}${entry.name}`);
                 } else if (entry.type === "dir") {
                   // Skip hidden directories
                   if (entry.name.startsWith(".")) continue;
@@ -86,7 +88,7 @@ export async function scanDevice(
                     const subEntries = await conn.listDir(`${romPath}/${entry.name}`);
                     for (const sub of subEntries) {
                       if (sub.type !== "dir") {
-                        allFiles.push(`${entry.name}/${sub.name}`);
+                        allFiles.push(`${subdirPrefix}${entry.name}/${sub.name}`);
                       }
                     }
                   } catch {
@@ -154,9 +156,9 @@ export function parseRomListing(
       // For files in subdirectories (e.g. "USA/.DS_Store"), check basename
       const baseName = f.includes("/") ? f.split("/").pop()! : f;
       if (!f || baseName.startsWith(".") || SKIP_FILES.has(baseName)) return false;
-      const dotIdx = f.lastIndexOf(".");
+      const dotIdx = baseName.lastIndexOf(".");
       if (dotIdx < 0) return false; // No extension = not a ROM file
-      const ext = f.slice(dotIdx).toLowerCase();
+      const ext = baseName.slice(dotIdx).toLowerCase();
       if (SKIP_EXTENSIONS.has(ext)) return false;
       // .m3u playlists represent multi-disc games — only for disc-based platforms
       if (ext === PLAYLIST_EXTENSION && DISC_PLATFORMS.has(platformDef.id)) return true;

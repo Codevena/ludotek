@@ -33,7 +33,7 @@ export const PLATFORM_CONFIG: PlatformDef[] = [
 
   // ── Sega ──
   { id: "sg1000", label: "SG-1000", icon: "🔵", color: "#1e3a5f", sortOrder: 20, dirs: ["sg1000", "sg-1000"], extensions: [".sg", ".sc"] },
-  { id: "mastersystem", label: "Master System", icon: "🔴", color: "#ef4444", sortOrder: 21, dirs: ["mastersystem", "master-system", "sms"], extensions: [".sms", ".bin", ".gg"] },
+  { id: "mastersystem", label: "Master System", icon: "🔴", color: "#ef4444", sortOrder: 21, dirs: ["mastersystem", "master-system", "sms"], extensions: [".sms", ".bin"] },
   { id: "megadrive", label: "Mega Drive / Genesis", slug: "sega-genesis", icon: "🕹️", color: "#1d4ed8", sortOrder: 22, dirs: ["megadrive", "genesis", "mega-drive", "sega-genesis", "segagenesis", "megadrivejp", "genesiswide"], extensions: [".md", ".smd", ".gen", ".bin", ".68k", ".sgd"] },
   { id: "segacd", label: "Sega CD", icon: "💿", color: "#0891b2", sortOrder: 23, dirs: ["segacd", "sega-cd", "mega-cd", "megacd", "megacdjp"], extensions: [".chd", ".iso", ".bin", ".cue"] },
   { id: "sega32x", label: "Sega 32X", icon: "🔶", color: "#d97706", sortOrder: 24, dirs: ["sega32x", "32x", "sega-32x", "sega32xjp", "sega32xna"], extensions: [".32x", ".bin", ".smd", ".md"] },
