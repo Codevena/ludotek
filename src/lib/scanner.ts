@@ -11,7 +11,7 @@ const ARCHIVE_EXTENSIONS = new Set([".7z", ".zip"]);
 const PLAYLIST_EXTENSION = ".m3u";
 const DISC_PLATFORMS = new Set([
   "psx", "ps2", "ps3", "saturn", "segacd", "dreamcast", "gc", "wii",
-  "3do", "pcengine", "pcfx", "neogeocd",
+  "3do", "pcengine", "pcfx", "neogeocd", "x68000",
 ]);
 
 export function matchesBlacklist(name: string, blacklist: string[]): boolean {
@@ -63,13 +63,41 @@ export async function scanDevice(
             if (dir.type !== "dir" && dir.type !== "symlink") continue;
             // Skip multidisc directories — their games are represented by .m3u in the main dir
             if (dir.name.endsWith("-multidisc")) continue;
-            const subEntries = await conn.listDir(`${scanPath.path}/${dir.name}`);
-            // Skip subdirectories — files and symlinks (to ROM files) pass through
-            // Extension filter in parseRomListing catches any remaining non-ROM entries
-            const listing = subEntries
-              .filter((e) => e.type !== "dir")
-              .map((e) => e.name)
-              .join("\n");
+
+            // Check if platform uses a subdir (e.g. xbox/roms/, wiiu/roms/)
+            const platformDef = getPlatformByDir(dir.name);
+            const basePath = `${scanPath.path}/${dir.name}`;
+            const romPath = platformDef?.subdir
+              ? `${basePath}/${platformDef.subdir}`
+              : basePath;
+
+            // Collect ROM files — scan top-level + one level of subdirectories
+            const allFiles: string[] = [];
+            try {
+              const entries = await conn.listDir(romPath);
+              for (const entry of entries) {
+                if (entry.type === "file" || entry.type === "symlink") {
+                  allFiles.push(entry.name);
+                } else if (entry.type === "dir") {
+                  // Recurse one level into subdirectories (for region/genre folders)
+                  try {
+                    const subEntries = await conn.listDir(`${romPath}/${entry.name}`);
+                    for (const sub of subEntries) {
+                      if (sub.type !== "dir") {
+                        allFiles.push(sub.name);
+                      }
+                    }
+                  } catch {
+                    // Skip inaccessible subdirs
+                  }
+                }
+              }
+            } catch {
+              // subdir doesn't exist — skip (e.g. xbox/roms/ not created yet)
+              continue;
+            }
+
+            const listing = allFiles.join("\n");
             if (listing) {
               const games = parseRomListing(listing, dir.name);
               allGames.push(...games);

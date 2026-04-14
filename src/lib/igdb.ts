@@ -34,7 +34,8 @@ export const IGDB_PLATFORM_MAP: Record<string, number> = {
   // Microsoft
   xbox: 11, xbox360: 12,
   // Atari
-  atari2600: 59, atari5200: 66, atari7800: 60, lynx: 61, jaguar: 62,
+  atari2600: 59, atari5200: 66, atari7800: 60, atari800: 65, lynx: 61,
+  jaguar: 62, jaguarcd: 171, atarist: 63,
   // NEC
   pcengine: 86, pcfx: 274,
   // SNK
@@ -43,12 +44,14 @@ export const IGDB_PLATFORM_MAP: Record<string, number> = {
   wonderswan: 57, wsc: 123,
   // Other consoles
   "3do": 50, coleco: 68, vectrex: 70, intellivision: 67,
+  odyssey2: 133, channelf: 127,
   // Computers
   dos: 13, c64: 15, amiga: 16, msx: 27, zxspectrum: 26, amstrad: 25,
+  bbcmicro: 69, x68000: 121,
   // Arcade
-  arcade: 52, naomi: 52, atomiswave: 52,
+  arcade: 52, naomi: 52, atomiswave: 52, model2: 52,
   // PC
-  steam: 6, scummvm: 6,
+  steam: 6, scummvm: 6, pico8: 6,
 };
 
 export interface IgdbGameData {
