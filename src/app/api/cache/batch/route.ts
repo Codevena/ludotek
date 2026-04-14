@@ -3,10 +3,18 @@ import { requireAuth } from "@/lib/auth";
 import { cacheAllImages } from "@/lib/image-cache";
 
 let batchRunning = false;
+let batchStartedAt = 0;
+const BATCH_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes max
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
+
+  // Auto-reset stuck flag after timeout
+  if (batchRunning && Date.now() - batchStartedAt > BATCH_TIMEOUT_MS) {
+    console.warn("Batch cache flag was stuck — resetting after timeout");
+    batchRunning = false;
+  }
 
   if (batchRunning) {
     return NextResponse.json(
@@ -16,6 +24,7 @@ export async function POST(request: NextRequest) {
   }
 
   batchRunning = true;
+  batchStartedAt = Date.now();
 
   const stream = new ReadableStream({
     async start(controller) {

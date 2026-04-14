@@ -76,8 +76,14 @@ export async function cacheGameImages(gameId: number): Promise<void> {
   const localArtworkPaths: string[] = parseJsonArray(game.localArtworkPaths);
 
   // --- Cover ---
+  // Check if cached cover matches current coverUrl (re-download if source changed)
+  const existingCoverEntry = localCoverPath
+    ? await prisma.cacheEntry.findFirst({ where: { gameId, type: "cover" } })
+    : null;
+  const coverStale = existingCoverEntry && game.coverUrl && existingCoverEntry.sourceUrl !== game.coverUrl;
   const coverSkip =
     localCoverPath &&
+    !coverStale &&
     fs.existsSync(path.join(DATA_DIR, localCoverPath));
 
   if (!coverSkip && game.coverUrl) {
@@ -106,10 +112,17 @@ export async function cacheGameImages(gameId: number): Promise<void> {
 
   // --- Screenshots ---
   const screenshotUrls = parseJsonArray(game.screenshotUrls);
+  const newScreenshotPaths: string[] = [];
   for (let i = 0; i < screenshotUrls.length; i++) {
     const url = screenshotUrls[i];
     const relativePath = `screenshots/${gameId}/${i}.jpg`;
     const destPath = path.join(SCREENSHOTS_DIR, `${gameId}`, `${i}.jpg`);
+
+    // Skip if already cached
+    if (localScreenshotPaths.includes(relativePath) && fs.existsSync(path.join(DATA_DIR, relativePath))) {
+      newScreenshotPaths.push(relativePath);
+      continue;
+    }
 
     const buffer = await downloadImage(url, destPath);
     if (buffer) {
@@ -127,18 +140,23 @@ export async function cacheGameImages(gameId: number): Promise<void> {
           fileSize: buffer.length,
         },
       });
-      if (!localScreenshotPaths.includes(relativePath)) {
-        localScreenshotPaths[i] = relativePath;
-      }
+      newScreenshotPaths.push(relativePath);
     }
   }
 
   // --- Artwork ---
   const artworkUrls = parseJsonArray(game.artworkUrls);
+  const newArtworkPaths: string[] = [];
   for (let i = 0; i < artworkUrls.length; i++) {
     const url = artworkUrls[i];
     const relativePath = `artwork/${gameId}/${i}.jpg`;
     const destPath = path.join(ARTWORK_DIR, `${gameId}`, `${i}.jpg`);
+
+    // Skip if already cached
+    if (localArtworkPaths.includes(relativePath) && fs.existsSync(path.join(DATA_DIR, relativePath))) {
+      newArtworkPaths.push(relativePath);
+      continue;
+    }
 
     const buffer = await downloadImage(url, destPath);
     if (buffer) {
@@ -156,9 +174,7 @@ export async function cacheGameImages(gameId: number): Promise<void> {
           fileSize: buffer.length,
         },
       });
-      if (!localArtworkPaths.includes(relativePath)) {
-        localArtworkPaths[i] = relativePath;
-      }
+      newArtworkPaths.push(relativePath);
     }
   }
 
@@ -167,11 +183,11 @@ export async function cacheGameImages(gameId: number): Promise<void> {
     where: { id: gameId },
     data: {
       localCoverPath: localCoverPath ?? game.localCoverPath,
-      localScreenshotPaths: localScreenshotPaths.length
-        ? JSON.stringify(localScreenshotPaths)
+      localScreenshotPaths: newScreenshotPaths.length
+        ? JSON.stringify(newScreenshotPaths)
         : game.localScreenshotPaths,
-      localArtworkPaths: localArtworkPaths.length
-        ? JSON.stringify(localArtworkPaths)
+      localArtworkPaths: newArtworkPaths.length
+        ? JSON.stringify(newArtworkPaths)
         : game.localArtworkPaths,
     },
   });
@@ -182,8 +198,11 @@ export async function cacheAllImages(
 ): Promise<void> {
   const games = await prisma.game.findMany({
     where: {
-      localCoverPath: null,
-      coverUrl: { not: null },
+      OR: [
+        { localCoverPath: null, coverUrl: { not: null } },
+        { localScreenshotPaths: null, screenshotUrls: { not: null } },
+        { localArtworkPaths: null, artworkUrls: { not: null } },
+      ],
     },
     select: { id: true },
   });

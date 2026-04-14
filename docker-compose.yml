@@ -5,6 +5,7 @@ services:
       - "3000:3000"
     volumes:
       - game-data:/app/prisma
+      - cache-data:/app/data
       - upload-temp:/tmp/game-vault-uploads
     environment:
       - DATABASE_URL=file:/app/prisma/games.db
@@ -22,4 +23,5 @@ services:
 
 volumes:
   game-data:
+  cache-data:
   upload-temp:

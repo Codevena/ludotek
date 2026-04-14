@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFileSync, existsSync } from "fs";
-import { join, extname } from "path";
+import { join, extname, sep } from "path";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -30,7 +30,7 @@ export async function GET(
     const fullPath = join(DATA_DIR, filePath);
 
     // Ensure resolved path stays within data directory
-    if (!fullPath.startsWith(DATA_DIR)) {
+    if (!fullPath.startsWith(DATA_DIR + sep)) {
       return NextResponse.json(
         { error: "Invalid path" },
         { status: 400 },

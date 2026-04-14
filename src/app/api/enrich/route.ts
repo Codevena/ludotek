@@ -39,16 +39,19 @@ export async function POST(request: NextRequest) {
   }
 
   let platforms: string[] | null = null;
+  let force = false;
   try {
     const body = await request.clone().json();
     if (Array.isArray(body.platforms) && body.platforms.length > 0) {
       platforms = body.platforms.filter((p: unknown) => typeof p === "string");
     }
+    if (body.force === true) force = true;
   } catch {
     // No body — enrich all
   }
 
-  const where: Record<string, unknown> = { igdbId: null };
+  // When force=true, re-enrich all games (even those with igdbId); otherwise only un-enriched games
+  const where: Record<string, unknown> = force ? {} : { igdbId: null };
   if (platforms && platforms.length > 0) where.platform = { in: platforms };
 
   const games = await prisma.game.findMany({ where });

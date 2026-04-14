@@ -30,10 +30,22 @@ export function screenshotUrls(game: {
   screenshotUrls?: string | null;
 }): string[] {
   const localPaths = parseJsonArray(game.localScreenshotPaths);
-  if (localPaths.length > 0) {
-    return localPaths.map((p) => `/api/cache/${p}`);
+  const remotePaths = parseJsonArray(game.screenshotUrls);
+
+  // Per-index fallback: use local path if available, otherwise remote
+  if (localPaths.length > 0 || remotePaths.length > 0) {
+    const maxLen = Math.max(localPaths.length, remotePaths.length);
+    const result: string[] = [];
+    for (let i = 0; i < maxLen; i++) {
+      if (localPaths[i]) {
+        result.push(`/api/cache/${localPaths[i]}`);
+      } else if (remotePaths[i]) {
+        result.push(remotePaths[i]);
+      }
+    }
+    return result;
   }
-  return parseJsonArray(game.screenshotUrls);
+  return [];
 }
 
 export function artworkUrls(game: {
@@ -41,8 +53,20 @@ export function artworkUrls(game: {
   artworkUrls?: string | null;
 }): string[] {
   const localPaths = parseJsonArray(game.localArtworkPaths);
-  if (localPaths.length > 0) {
-    return localPaths.map((p) => `/api/cache/${p}`);
+  const remotePaths = parseJsonArray(game.artworkUrls);
+
+  // Per-index fallback: use local path if available, otherwise remote
+  if (localPaths.length > 0 || remotePaths.length > 0) {
+    const maxLen = Math.max(localPaths.length, remotePaths.length);
+    const result: string[] = [];
+    for (let i = 0; i < maxLen; i++) {
+      if (localPaths[i]) {
+        result.push(`/api/cache/${localPaths[i]}`);
+      } else if (remotePaths[i]) {
+        result.push(remotePaths[i]);
+      }
+    }
+    return result;
   }
-  return parseJsonArray(game.artworkUrls);
+  return [];
 }

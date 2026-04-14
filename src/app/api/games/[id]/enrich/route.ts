@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchIgdbById } from "@/lib/igdb";
 import { searchSteamGridDb } from "@/lib/steamgriddb";
 import { generateGameAiContent } from "@/lib/openrouter";
+import { cacheGameImages } from "@/lib/image-cache";
 
 export async function POST(
   request: NextRequest,
@@ -18,6 +19,7 @@ export async function POST(
 
   const body = await request.json();
   const { igdbId, generateAi } = body;
+  const force = request.nextUrl.searchParams.get("force") === "true";
 
   if (igdbId && typeof igdbId !== "number") return NextResponse.json({ error: "Invalid igdbId" }, { status: 400 });
 
@@ -26,9 +28,12 @@ export async function POST(
 
   const settings = await prisma.settings.findFirst({ where: { id: 1 } });
 
-  // If igdbId provided, fetch full data from IGDB using shared resolver
-  if (igdbId && settings?.igdbClientId && settings?.igdbClientSecret) {
-    const igdbData = await fetchIgdbById(igdbId, settings.igdbClientId, settings.igdbClientSecret);
+  // Determine which igdbId to use: explicit from body, or stored game's igdbId when force=true
+  const resolvedIgdbId = igdbId ?? (force && game.igdbId ? game.igdbId : null);
+
+  // If igdbId available, fetch full data from IGDB using shared resolver
+  if (resolvedIgdbId && settings?.igdbClientId && settings?.igdbClientSecret) {
+    const igdbData = await fetchIgdbById(resolvedIgdbId, settings.igdbClientId, settings.igdbClientSecret);
 
     if (igdbData) {
       let coverUrl = igdbData.coverUrl;
@@ -55,6 +60,13 @@ export async function POST(
           themes: JSON.stringify(igdbData.themes),
         },
       });
+
+      // Cache images locally after enrichment
+      try {
+        await cacheGameImages(gameId);
+      } catch (cacheErr) {
+        console.warn(`Image caching failed for game ${gameId}:`, cacheErr);
+      }
     }
   }
 
