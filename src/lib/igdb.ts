@@ -223,6 +223,21 @@ export async function searchIgdb(
       )) as RawIgdbGame[];
     }
 
+    // Fallback: try the left part before " - " (e.g. "Project Justice - Rival Schools 2" → "Project Justice")
+    if (results.length === 0 && title.includes(" - ")) {
+      const shortTitle = title.split(" - ")[0].trim().replace(/"/g, '\\"');
+      if (platformId) {
+        results = (await igdbQuery(clientId, token, "games",
+          `search "${shortTitle}"; ${fields} where platforms = (${platformId}); limit 5;`
+        )) as RawIgdbGame[];
+      }
+      if (results.length === 0) {
+        results = (await igdbQuery(clientId, token, "games",
+          `search "${shortTitle}"; ${fields} limit 5;`
+        )) as RawIgdbGame[];
+      }
+    }
+
     if (results.length === 0) return null;
     return resolveIgdbGame(clientId, token, results[0]);
   }, 24);
