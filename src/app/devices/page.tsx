@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { FileBrowser } from "@/components/file-browser";
+import { useScan } from "@/context/scan-context";
 
 interface Device {
   id: number;
@@ -23,8 +24,7 @@ interface ScanPath {
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
-  const [scanResult, setScanResult] = useState<{ message: string; isError: boolean } | null>(null);
-  const [scanning, setScanning] = useState(false);
+  const { scanning: globalScanning, startScan } = useScan();
   const [blacklistInput, setBlacklistInput] = useState("");
   const [loading, setLoading] = useState(true);
   const hasAutoSelected = useRef(false);
@@ -61,11 +61,6 @@ export default function DevicesPage() {
   useEffect(() => {
     loadDevices();
   }, [loadDevices]);
-
-  // Clear scan result when switching devices
-  useEffect(() => {
-    setScanResult(null);
-  }, [selectedDeviceId]);
 
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId) ?? null;
 
@@ -119,23 +114,7 @@ export default function DevicesPage() {
 
   async function handleScanDevice() {
     if (!selectedDevice) return;
-    setScanning(true);
-    setScanResult(null);
-    try {
-      const res = await fetch(`/api/devices/${selectedDevice.id}/scan`, { method: "POST" });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setScanResult({
-          message: `Found ${data.total} games (${data.new} new, ${data.updated} updated)`,
-          isError: false,
-        });
-      } else {
-        setScanResult({ message: data.error ?? "Scan failed", isError: true });
-      }
-    } catch (err) {
-      setScanResult({ message: String(err), isError: true });
-    }
-    setScanning(false);
+    await startScan(selectedDevice.id);
   }
 
   if (loading) {
@@ -282,17 +261,11 @@ export default function DevicesPage() {
             {/* Scan Device button */}
             <button
               onClick={handleScanDevice}
-              disabled={scanning}
+              disabled={globalScanning}
               className="w-full px-6 py-3 rounded-lg font-medium text-sm bg-vault-amber text-black hover:bg-vault-amber-hover transition-all duration-200 disabled:opacity-50"
             >
-              {scanning ? "Scanning..." : "Scan Device"}
+              {globalScanning ? "Scanning..." : "Scan Device"}
             </button>
-
-            {scanResult && (
-              <p className={`text-sm ${scanResult.isError ? "text-red-400" : "text-green-400"}`}>
-                {scanResult.message}
-              </p>
-            )}
           </div>
         </div>
       )}
