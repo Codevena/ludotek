@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { SearchBar } from "@/components/search-bar";
+import { SyncPanel } from "@/components/sync-panel";
 
 interface DeviceOption {
   id: number;
@@ -91,24 +92,27 @@ export function Header() {
         Admin
       </Link>
 
-      {/* Active Device Selector */}
-      {devices.length > 0 && (
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-vault-muted text-xs">Device:</span>
-          <select
-            value={activeDeviceId ?? ""}
-            onChange={(e) => handleDeviceChange(e.target.value)}
-            className="bg-vault-surface border border-vault-border rounded-lg px-2 py-1.5 text-xs text-vault-text focus:outline-none focus:border-vault-amber/50"
-          >
-            <option value="">All Devices</option>
-            {devices.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      {/* Sync Panel & Active Device Selector */}
+      <div className="ml-auto flex items-center gap-3">
+        <SyncPanel />
+        {devices.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-vault-muted text-xs">Device:</span>
+            <select
+              value={activeDeviceId ?? ""}
+              onChange={(e) => handleDeviceChange(e.target.value)}
+              className="bg-vault-surface border border-vault-border rounded-lg px-2 py-1.5 text-xs text-vault-text focus:outline-none focus:border-vault-amber/50"
+            >
+              <option value="">All Devices</option>
+              {devices.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
     </header>
   );
 }
