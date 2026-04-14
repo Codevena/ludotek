@@ -39,7 +39,7 @@ export const IGDB_PLATFORM_MAP: Record<string, number> = {
   // NEC
   pcengine: 86, pcfx: 274,
   // SNK
-  neogeo: 80, neogeocd: 136, ngp: 119, ngpc: 119,
+  neogeo: 80, neogeocd: 136, ngp: 119, ngpc: 120,
   // Bandai
   wonderswan: 57, wsc: 123,
   // Other consoles

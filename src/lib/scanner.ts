@@ -84,7 +84,7 @@ export async function scanDevice(
                     const subEntries = await conn.listDir(`${romPath}/${entry.name}`);
                     for (const sub of subEntries) {
                       if (sub.type !== "dir") {
-                        allFiles.push(sub.name);
+                        allFiles.push(`${entry.name}/${sub.name}`);
                       }
                     }
                   } catch {
@@ -163,7 +163,9 @@ export function parseRomListing(
       return true;
     })
     .map((f) => {
-      const title = cleanFilename(f);
+      // For files in subdirectories (e.g. "USA/Halo.iso"), use basename for title
+      const basename = f.includes("/") ? f.split("/").pop()! : f;
+      const title = cleanFilename(basename);
       if (!title) return null;
       return {
         originalFile: f,

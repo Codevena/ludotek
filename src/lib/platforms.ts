@@ -75,7 +75,7 @@ export const PLATFORM_CONFIG: PlatformDef[] = [
 
   // ── Bandai ──
   { id: "wonderswan", label: "WonderSwan", icon: "📱", color: "#4338ca", sortOrder: 70, dirs: ["wonderswan", "wonder-swan", "ws"], extensions: [".ws"] },
-  { id: "wsc", label: "WonderSwan Color", icon: "📱", color: "#6366f1", sortOrder: 71, dirs: ["wonderswancolor", "wonderswan-color", "wsc"], extensions: [".wsc"] },
+  { id: "wsc", label: "WonderSwan Color", icon: "📱", color: "#6366f1", sortOrder: 71, dirs: ["wonderswancolor", "wonderswan-color", "wsc", "wscolor"], extensions: [".wsc"] },
 
   // ── 3DO / Other Consoles ──
   { id: "3do", label: "3DO", icon: "💿", color: "#b45309", sortOrder: 75, dirs: ["3do", "panasonic-3do"], extensions: [".chd", ".iso", ".cue", ".bin"] },
