@@ -7,6 +7,7 @@ import { EnrichmentProvider } from "@/context/enrichment-context";
 import { ScanProvider } from "@/context/scan-context";
 import { EnrichmentBar } from "@/components/enrichment-bar";
 import { ScanBar } from "@/components/scan-bar";
+import { TransferBar } from "@/components/transfer-bar";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -47,6 +48,7 @@ export default function RootLayout({
             </div>
             <EnrichmentBar />
             <ScanBar />
+            <TransferBar />
           </ScanProvider>
         </EnrichmentProvider>
       </body>

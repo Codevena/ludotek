@@ -57,13 +57,13 @@ export async function PUT(
 
     if (body.name !== undefined) data.name = body.name;
     if (body.type !== undefined) {
-      if (!["steamdeck", "android", "custom"].includes(body.type)) {
+      if (!["steamdeck", "android", "local", "custom"].includes(body.type)) {
         return NextResponse.json({ error: "Invalid device type" }, { status: 400 });
       }
       data.type = body.type;
     }
     if (body.protocol !== undefined) {
-      if (!["ssh", "ftp"].includes(body.protocol)) {
+      if (!["ssh", "ftp", "local"].includes(body.protocol)) {
         return NextResponse.json({ error: "Invalid protocol" }, { status: 400 });
       }
       data.protocol = body.protocol;

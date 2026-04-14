@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { FilePanel } from "@/components/file-panel";
 import { FilePreviewModal } from "@/components/file-preview-modal";
-import { TransferBar } from "@/components/transfer-bar";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
 interface DeviceOption {
@@ -65,6 +64,29 @@ export default function FilesPage() {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, []);
+
+  const handleLeftSelection = useCallback(
+    (paths: string[], deviceId: number) => {
+      setLeftSelection(paths);
+      setLeftSelectionDeviceId(deviceId);
+    },
+    [],
+  );
+
+  const handleRightSelection = useCallback(
+    (paths: string[], deviceId: number) => {
+      setRightSelection(paths);
+      setRightSelectionDeviceId(deviceId);
+    },
+    [],
+  );
+
+  const handlePreview = useCallback(
+    (deviceId: number, filePath: string) => {
+      setPreview({ deviceId, filePath });
+    },
+    [],
+  );
 
   const doTransfer = useCallback(
     async (
@@ -224,15 +246,10 @@ export default function FilesPage() {
           devices={devices}
           selectedDeviceId={leftDeviceId}
           onDeviceChange={setLeftDeviceId}
-          onSelectionChange={(paths, deviceId) => {
-            setLeftSelection(paths);
-            setLeftSelectionDeviceId(deviceId);
-          }}
+          onSelectionChange={handleLeftSelection}
           currentPath={leftPath}
           onPathChange={setLeftPath}
-          onPreview={(deviceId, filePath) =>
-            setPreview({ deviceId, filePath })
-          }
+          onPreview={handlePreview}
           refreshKey={refreshLeft}
         />
         <FilePanel
@@ -240,15 +257,10 @@ export default function FilesPage() {
           devices={devices}
           selectedDeviceId={rightDeviceId}
           onDeviceChange={setRightDeviceId}
-          onSelectionChange={(paths, deviceId) => {
-            setRightSelection(paths);
-            setRightSelectionDeviceId(deviceId);
-          }}
+          onSelectionChange={handleRightSelection}
           currentPath={rightPath}
           onPathChange={setRightPath}
-          onPreview={(deviceId, filePath) =>
-            setPreview({ deviceId, filePath })
-          }
+          onPreview={handlePreview}
           refreshKey={refreshRight}
         />
       </div>
@@ -261,9 +273,6 @@ export default function FilesPage() {
           onClose={() => setPreview(null)}
         />
       )}
-
-      {/* Transfer progress bar */}
-      <TransferBar />
 
       <ConfirmDialog
         open={moveConfirm !== null}

@@ -35,24 +35,35 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const { name, host, user } = body;
-    if (!name || !host || !user) {
+    const { name } = body;
+    if (!name) {
       return NextResponse.json(
-        { error: "name, host, and user are required" },
+        { error: "name is required" },
         { status: 400 },
       );
     }
 
     const type: string = body.type ?? "custom";
-    if (!["steamdeck", "android", "custom"].includes(type)) {
+    if (!["steamdeck", "android", "local", "custom"].includes(type)) {
       return NextResponse.json({ error: "Invalid device type" }, { status: 400 });
     }
     const protocol: string = body.protocol ?? "ssh";
-    if (!["ssh", "ftp"].includes(protocol)) {
-      return NextResponse.json({ error: "Invalid protocol (must be ssh or ftp)" }, { status: 400 });
+    if (!["ssh", "ftp", "local"].includes(protocol)) {
+      return NextResponse.json({ error: "Invalid protocol (must be ssh, ftp, or local)" }, { status: 400 });
     }
-    const port: number = Number(body.port) || (protocol === "ftp" ? 21 : 22);
-    if (port < 1 || port > 65535) {
+
+    // Local devices don't need host/user/port
+    if (protocol !== "local" && (!body.host || !body.user)) {
+      return NextResponse.json(
+        { error: "host and user are required for remote devices" },
+        { status: 400 },
+      );
+    }
+
+    const host: string = body.host ?? "localhost";
+    const user: string = body.user ?? "";
+    const port: number = protocol === "local" ? 0 : (Number(body.port) || (protocol === "ftp" ? 21 : 22));
+    if (protocol !== "local" && (port < 1 || port > 65535)) {
       return NextResponse.json({ error: "Invalid port number" }, { status: 400 });
     }
     const password: string = body.password ?? "";
