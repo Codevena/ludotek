@@ -239,15 +239,15 @@ export default function AdminPage() {
 
       <h1 className="font-heading text-2xl font-bold mb-8">Admin</h1>
 
-      {/* Device Link Warning */}
+      {/* Empty library hint */}
       {deviceLinkCount === 0 && devices.length > 0 && (
-        <div className="card mb-6 border-orange-500/50 bg-orange-500/5">
+        <div className="card mb-6 border-vault-amber/30 bg-vault-amber/5">
           <div className="flex items-start gap-3">
-            <span className="text-orange-400 text-lg">&#9888;</span>
+            <span className="text-vault-amber text-lg">&#128161;</span>
             <div>
-              <p className="text-sm text-orange-300 font-medium">Device filter is not working</p>
+              <p className="text-sm text-vault-amber font-medium">Library is empty</p>
               <p className="text-xs text-vault-muted mt-1">
-                No games are linked to devices yet. Run &quot;Scan Devices&quot; to populate device links.
+                Click &quot;Scan Devices&quot; below to import your games.
                 Make sure each device has scan paths configured on the{" "}
                 <a href="/devices" className="text-vault-amber hover:underline">Devices page</a>.
               </p>
