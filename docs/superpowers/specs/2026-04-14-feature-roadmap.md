@@ -48,17 +48,9 @@
 
 ---
 
-### 2.2 Smart Recommendations
+### ~~2.2 Smart Recommendations~~ — SKIPPED
 
-**Warum jetzt:** Baut auf Insights-Daten auf. Die bestehende Discover-Page nutzt bereits OpenRouter für Empfehlungen — Smart Recommendations erweitert das um datengetriebene Logik.
-
-**Scope:**
-- **Franchise-Completion**: "Du hast 8 Zelda-Spiele — dir fehlen: Zelda II, Minish Cap, Spirit Tracks" (IGDB Franchise-API + Abgleich mit Library).
-- **Genre-Exploration**: "Du liebst JRPGs — hast aber kein einziges Tactical RPG. Probier: Fire Emblem, FFT, Disgaea" (Genre-Gap-Analyse).
-- **Hidden Gems**: "Auf deiner PS1 sind 3 Spiele mit Score > 85 die du vielleicht übersehen hast" (hoher Score, kein bekanntes Franchise).
-- **Cross-Platform**: "Super Mario RPG gibt's auch für SNES — du hast nur die Switch-Version" (gleiches Spiel auf anderen Plattformen die der User hat).
-- **Integration**: Recommendations erscheinen auf der Home-Page als "Suggested for you"-Sektion und auf der Discover-Page als Tab neben dem AI-Wizard.
-- **Offline-fähig**: Franchise-Completion und Genre-Exploration arbeiten komplett lokal. Hidden Gems nutzt cached IGDB-Scores. Nur "What to play next" nutzt optional OpenRouter.
+**Entscheidung (2026-04-14):** Übersprungen. Die bestehende Discover-Page (`/discover`) deckt alle geplanten Use-Cases bereits ab: Genre-Exploration (Wizard mit Plattform + Genre-Auswahl), Hidden Gems (Library-Tab mit "Focus on hidden gems" Prompt + VibeTags), Cross-Platform (Wishlist-Tab empfiehlt fehlende Spiele). Die AI-gestützte Lösung via OpenRouter liefert bessere Ergebnisse als rein datengetriebene Logik. Insights zeigt Cross-Platform-Games bereits an.
 
 ---
 
@@ -157,7 +149,7 @@
 | ~~1.1~~ | ~~Offline-First / Metadata Cache~~ | ~~—~~ | ~~DONE~~ |
 | ~~1.2~~ | ~~Duplicate Detection~~ | ~~—~~ | ~~SKIPPED~~ |
 | ~~2.1~~ | ~~Sammlung-Insights~~ | ~~1.1 (cached data)~~ | ~~DONE~~ |
-| 2.2 | Smart Recommendations | 2.1 (Insights-Daten) | Mittel-Hoch |
+| ~~2.2~~ | ~~Smart Recommendations~~ | ~~2.1 (Insights-Daten)~~ | ~~SKIPPED~~ |
 | 3.1 | Epoch-Navigation | 2.1 (Ären-Daten, Release-Dates) | Hoch |
 | 3.2 | Auto-Organization | — | Mittel |
 | 4.1 | Onboarding & DX | Alle Features stehen | Mittel |
