@@ -6,11 +6,11 @@ export async function GET(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  const settings = await prisma.settings.findFirst({ where: { id: 1 } });
-
-  if (!settings) {
-    return NextResponse.json({ error: "Settings not found" }, { status: 404 });
-  }
+  const settings = await prisma.settings.upsert({
+    where: { id: 1 },
+    update: {},
+    create: { id: 1 },
+  });
 
   return NextResponse.json({
     ...settings,
@@ -61,9 +61,10 @@ export async function PUT(request: NextRequest) {
     }
   }
 
-  const settings = await prisma.settings.update({
+  const settings = await prisma.settings.upsert({
     where: { id: 1 },
-    data,
+    update: data,
+    create: { id: 1, ...data },
   });
 
   return NextResponse.json({
