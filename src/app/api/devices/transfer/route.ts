@@ -1,0 +1,198 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { createConnection } from "@/lib/connection";
+import type { ConnectionConfig, DeviceConnection } from "@/lib/connection";
+import { validateRemotePath } from "@/lib/path-validation";
+import {
+  getTransferProgress,
+  setTransferProgress,
+} from "@/lib/transfer-progress";
+
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
+const FILE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+
+function configFromDevice(device: {
+  protocol: string;
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+}): ConnectionConfig {
+  return {
+    protocol: device.protocol as "ssh" | "ftp",
+    host: device.host,
+    port: device.port,
+    user: device.user,
+    password: device.password,
+  };
+}
+
+async function runTransfer(
+  sourceConn: DeviceConnection,
+  targetConn: DeviceConnection,
+  files: string[],
+  targetPath: string,
+  mode: "copy" | "move",
+): Promise<void> {
+  setTransferProgress({
+    transferring: true,
+    totalFiles: files.length,
+    completedFiles: 0,
+    mode,
+    error: undefined,
+  });
+
+  for (let i = 0; i < files.length; i++) {
+    const filePath = files[i];
+    const fileName = filePath.split("/").pop() ?? filePath;
+    setTransferProgress({
+      currentFile: fileName,
+      progress: 0,
+      completedFiles: i,
+    });
+
+    try {
+      const stats = await sourceConn.stat(filePath);
+      if (stats.isDirectory) {
+        continue; // Skip directories
+      }
+      if (stats.size > MAX_FILE_SIZE) {
+        setTransferProgress({
+          error: `${fileName} exceeds 2 GB limit`,
+          transferring: false,
+        });
+        return;
+      }
+
+      const data = await Promise.race([
+        sourceConn.readFile(filePath),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Timeout reading ${fileName}`)),
+            FILE_TIMEOUT,
+          ),
+        ),
+      ]);
+
+      setTransferProgress({ progress: 50 });
+
+      const destPath =
+        targetPath.endsWith("/")
+          ? `${targetPath}${fileName}`
+          : `${targetPath}/${fileName}`;
+      await Promise.race([
+        targetConn.writeFile(destPath, data),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Timeout writing ${fileName}`)),
+            FILE_TIMEOUT,
+          ),
+        ),
+      ]);
+
+      setTransferProgress({ progress: 100, completedFiles: i + 1 });
+
+      if (mode === "move") {
+        await sourceConn.remove(filePath);
+      }
+    } catch (err) {
+      setTransferProgress({
+        error: `${fileName}: ${err instanceof Error ? err.message : "transfer failed"}`,
+        transferring: false,
+      });
+      return;
+    }
+  }
+
+  setTransferProgress({ transferring: false, progress: 100 });
+}
+
+export async function POST(request: NextRequest) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
+  const current = getTransferProgress();
+  if (current.transferring) {
+    return NextResponse.json(
+      { error: "A transfer is already in progress" },
+      { status: 409 },
+    );
+  }
+
+  const body = await request.json().catch(() => null);
+  if (
+    !body?.sourceDeviceId ||
+    !body?.targetDeviceId ||
+    !body?.targetPath ||
+    !Array.isArray(body?.files) ||
+    body.files.length === 0
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "sourceDeviceId, targetDeviceId, targetPath, and files[] are required",
+      },
+      { status: 400 },
+    );
+  }
+
+  const mode: "copy" | "move" =
+    body.mode === "move" ? "move" : "copy";
+
+  for (const f of body.files) {
+    const pathError = validateRemotePath(f);
+    if (pathError) return pathError;
+  }
+  const targetPathError = validateRemotePath(body.targetPath);
+  if (targetPathError) return targetPathError;
+
+  const [sourceDevice, targetDevice] = await Promise.all([
+    prisma.device.findUnique({ where: { id: body.sourceDeviceId } }),
+    prisma.device.findUnique({ where: { id: body.targetDeviceId } }),
+  ]);
+
+  if (!sourceDevice) {
+    return NextResponse.json(
+      { error: "Source device not found" },
+      { status: 404 },
+    );
+  }
+  if (!targetDevice) {
+    return NextResponse.json(
+      { error: "Target device not found" },
+      { status: 404 },
+    );
+  }
+
+  let sourceConn: DeviceConnection | undefined;
+  let targetConn: DeviceConnection | undefined;
+
+  try {
+    sourceConn = await createConnection(configFromDevice(sourceDevice));
+    targetConn = await createConnection(configFromDevice(targetDevice));
+  } catch (error) {
+    sourceConn?.disconnect();
+    targetConn?.disconnect();
+    const message =
+      error instanceof Error ? error.message : "Connection failed";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
+
+  const sc = sourceConn;
+  const tc = targetConn;
+  runTransfer(sc, tc, body.files, body.targetPath, mode)
+    .catch((err) => {
+      console.error("Transfer failed:", err);
+      setTransferProgress({
+        transferring: false,
+        error: err instanceof Error ? err.message : "Transfer failed",
+      });
+    })
+    .finally(() => {
+      sc.disconnect();
+      tc.disconnect();
+    });
+
+  return NextResponse.json({ ok: true, message: "Transfer started" });
+}
