@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { coverUrl } from "@/lib/image-url";
+import { findEraBySlug } from "@/lib/eras";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
   const favorites = searchParams.get("favorites");
   const tag = searchParams.get("tag");
   const deviceId = searchParams.get("deviceId");
+  const era = searchParams.get("era");
 
   const where: Record<string, unknown> = {};
   if (platform) where.platform = platform;
@@ -32,6 +34,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid deviceId" }, { status: 400 });
     }
     where.devices = { some: { deviceId: parseInt(deviceId, 10) } };
+  }
+  if (era) {
+    const bucket = findEraBySlug(era);
+    if (bucket) {
+      where.releaseDate = {
+        gte: new Date(bucket.minYear, 0, 1),
+        lt: new Date(bucket.maxYear === 9999 ? 2100 : bucket.maxYear + 1, 0, 1),
+        not: null,
+      };
+    }
   }
 
   const orderBy: Record<string, string> = {};

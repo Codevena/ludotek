@@ -131,6 +131,30 @@ export function Sidebar() {
             <span>Insights</span>
           </Link>
 
+          <Link
+            href="/timeline"
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              pathname === "/timeline"
+                ? "bg-vault-amber/10 text-vault-amber"
+                : "text-vault-muted hover:text-vault-text hover:bg-vault-bg"
+            }`}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span>Timeline</span>
+          </Link>
+
           {platforms.map((p) => (
             <Link
               key={p.id}
