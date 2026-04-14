@@ -163,6 +163,24 @@ export async function POST(request: NextRequest) {
   const mode: "copy" | "move" =
     body.mode === "move" ? "move" : "copy";
 
+  // Prevent self-move (same device, target dir contains source file)
+  if (mode === "move" && body.sourceDeviceId === body.targetDeviceId) {
+    const targetDir = body.targetPath.endsWith("/")
+      ? body.targetPath
+      : body.targetPath + "/";
+    for (const f of body.files) {
+      const fileName = f.split("/").pop() ?? f;
+      const destPath = targetDir + fileName;
+      if (f === destPath) {
+        clearTransferProgress();
+        return NextResponse.json(
+          { error: `Cannot move ${fileName} to the same location` },
+          { status: 400 },
+        );
+      }
+    }
+  }
+
   // Update lock with actual transfer details
   setTransferProgress({
     totalFiles: body.files.length,

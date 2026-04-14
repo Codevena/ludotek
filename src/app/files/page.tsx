@@ -121,7 +121,7 @@ export default function FilesPage() {
               return;
             }
             const status = await statusRes.json();
-            if (!status.transferring) {
+            if (status.status !== "in_progress") {
               setTransferring(false);
               pollRef.current = null;
               setRefreshLeft((n) => n + 1);
