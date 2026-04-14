@@ -11,6 +11,7 @@ interface Game {
   igdbScore: number | null;
   metacriticScore: number | null;
   isFavorite?: boolean;
+  devices?: { id: number; name: string; type: string }[];
 }
 
 interface InfiniteGameGridProps {
@@ -101,6 +102,7 @@ export function InfiniteGameGrid({ initialGames, total, fetchUrl }: InfiniteGame
             igdbScore={game.igdbScore}
             metacriticScore={game.metacriticScore}
             isFavorite={game.isFavorite}
+            devices={game.devices}
           />
         ))}
       </div>
