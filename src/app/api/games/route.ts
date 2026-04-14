@@ -59,8 +59,31 @@ export async function GET(request: NextRequest) {
     devices: game.devices.map((gd) => gd.device),
   }));
 
+  // Deduplicate games by igdbId when showing all devices
+  // (same game scanned from different devices creates separate Game records)
+  let deduped = gamesWithDevices;
+  if (!deviceId || deviceId === "all") {
+    const seen = new Map<number, typeof gamesWithDevices[0]>();
+    const result: typeof gamesWithDevices = [];
+    for (const game of gamesWithDevices) {
+      if (game.igdbId && seen.has(game.igdbId)) {
+        // Merge devices into existing entry
+        const existing = seen.get(game.igdbId)!;
+        for (const dev of game.devices) {
+          if (!existing.devices.some((d) => d.id === dev.id)) {
+            existing.devices.push(dev);
+          }
+        }
+      } else {
+        if (game.igdbId) seen.set(game.igdbId, game);
+        result.push(game);
+      }
+    }
+    deduped = result;
+  }
+
   return NextResponse.json({
-    games: gamesWithDevices,
+    games: deduped,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 }

@@ -110,7 +110,7 @@ export default async function PlatformPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      <InfiniteGameGrid initialGames={gamesWithDevices} total={total} fetchUrl={fetchUrl} />
+      <InfiniteGameGrid initialGames={gamesWithDevices} total={total} fetchUrl={fetchUrl} emptyMessage={activeDeviceId ? "No games on this device for this platform" : undefined} />
     </div>
   );
 }

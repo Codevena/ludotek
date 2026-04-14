@@ -18,9 +18,10 @@ interface InfiniteGameGridProps {
   initialGames: Game[];
   total: number;
   fetchUrl: string;
+  emptyMessage?: string;
 }
 
-export function InfiniteGameGrid({ initialGames, total, fetchUrl }: InfiniteGameGridProps) {
+export function InfiniteGameGrid({ initialGames, total, fetchUrl, emptyMessage }: InfiniteGameGridProps) {
   const [games, setGames] = useState<Game[]>(initialGames);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -83,8 +84,8 @@ export function InfiniteGameGrid({ initialGames, total, fetchUrl }: InfiniteGame
   if (games.length === 0) {
     return (
       <div className="text-center text-vault-muted py-20">
-        <p className="text-lg">No games found</p>
-        <p className="text-sm mt-2">Try scanning your Steam Deck in the Admin panel</p>
+        <p className="text-lg">{emptyMessage || "No games found"}</p>
+        <p className="text-sm mt-2">Try scanning your devices or changing the device filter</p>
       </div>
     );
   }

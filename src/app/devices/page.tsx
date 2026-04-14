@@ -158,7 +158,7 @@ export default function DevicesPage() {
         >
           {devices.map((d) => (
             <option key={d.id} value={d.id}>
-              {d.name} ({d.host})
+              {d.name} ({d.protocol === "local" ? "Local" : d.host})
             </option>
           ))}
         </select>

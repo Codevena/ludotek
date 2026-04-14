@@ -164,7 +164,7 @@ export default async function HomePage({ searchParams }: Props) {
         </Suspense>
       </div>
 
-      <InfiniteGameGrid initialGames={gamesWithDevices} total={total} fetchUrl={fetchUrl} />
+      <InfiniteGameGrid initialGames={gamesWithDevices} total={total} fetchUrl={fetchUrl} emptyMessage={activeDeviceId ? "No games on this device" : undefined} />
     </div>
   );
 }
