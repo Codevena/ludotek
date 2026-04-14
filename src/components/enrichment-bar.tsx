@@ -22,7 +22,7 @@ export function EnrichmentBar() {
 
         {/* Label + title */}
         <div className="flex-shrink-0 text-sm font-medium text-vault-text">
-          {isRunning ? "Enriching" : "Done"}
+          {isRunning ? "Fetching Metadata" : "Done"}
           {title && (
             <span className="text-vault-muted ml-1.5 font-normal">{title}</span>
           )}
@@ -45,7 +45,7 @@ export function EnrichmentBar() {
               {current}/{total}
             </span>
           )}
-          {enriched > 0 && <span className="text-green-400">{enriched} enriched</span>}
+          {enriched > 0 && <span className="text-green-400">{enriched} done</span>}
           {failed > 0 && <span className="text-red-400">{failed} failed</span>}
         </div>
 

@@ -86,14 +86,14 @@ export function EnrichWizard({ gameId, gameTitle }: { gameId: number; gameTitle:
           onClick={() => setOpen(true)}
           className="px-4 py-2 rounded-lg text-sm bg-vault-surface border border-vault-border text-vault-muted hover:text-vault-text hover:border-vault-amber transition-colors"
         >
-          Manual Enrichment
+          Get Metadata
         </button>
         <button
           onClick={regenerateAi}
           disabled={enriching}
           className="px-4 py-2 rounded-lg text-sm bg-purple-600/20 border border-purple-500/30 text-purple-400 hover:bg-purple-600/30 transition-colors disabled:opacity-50"
         >
-          {enriching ? "Generating..." : "Regenerate AI Content"}
+          {enriching ? "Generating..." : "Regenerate AI Stories"}
         </button>
       </div>
     );
@@ -102,7 +102,7 @@ export function EnrichWizard({ gameId, gameTitle }: { gameId: number; gameTitle:
   return (
     <div className="mt-8 card space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-heading text-xl font-bold">Manual Enrichment</h2>
+        <h2 className="font-heading text-xl font-bold">Get Metadata</h2>
         <button onClick={() => setOpen(false)} className="text-vault-muted hover:text-vault-text text-sm">
           Close
         </button>
@@ -180,7 +180,7 @@ export function EnrichWizard({ gameId, gameTitle }: { gameId: number; gameTitle:
       {enriching && (
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded-full bg-vault-amber animate-pulse" />
-          <span className="text-sm text-vault-muted">Enriching game data...</span>
+          <span className="text-sm text-vault-muted">Fetching metadata...</span>
         </div>
       )}
     </div>

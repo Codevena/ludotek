@@ -268,12 +268,12 @@ export default function AdminPage() {
           }}
           disabled={scanning || enrichmentRunning}
           className={`${btnClass} bg-blue-600 text-white hover:bg-blue-500`}>
-          {enriching ? "Enriching..." : selectedPlatforms.length > 0 ? `Enrich (${selectedPlatforms.length} Systems)` : "Enrich All (IGDB)"}
+          {enriching ? "Fetching..." : selectedPlatforms.length > 0 ? `Get Metadata (${selectedPlatforms.length} Systems)` : "Get All Metadata (IGDB)"}
         </button>
         <button onClick={() => runStreamingAction("/api/enrich/ai", setAiEnriching)}
           disabled={scanning || enrichmentRunning}
           className={`${btnClass} bg-purple-600 text-white hover:bg-purple-500`}>
-          {aiEnriching ? "Generating..." : "Generate AI Content"}
+          {aiEnriching ? "Generating..." : "Generate AI Stories"}
         </button>
       </div>
 
@@ -642,7 +642,7 @@ export default function AdminPage() {
         {showMaintenance && (
           <>
             <p className="text-vault-muted text-xs">
-              Repair tools for edge cases — use when enrichment data is incomplete or duplicates slipped through.
+              Repair tools for edge cases — use when metadata is incomplete or duplicates slipped through.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button onClick={() => runStreamingAction("/api/enrich/metacritic", setMetacriticEnriching)}
@@ -653,7 +653,7 @@ export default function AdminPage() {
               <button onClick={() => runStreamingAction("/api/enrich/refresh", setReEnriching)}
                 disabled={scanning || enrichmentRunning || cleaning}
                 className={`${btnClass} bg-orange-600/80 text-white hover:bg-orange-500`}>
-                {reEnriching ? "Re-Enriching..." : "Re-Enrich Missing Fields"}
+                {reEnriching ? "Refreshing..." : "Refresh Missing Metadata"}
               </button>
               <button onClick={runCleanup} disabled={scanning || enrichmentRunning || cleaning}
                 className={`${btnClass} bg-red-600/80 text-white hover:bg-red-500`}>

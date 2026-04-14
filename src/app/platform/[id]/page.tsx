@@ -99,10 +99,10 @@ export default async function PlatformPage({ params, searchParams }: Props) {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href={`/discover?platforms=${id}&surprise=true`}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-vault-amber/20 text-vault-amber border border-vault-amber/30 hover:bg-vault-amber/30 transition-colors"
+            href={`/admin?enrich=${id}`}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"
           >
-            Surprise Me
+            Get Metadata
           </Link>
           <Suspense>
             <SortSelect />
