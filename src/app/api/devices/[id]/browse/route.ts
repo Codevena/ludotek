@@ -34,7 +34,7 @@ export async function GET(
       password: device.password,
     } as ConnectionConfig);
 
-    const entries = await conn.listDir(path);
+    const entries = await conn.listDirDetailed(path);
     return NextResponse.json(buildBrowseResult(path, entries));
   } catch (error) {
     console.error("Browse failed:", error);

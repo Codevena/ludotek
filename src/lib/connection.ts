@@ -20,7 +20,7 @@ export interface DirEntry {
 export interface BrowseResult {
   path: string;
   parent: string | null;
-  entries: DirEntry[];
+  entries: DetailedDirEntry[];
 }
 
 export interface DetailedDirEntry {
@@ -61,7 +61,7 @@ export interface ConnectionConfig {
 // ---------------------------------------------------------------------------
 
 /** Compute the parent directory, or null for root. */
-export function buildBrowseResult(path: string, entries: DirEntry[]): BrowseResult {
+export function buildBrowseResult(path: string, entries: DetailedDirEntry[]): BrowseResult {
   const normalized = path === "" ? "/" : path;
   let parent: string | null = null;
 
@@ -74,7 +74,7 @@ export function buildBrowseResult(path: string, entries: DirEntry[]): BrowseResu
 }
 
 /** Sort entries: directories first, then alphabetically (case-insensitive). */
-function sortEntries(entries: DirEntry[]): DirEntry[] {
+function sortEntries<T extends DirEntry>(entries: T[]): T[] {
   return entries.sort((a, b) => {
     if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
@@ -179,7 +179,7 @@ class SshConnection implements DeviceConnection {
           : undefined,
       }));
 
-    return sortEntries(entries as unknown as DirEntry[]) as unknown as DetailedDirEntry[];
+    return sortEntries(entries);
   }
 
   async mkdir(path: string): Promise<void> {
@@ -317,7 +317,7 @@ class FtpConnection implements DeviceConnection {
           : undefined,
       }));
 
-    return sortEntries(entries as unknown as DirEntry[]) as unknown as DetailedDirEntry[];
+    return sortEntries(entries);
   }
 
   async mkdir(path: string): Promise<void> {
