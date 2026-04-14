@@ -1,0 +1,196 @@
+# Game Vault — Feature Roadmap
+
+> Priorisierte Roadmap für alle geplanten Features. Jedes Feature bekommt einen eigenen Spec → Plan → Implementation Zyklus.
+
+---
+
+## Phase 1: Fundament
+
+### 1.1 Offline-First / Metadata Cache
+
+**Warum zuerst:** Jedes spätere Feature (Insights, Recommendations, Duplicate Detection) profitiert davon, dass Daten lokal vorliegen und nicht bei jedem Request IGDB/OpenRouter angefragt werden müssen. Außerdem ist ein ROM-Tool das ohne Internet nicht funktioniert ein Anti-Pattern.
+
+**Scope:**
+- **Metadata-Cache-Layer** — Beim ersten IGDB-Fetch werden alle Felder (Cover, Scores, Genres, Screenshots, Franchise, Themes, Developer, Publisher) bereits in der DB gespeichert. Das passiert schon heute. Was fehlt:
+  - **Cover-Bild-Cache**: Cover-URLs zeigen aktuell auf IGDB CDN. Bilder lokal in `public/covers/` oder `data/covers/` cachen, damit die App offline Covers anzeigt.
+  - **Screenshot-Cache**: Gleich wie Covers — `data/screenshots/{gameId}/` lokal speichern.
+  - **Artwork-Cache**: `data/artwork/{gameId}/` lokal speichern.
+  - **API-Response-Cache**: IGDB-Suchergebnisse für 24h cachen (vermeidet Rate-Limits und beschleunigt Re-Enrichment).
+  - **Graceful Degradation**: Wenn IGDB/OpenRouter nicht erreichbar sind, zeigt die App cached Daten an statt Fehler. Enrichment-Buttons werden disabled mit Hinweis "Offline — cached data shown".
+- **Cache-Invalidierung**: Manuell per Game ("Refresh Metadata") oder per Plattform ("Re-enrich all").
+- **Storage**: Lokales Filesystem (`data/` Verzeichnis) + SQLite-Spalten für lokale Pfade. Kein externer Cache-Service.
+- **Migration**: Einmal-Job der alle bestehenden Cover/Screenshot-URLs herunterlädt.
+
+**Nicht im Scope:** Service Worker / PWA (zu komplex, kommt evtl. als eigenes Feature).
+
+---
+
+### 1.2 Duplicate Detection
+
+**Warum jetzt:** Bevor Insights und Recommendations auf den Daten aufbauen, müssen Duplikate erkannt und bereinigt werden. Sonst sind alle Statistiken und Empfehlungen verzerrt.
+
+**Scope:**
+- **Scan-Time Detection**: Während eines Device-Scans werden potentielle Duplikate markiert:
+  - Gleicher Titel, verschiedene Regionen (z.B. "Super Mario World (USA)" vs "Super Mario World (Europe)")
+  - Gleicher Titel, verschiedene Formate (z.B. `.iso` und `.chd` vom selben Spiel)
+  - Gleicher Titel auf verschiedenen Geräten (Cross-Device Dupes)
+  - Verschiedene Versionen (Rev A, Rev B, Beta, Proto)
+- **Fuzzy Matching**: Titel-Normalisierung (Klammern entfernen, Region-Tags strippen, Artikelpräfixe ignorieren) + Levenshtein-Distance für nahe Matches.
+- **Dedupe Dashboard**: Neue Seite `/duplicates` die gruppierte Duplikate anzeigt mit:
+  - Welches Device, welches Format, welche Region
+  - Empfehlung welches behalten werden sollte (bevorzugt: CHD > ISO > BIN, (USA) > (Europe) > (Japan) falls Sprache Englisch)
+  - One-Click "Keep best, queue rest for deletion" → SyncQueue
+- **Nicht im Scope:** Automatisches Löschen ohne User-Bestätigung. Immer manuelles Review.
+
+---
+
+## Phase 2: Intelligenz
+
+### 2.1 Sammlung-Insights
+
+**Warum jetzt:** Bildet die Datenbasis für Recommendations und macht die Sammlung für den Nutzer greifbar.
+
+**Scope:**
+- **Collection DNA**: Analyse der gesamten Sammlung:
+  - Genre-Verteilung (Pie/Donut Chart): "52% RPGs, 20% Platformer, 15% Action..."
+  - Ären-Verteilung (Bar Chart): "45 Spiele aus den 90ern, 30 aus den 2000ern..."
+  - Franchise-Tiefe: "Du hast 8/12 Zelda-Spiele, 5/15 Final Fantasy..."
+  - Developer/Publisher-Affinität: "Top 5: Nintendo (42), Capcom (18), Square (15)..."
+  - Plattform-Completion: "SNES: 85 Spiele (Top 3% der Sammler)"
+- **Insight-Karten**: Natürlichsprachliche Zusammenfassungen auf der Home-Page:
+  - "Deine Sammlung hat einen starken Fokus auf JRPGs der PS1/SNES-Ära"
+  - "Du hast 3 Zelda-Spiele auf der Wishlist — dir fehlen noch Majora's Mask und Wind Waker"
+  - "Dein am wenigsten erforschtes Genre ist Racing — nur 2 Spiele"
+- **Data Source**: Rein aus bestehenden DB-Feldern (genres, themes, releaseDate, franchise, developer, publisher). Kein API-Call nötig.
+- **UI**: Erweiterung der `/` StatsDashboard Sektion + neue `/insights` Seite für Deep-Dive.
+
+---
+
+### 2.2 Smart Recommendations
+
+**Warum jetzt:** Baut auf Insights-Daten auf. Die bestehende Discover-Page nutzt bereits OpenRouter für Empfehlungen — Smart Recommendations erweitert das um datengetriebene Logik.
+
+**Scope:**
+- **Franchise-Completion**: "Du hast 8 Zelda-Spiele — dir fehlen: Zelda II, Minish Cap, Spirit Tracks" (IGDB Franchise-API + Abgleich mit Library).
+- **Genre-Exploration**: "Du liebst JRPGs — hast aber kein einziges Tactical RPG. Probier: Fire Emblem, FFT, Disgaea" (Genre-Gap-Analyse).
+- **Hidden Gems**: "Auf deiner PS1 sind 3 Spiele mit Score > 85 die du vielleicht übersehen hast" (hoher Score, kein bekanntes Franchise).
+- **Cross-Platform**: "Super Mario RPG gibt's auch für SNES — du hast nur die Switch-Version" (gleiches Spiel auf anderen Plattformen die der User hat).
+- **Integration**: Recommendations erscheinen auf der Home-Page als "Suggested for you"-Sektion und auf der Discover-Page als Tab neben dem AI-Wizard.
+- **Offline-fähig**: Franchise-Completion und Genre-Exploration arbeiten komplett lokal. Hidden Gems nutzt cached IGDB-Scores. Nur "What to play next" nutzt optional OpenRouter.
+
+---
+
+## Phase 3: Erlebnis
+
+### 3.1 Epoch-Navigation (Timeline)
+
+**Warum jetzt:** Das ist das Feature das Game Vault visuell von allen anderen ROM-Managern unterscheidet. Es bringt das "Zeitreise"-Gefühl.
+
+**Scope:**
+- **Timeline-View** (`/timeline`): Horizontaler Zeitstrahl von 1977 bis heute.
+  - Jede Gaming-Ära ist eine visuell distinkte Zone mit eigenem Farbschema:
+    - **1977–1983** "Dawn of Gaming" — Atari-braun, Woodgrain-Textur, grobe Pixel
+    - **1983–1989** "8-Bit Era" — NES-Grau/Rot, Pixel-Art-Borders
+    - **1989–1994** "16-Bit Golden Age" — SNES-Lila/Mega-Drive-Blau, lebhaftere Farben
+    - **1994–1998** "The 3D Revolution" — PS1-Grau, N64-Bunt, Low-Poly-Ästhetik
+    - **1998–2005** "The Golden Era" — Dreamcast-Orange, PS2-Blau, GBA-Lila
+    - **2005–2012** "HD Generation" — Xbox360-Grün, Wii-Weiß, clean & modern
+    - **2012–heute** "Modern Era" — Switch-Neon, PS4-Blau, flaches Design
+  - Jede Ära zeigt:
+    - Konsolen-Icons die in diese Ära fallen
+    - Anzahl der Spiele die der User aus dieser Ära besitzt
+    - Top 3 Spiele (nach Score) als Mini-Cover
+    - Click → Expanded View mit allen Spielen dieser Ära als Grid
+  - **Scroll-Interaktion**: Horizontales Scrollen (oder Drag) durch die Zeitleiste. Beim Scrollen verändert sich subtil der Hintergrund/die Farbtemperatur der gesamten Seite.
+  - **Plattform-Swimlanes** (optional toggle): Statt Ären kann man auf Plattform-Lanes umschalten — jede Konsole als horizontale Lane mit ihren Spielen chronologisch aufgereiht.
+- **Datenquelle**: `releaseDate` aus IGDB (bereits in DB). Spiele ohne Release-Date werden in "Unknown Era" gruppiert.
+- **Retro-Touches**:
+  - Ära-spezifische CSS: Scanline-Overlay für 8-Bit, Gradient-Glow für 16-Bit, Glossy-Buttons für PS2-Ära
+  - Hover über ein Spiel zeigt einen Tooltip im Stil der jeweiligen Ära
+  - Transition-Animationen beim Ära-Wechsel (Farben morphen, nicht springen)
+
+---
+
+### 3.2 Auto-Organization
+
+**Warum jetzt:** Ergänzt die Duplicate Detection und nutzt die SyncQueue-Infrastruktur die schon existiert.
+
+**Scope:**
+- **Naming Convention Engine**: Der User wählt eine Konvention:
+  - **No-Intro**: `Title (Region) (Rev X).ext`
+  - **TOSEC**: `Title (Year)(Publisher)(Region).ext`
+  - **Clean**: `Title.ext` (simpelste Form, Region/Tags entfernt)
+  - **Custom**: User definiert ein Pattern mit Platzhaltern `{title}`, `{region}`, `{year}`, `{rev}`
+- **Rename Preview**: Zeigt eine Vorschau aller Umbenennungen bevor sie passieren:
+  - `Super_Mario_World_(U)_[!].smc` → `Super Mario World (USA).smc`
+  - Conflicts werden hervorgehoben (wenn zwei Files zum gleichen Namen konvergieren)
+- **Batch-Rename via SyncQueue**: Alle Umbenennungen werden in die bestehende SyncQueue gestaged → User reviewed im SyncPanel → Apply.
+- **Ordnerstruktur-Vorschläge**: Falls ROMs nicht in den erwarteten Plattform-Ordnern liegen, schlägt das Tool Verschiebungen vor.
+- **Nicht im Scope:** Automatisches Umbenennen ohne Preview. Immer Queue → Review → Apply.
+
+---
+
+## Phase 4: Polish
+
+### 4.1 Onboarding & DX
+
+**Scope:**
+- **Setup-Wizard** (First-Run):
+  - Schritt 1: "Willkommen bei Game Vault" — Sprache wählen (DE/EN)
+  - Schritt 2: API-Keys eingeben (IGDB Client ID/Secret, optional OpenRouter, optional SteamGridDB) — mit "Skip" Option und Erklärung was ohne Keys fehlt
+  - Schritt 3: Erstes Device hinzufügen (SSH/FTP/Local mit Test-Connection-Button)
+  - Schritt 4: Scan-Paths konfigurieren (mit "Auto-Detect" für bekannte Pfade: ES-DE Default, RetroArch Default)
+  - Schritt 5: Ersten Scan starten → Redirect zu Home mit ScanBar
+  - Wizard erscheint nur wenn Settings leer sind UND keine Games in der DB
+- **One-Click Deploy**:
+  - `docker-compose.yml` überarbeiten: Single-Container mit Volume-Mounts für `data/` und `prisma/dev.db`
+  - `docker-compose up` startet alles (DB-Migration automatisch beim Start)
+  - Unraid Community App Template (großer Teil der Zielgruppe nutzt Unraid)
+- **README Overhaul**:
+  - Hero-Screenshot (Home-Page mit Spielen)
+  - Feature-Übersicht mit GIFs (Scan, Enrich, Upload, File Manager)
+  - Quick-Start (Docker + Manual)
+  - Tech-Stack Badge-Row
+  - Contributing Guide (Arch-Übersicht, PR-Workflow, Code-Conventions)
+- **Contributor Docs**:
+  - `CONTRIBUTING.md`: Setup, Code-Conventions, PR-Template
+  - `docs/architecture.md`: High-Level-Arch-Diagramm, Datenfluss, API-Übersicht
+
+---
+
+### 4.2 Offline-First Erweiterung: PWA
+
+**Scope (optional, nach 4.1):**
+- Service Worker für statische Assets
+- Manifest.json für "Add to Home Screen"
+- Offline-Fallback-Page wenn Server nicht erreichbar
+- Cache-First-Strategie für Cover-Bilder und Game-Detail-Pages
+
+---
+
+## Zusammenfassung & Reihenfolge
+
+| Phase | Feature | Abhängigkeiten | Aufwand |
+|-------|---------|----------------|---------|
+| 1.1 | Offline-First / Metadata Cache | — | Mittel |
+| 1.2 | Duplicate Detection | — | Mittel |
+| 2.1 | Sammlung-Insights | 1.1 (cached data) | Mittel |
+| 2.2 | Smart Recommendations | 2.1 (Insights-Daten) | Mittel-Hoch |
+| 3.1 | Epoch-Navigation | 2.1 (Ären-Daten, Release-Dates) | Hoch |
+| 3.2 | Auto-Organization | 1.2 (Dedupe-Infra) | Mittel |
+| 4.1 | Onboarding & DX | Alle Features stehen | Mittel |
+| 4.2 | PWA (optional) | 1.1 (Offline-Cache) | Niedrig |
+
+### Bestehendes Backlog (aus NEXT_SESSION.md)
+
+Diese Items werden **parallel** zu den Phasen abgearbeitet wenn sie Berührungspunkte haben:
+
+- [ ] Scanner ES-DE Parity (Priority 0 — in Progress)
+- [ ] Theme Toggle (Dark/Light)
+- [ ] Export/Backup (JSON/CSV)
+- [ ] Platform Icons vervollständigen
+- [ ] Plaintext Device-Passwörter verschlüsseln
+- [ ] Progress-Bar Overlap fixen (ScanBar/EnrichmentBar/TransferBar)
+- [ ] Buffer-basierter File-Transfer (2GB Limit)
+- [ ] Concurrent Transfer Queue statt 409
+- [ ] Sync-Apply Race Condition fixen
