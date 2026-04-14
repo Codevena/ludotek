@@ -51,6 +51,7 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState("");
   const [deviceLinkCount, setDeviceLinkCount] = useState<number | null>(null);
   const [showMaintenance, setShowMaintenance] = useState(false);
+  const [showDanger, setShowDanger] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -571,6 +572,62 @@ export default function AdminPage() {
           className={`${btnClass} bg-vault-amber text-black hover:bg-vault-amber-hover w-full`}>
           {saving ? "Saving..." : "Save Settings"}
         </button>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="card mt-8 space-y-4 border-red-500/30">
+        <button
+          onClick={() => setShowDanger(!showDanger)}
+          className="w-full flex items-center justify-between"
+        >
+          <h2 className="font-heading text-lg font-bold text-red-400">Danger Zone</h2>
+          <span className="text-red-400 text-sm">{showDanger ? "▲" : "▼"}</span>
+        </button>
+        {showDanger && (
+          <>
+            <p className="text-vault-muted text-xs">
+              Destructive actions — these cannot be undone.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {devices.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={async () => {
+                    if (!confirm(`Delete ALL games linked to "${d.name}"? This removes the games and their metadata from the database.`)) return;
+                    setResult(null);
+                    try {
+                      const res = await fetch(`/api/devices/${d.id}/wipe`, { method: "POST" });
+                      setResult(await res.json());
+                      loadDevices();
+                    } catch (err) {
+                      setResult({ error: String(err) });
+                    }
+                  }}
+                  className={`${btnClass} bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600/30`}
+                >
+                  Wipe {d.name} Games
+                </button>
+              ))}
+              <button
+                onClick={async () => {
+                  if (!confirm("Delete ALL games from ALL devices? This clears the entire game library.")) return;
+                  if (!confirm("Are you really sure? This cannot be undone.")) return;
+                  setResult(null);
+                  try {
+                    const res = await fetch("/api/devices/wipe-all", { method: "POST" });
+                    setResult(await res.json());
+                    loadDevices();
+                  } catch (err) {
+                    setResult({ error: String(err) });
+                  }
+                }}
+                className={`${btnClass} bg-red-600/30 text-red-400 border border-red-500/50 hover:bg-red-600/40 font-bold`}
+              >
+                Wipe ALL Games
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Maintenance Tools */}

@@ -54,7 +54,11 @@ export async function scanDevice(
           for (const dir of dirs) {
             if (dir.type !== "dir" && dir.type !== "symlink") continue;
             const subEntries = await conn.listDir(`${scanPath.path}/${dir.name}`);
-            const listing = subEntries.map((e) => e.name).join("\n");
+            // Only pass actual files to the parser — skip subdirs and symlinks
+            const listing = subEntries
+              .filter((e) => e.type === "file")
+              .map((e) => e.name)
+              .join("\n");
             if (listing) {
               const games = parseRomListing(listing, dir.name);
               allGames.push(...games);
