@@ -40,10 +40,12 @@ function TimelineContent() {
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [countsError, setCountsError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
-  // Fetch era counts on mount
+  // Fetch era counts on mount (and on retry)
   useEffect(() => {
+    setCountsError(false);
     fetch("/api/timeline/counts")
       .then((r) => {
         if (!r.ok) throw new Error("Failed to fetch counts");
@@ -58,8 +60,11 @@ function TimelineContent() {
         );
         if (maxEra) setActiveEra(maxEra.slug);
       })
-      .catch((err) => console.error("Failed to load era counts:", err));
-  }, []);
+      .catch((err) => {
+        console.error("Failed to load era counts:", err);
+        setCountsError(true);
+      });
+  }, [retryCount]);
 
   // Fetch games when era/sort/search changes
   useEffect(() => {
@@ -127,6 +132,20 @@ function TimelineContent() {
   }, [activeEra, sort, order, search]);
 
   const activeCount = eraCounts.find((c) => c.slug === activeEra)?.count ?? 0;
+
+  if (countsError) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-400 text-sm mb-3">Ären konnten nicht geladen werden.</p>
+        <button
+          onClick={() => setRetryCount((c) => c + 1)}
+          className="px-4 py-2 bg-vault-surface border border-vault-border rounded-lg text-sm text-vault-text hover:border-vault-amber transition-colors"
+        >
+          Erneut versuchen
+        </button>
+      </div>
+    );
+  }
 
   if (eraCounts.length === 0) {
     return (
