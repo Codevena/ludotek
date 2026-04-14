@@ -105,6 +105,32 @@ export function Sidebar() {
             <span>Wishlist</span>
           </Link>
 
+          <Link
+            href="/insights"
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              pathname === "/insights"
+                ? "bg-vault-amber/10 text-vault-amber"
+                : "text-vault-muted hover:text-vault-text hover:bg-vault-bg"
+            }`}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4"
+            >
+              <path d="M3 3v18h18" />
+              <path d="M18 17V9" />
+              <path d="M13 17V5" />
+              <path d="M8 17v-3" />
+            </svg>
+            <span>Insights</span>
+          </Link>
+
           {platforms.map((p) => (
             <Link
               key={p.id}
