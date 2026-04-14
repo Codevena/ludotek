@@ -75,6 +75,12 @@ export function Header() {
         Devices
       </Link>
       <Link
+        href="/files"
+        className="px-4 py-2 text-sm font-medium text-vault-muted hover:text-vault-text transition-colors"
+      >
+        Files
+      </Link>
+      <Link
         href="/admin/upload"
         className="px-4 py-2 text-sm text-vault-muted hover:text-vault-text transition-colors"
       >
