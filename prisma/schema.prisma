@@ -34,6 +34,7 @@ model Game {
   isFavorite      Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  devices         GameDevice[]
 
   @@unique([originalFile, platform])
   @@index([platform])
@@ -95,4 +96,15 @@ model Device {
   blacklist String   @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  games     GameDevice[]
+}
+
+model GameDevice {
+  id       Int    @id @default(autoincrement())
+  gameId   Int
+  deviceId Int
+  game     Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, deviceId])
 }
