@@ -1,18 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ERA_BUCKETS } from "@/lib/eras";
 
 export const dynamic = "force-dynamic";
-
-/* ── Era buckets ───────────────────────────────────── */
-const ERA_BUCKETS = [
-  { name: "Dawn of Gaming", range: "1977–1982", minYear: 1977, maxYear: 1982 },
-  { name: "8-Bit Era", range: "1983–1988", minYear: 1983, maxYear: 1988 },
-  { name: "16-Bit Golden Age", range: "1989–1993", minYear: 1989, maxYear: 1993 },
-  { name: "The 3D Revolution", range: "1994–1997", minYear: 1994, maxYear: 1997 },
-  { name: "The Golden Era", range: "1998–2004", minYear: 1998, maxYear: 2004 },
-  { name: "HD Generation", range: "2005–2011", minYear: 2005, maxYear: 2011 },
-  { name: "Modern Era", range: "2012–today", minYear: 2012, maxYear: 9999 },
-] as const;
 
 /* ── Helpers ───────────────────────────────────────── */
 
