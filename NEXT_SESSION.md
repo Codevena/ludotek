@@ -47,18 +47,48 @@
 - Batch-Rename birgt Risiko (bricht ES-DE/RetroArch-Scraper-Mappings)
 - Einzel-Rename existiert bereits im Game-Detail via SyncQueue
 
-## Next Up: Phase 4.1 — Onboarding & DX
+### Phase 4.1a: Setup-Wizard — COMPLETE (2026-04-14)
+- **Design Spec**: `docs/superpowers/specs/2026-04-14-setup-wizard-design.md`
+- **Implementation Plan**: `docs/superpowers/plans/2026-04-14-setup-wizard.md`
+- **Route Groups**: Restructured app to `(main)/` and `(setup)/` route groups
+  - Root layout: html/body/fonts/providers only
+  - `(main)/layout.tsx`: Sidebar, Header, ScanBar, EnrichmentBar, TransferBar
+  - `(setup)/setup/`: Standalone centered layout, no chrome
+- **New Files**:
+  - `src/app/api/setup-status/route.ts` — Returns `{needsSetup: boolean}`
+  - `src/app/(setup)/setup/layout.tsx` — Standalone layout
+  - `src/app/(setup)/setup/page.tsx` — Renders SetupWizard
+  - `src/components/setup-wizard.tsx` — 5-step wizard (Welcome, Device, Paths, API Keys, Scan)
+  - `src/components/setup-redirect.tsx` — Client redirect on Home when setup needed
+- **Modified**: `src/app/(main)/page.tsx` — SetupRedirect component added
+- **4-Agent Review passed** (2x Codex, 2x Claude, 2 rounds)
+
+### Review Fixes Applied (Round 1)
+- Connection failure no longer advances wizard (stays on Step 2)
+- handleSubmit uses setError instead of throw
+- handleAddPath/handleRemovePath check API response, revert on failure
+- setup-status route: try/catch + force-dynamic
+- Labels htmlFor/id for WCAG 1.3.1 accessibility
+- Device name/type shown in Step 5 summary
+- ScanPath type extracted to avoid inline repetition
+
+### Review Fixes Applied (Round 2)
+- StepDevice: full try/catch wrapper, settings PUT checked
+- StepPaths: rollback snapshot before optimistic update, disable during persist
+- StepApiKeys: disable Skip while save in flight
+- Route group restructure: /setup now truly standalone (no Sidebar/Header)
+
+## Next Up: Phase 4.1b — README, Docker, Contributor Docs
 
 **Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 4.1)
 
 ### Summary
-1. **Setup-Wizard** (First-Run): Sprache, API-Keys, Device, Scan-Paths, erster Scan
-2. **One-Click Deploy**: Docker-Compose überarbeiten, Unraid Template
-3. **README Overhaul**: Hero-Screenshot, Feature-GIFs, Quick-Start, Tech-Stack
-4. **Contributor Docs**: CONTRIBUTING.md, Architecture Overview
+1. **One-Click Deploy**: Docker-Compose überarbeiten, Unraid Template
+2. **README Overhaul**: Hero-Screenshot, Feature-GIFs, Quick-Start, Tech-Stack
+3. **Contributor Docs**: CONTRIBUTING.md, Architecture Overview
 
 ## Remaining Roadmap
-- Phase 4.1: Onboarding & DX (Setup Wizard, Docker, README, Contributor Docs)
+- Phase 4.1b: README/Docs/Docker Polish
 - Phase 4.2: PWA (optional)
 
 ## Bestehendes Backlog
