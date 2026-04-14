@@ -5,10 +5,17 @@ import { useRouter } from "next/navigation";
 import { DeviceForm, type DeviceFormData } from "@/components/device-form";
 import { FileBrowser } from "@/components/file-browser";
 
+interface ScanPath {
+  path: string;
+  type: "rom" | "steam";
+}
+
 interface WizardState {
   step: number;
   deviceId: number | null;
-  scanPaths: { path: string; type: "rom" | "steam" }[];
+  deviceName: string | null;
+  deviceType: string | null;
+  scanPaths: ScanPath[];
   igdbConfigured: boolean;
 }
 
@@ -63,6 +70,8 @@ export function SetupWizard() {
   const [state, setState] = useState<WizardState>({
     step: 0,
     deviceId: null,
+    deviceName: null,
+    deviceType: null,
     scanPaths: [],
     igdbConfigured: false,
   });
@@ -79,8 +88,8 @@ export function SetupWizard() {
         {state.step === 1 && (
           <StepDevice
             onBack={() => setStep(0)}
-            onComplete={(deviceId) => {
-              setState((s) => ({ ...s, deviceId, step: 2 }));
+            onComplete={(deviceId, deviceName, deviceType) => {
+              setState((s) => ({ ...s, deviceId, deviceName, deviceType, step: 2 }));
             }}
           />
         )}
@@ -104,6 +113,8 @@ export function SetupWizard() {
         {state.step === 4 && state.deviceId && (
           <StepScan
             deviceId={state.deviceId}
+            deviceName={state.deviceName}
+            deviceType={state.deviceType}
             scanPaths={state.scanPaths}
             igdbConfigured={state.igdbConfigured}
             onBack={() => setStep(3)}
@@ -170,7 +181,7 @@ function StepDevice({
   onComplete,
 }: {
   onBack: () => void;
-  onComplete: (deviceId: number) => void;
+  onComplete: (deviceId: number, name: string, type: string) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
 
@@ -184,7 +195,8 @@ function StepDevice({
     });
     if (!createRes.ok) {
       const err = await createRes.json().catch(() => null);
-      throw new Error(err?.error ?? "Failed to create device");
+      setError(err?.error ?? "Failed to create device");
+      return;
     }
     const device = await createRes.json();
 
@@ -203,9 +215,8 @@ function StepDevice({
       const testData = await testRes.json().catch(() => null);
       if (!testRes.ok || !testData?.ok) {
         setError(
-          `Device saved, but connection failed: ${testData?.error ?? "Unknown error"}. Check credentials and try again from the Devices page.`
+          `Device saved, but connection failed: ${testData?.error ?? "Unknown error"}. Fix credentials and try again.`
         );
-        onComplete(device.id);
         return;
       }
     }
@@ -216,7 +227,7 @@ function StepDevice({
       body: JSON.stringify({ activeDeviceId: device.id }),
     });
 
-    onComplete(device.id);
+    onComplete(device.id, data.name, data.type);
   }
 
   return (
@@ -253,31 +264,33 @@ function StepPaths({
   onNext,
 }: {
   deviceId: number;
-  scanPaths: { path: string; type: "rom" | "steam" }[];
-  onUpdatePaths: (paths: { path: string; type: "rom" | "steam" }[]) => void;
+  scanPaths: ScanPath[];
+  onUpdatePaths: (paths: ScanPath[]) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
+  async function persistPaths(updated: ScanPath[]) {
+    const res = await fetch(`/api/devices/${deviceId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scanPaths: JSON.stringify(updated) }),
+    });
+    if (!res.ok) {
+      console.error("Failed to persist scan paths");
+      onUpdatePaths(scanPaths); // revert on failure
+    }
+  }
+
   async function handleAddPath(path: string, type: "rom" | "steam") {
     const updated = [...scanPaths, { path, type }];
     onUpdatePaths(updated);
-
-    await fetch(`/api/devices/${deviceId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scanPaths: JSON.stringify(updated) }),
-    });
+    await persistPaths(updated);
   }
 
-  function handleRemovePath(index: number) {
+  async function handleRemovePath(index: number) {
     const updated = scanPaths.filter((_, i) => i !== index);
     onUpdatePaths(updated);
-
-    fetch(`/api/devices/${deviceId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scanPaths: JSON.stringify(updated) }),
-    });
+    await persistPaths(updated);
   }
 
   return (
@@ -395,15 +408,16 @@ function StepApiKeys({
           IGDB API Keys
         </h2>
         <p className="text-sm text-vault-muted mt-1">
-          Game Vault uses IGDB to fetch covers, ratings, release dates, and
+          Ludotek uses IGDB to fetch covers, ratings, release dates, and
           metadata for your games. Keys are free.
         </p>
       </div>
 
       <div className="space-y-3">
         <div>
-          <label className="block text-sm text-vault-muted mb-1">Client ID</label>
+          <label htmlFor="igdb-client-id" className="block text-sm text-vault-muted mb-1">Client ID</label>
           <input
+            id="igdb-client-id"
             type="text"
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
@@ -412,8 +426,9 @@ function StepApiKeys({
           />
         </div>
         <div>
-          <label className="block text-sm text-vault-muted mb-1">Client Secret</label>
+          <label htmlFor="igdb-client-secret" className="block text-sm text-vault-muted mb-1">Client Secret</label>
           <input
+            id="igdb-client-secret"
             type="password"
             value={clientSecret}
             onChange={(e) => setClientSecret(e.target.value)}
@@ -478,13 +493,17 @@ function StepApiKeys({
 
 function StepScan({
   deviceId,
+  deviceName,
+  deviceType,
   scanPaths,
   igdbConfigured,
   onBack,
   onComplete,
 }: {
   deviceId: number;
-  scanPaths: { path: string; type: "rom" | "steam" }[];
+  deviceName: string | null;
+  deviceType: string | null;
+  scanPaths: ScanPath[];
   igdbConfigured: boolean;
   onBack: () => void;
   onComplete: () => void;
@@ -523,6 +542,12 @@ function StepScan({
 
       <div className="text-left bg-vault-bg rounded-xl border border-vault-border/50 p-4 space-y-3">
         <div className="flex items-center justify-between text-sm">
+          <span className="text-vault-muted">Device</span>
+          <span className="text-vault-text">
+            {deviceName ?? "Unknown"} ({deviceType ?? "custom"})
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-sm pt-1 border-t border-vault-border/50">
           <span className="text-vault-muted">Scan paths</span>
           <span className="text-vault-text">{scanPaths.length} folder{scanPaths.length !== 1 ? "s" : ""}</span>
         </div>
