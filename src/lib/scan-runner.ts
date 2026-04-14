@@ -145,9 +145,9 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
                 where: { id: existing.id },
                 data: { title: game.title },
               });
+              updatedCount++;
             }
             result = existing;
-            updatedCount++;
           } else {
             result = await prisma.game.create({
               data: {

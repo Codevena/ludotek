@@ -15,10 +15,17 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
   }
 
-  try {
-    await prisma.syncQueue.delete({ where: { id: Number(id) } });
-    return NextResponse.json({ deleted: true });
-  } catch {
-    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  // Only allow removal of pending/failed items — in_progress items are being applied
+  const deleted = await prisma.syncQueue.deleteMany({
+    where: { id: Number(id), status: { not: "in_progress" } },
+  });
+
+  if (deleted.count === 0) {
+    return NextResponse.json(
+      { error: "Item not found or currently being applied" },
+      { status: 404 },
+    );
   }
+
+  return NextResponse.json({ deleted: true });
 }

@@ -7,8 +7,12 @@ const SKIP_FILES = new Set(["metadata.txt", "systeminfo.txt", "media", ".sbi"]);
 const SKIP_EXTENSIONS = new Set([".cue", ".sbi", ".txt", ".log", ".sh", ".lua", ".toml", ".ini", ".bak", ".pat", ".ps"]);
 // Archive formats accepted for all platforms (ROMs are often compressed)
 const ARCHIVE_EXTENSIONS = new Set([".7z", ".zip"]);
-// Playlist format — represents a multi-disc game (should be imported as the game entry)
+// Playlist format — represents a multi-disc game (only valid for disc-based platforms)
 const PLAYLIST_EXTENSION = ".m3u";
+const DISC_PLATFORMS = new Set([
+  "psx", "ps2", "ps3", "saturn", "segacd", "dreamcast", "gc", "wii",
+  "3do", "pcengine", "pcfx", "neogeocd",
+]);
 
 export function matchesBlacklist(name: string, blacklist: string[]): boolean {
   const lower = name.toLowerCase();
@@ -122,8 +126,8 @@ export function parseRomListing(
       if (dotIdx < 0) return false; // No extension = not a ROM file
       const ext = f.slice(dotIdx).toLowerCase();
       if (SKIP_EXTENSIONS.has(ext)) return false;
-      // .m3u playlists represent multi-disc games — import as game entry
-      if (ext === PLAYLIST_EXTENSION) return true;
+      // .m3u playlists represent multi-disc games — only for disc-based platforms
+      if (ext === PLAYLIST_EXTENSION && DISC_PLATFORMS.has(platformDef.id)) return true;
       // Archives (.7z, .zip) are always valid — ROMs are often compressed
       if (ARCHIVE_EXTENSIONS.has(ext)) return true;
       // If platform defines valid extensions, enforce them

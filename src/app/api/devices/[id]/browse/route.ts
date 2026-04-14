@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createConnection, buildBrowseResult } from "@/lib/connection";
 import type { ConnectionConfig } from "@/lib/connection";
+import { validateRemotePath } from "@/lib/path-validation";
 
 export async function GET(
   request: NextRequest,
@@ -26,6 +27,8 @@ export async function GET(
   }
 
   const path = request.nextUrl.searchParams.get("path") ?? "/";
+  const pathError = validateRemotePath(path, true);
+  if (pathError) return pathError;
 
   let conn;
   try {

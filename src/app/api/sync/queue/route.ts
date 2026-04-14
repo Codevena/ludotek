@@ -73,7 +73,9 @@ export async function POST(request: NextRequest) {
   let scanRoots: string[];
   try {
     const parsed = JSON.parse(device.scanPaths) as { path: string }[];
-    scanRoots = parsed.map((sp) => sp.path);
+    scanRoots = parsed.map((sp) =>
+      sp.path.endsWith("/") ? sp.path.slice(0, -1) : sp.path,
+    );
   } catch {
     return NextResponse.json(
       { error: "Device has invalid scan path config" },
