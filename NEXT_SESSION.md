@@ -2,64 +2,103 @@
 
 ## What was done this session
 
-### ROM Management & Sync (Priority 0) — COMPLETE
-- **SyncQueue Prisma model** with relations to Game and Device (cascade delete)
-- **Sync Queue API** — GET/POST/DELETE `/api/sync/queue`, DELETE `/api/sync/queue/[id]`
-  - Path traversal validation (rejects `..`, null bytes, verifies within device scan roots)
-  - Deduplication: only latest rename kept, no duplicate deletes
-  - JSON body validation with try/catch
-- **Sync Apply API** — POST `/api/sync/apply`
-  - Atomic claim pattern (updateMany to "in_progress") prevents concurrent apply races
-  - Crash recovery: stale in_progress items reset to "failed" after 5min
-  - Groups items by device, one connection per device, disconnects after
-  - Delete: removes file, removes GameDevice link, idempotent on ENOENT
-  - Rename: renames file, verifies destination exists on ENOENT, updates originalFile only on single-device games
-  - Orphan game cleanup after deletes
-  - Failed items retryable on next Apply
-- **GameFiles component** — "Files on Devices" section on game detail page
-  - Per-device file list with reconstructed paths
-  - Inline rename with pre-selected filename, Stage/Cancel/Enter/Escape
-  - Delete with ConfirmDialog, strikethrough styling
-  - Buttons hidden after staging rename (prevents conflicting ops)
-  - Filename validation (rejects `/`, `\`, `..`)
-- **SyncPanel drawer** — accessible from header Sync badge
-  - Badge shows pending+failed count, hidden when 0
-  - Drawer shows items grouped by device with type icons
-  - Failed items shown with red styling and error messages
-  - Individual remove, Clear All (with confirm), Apply All
-  - Result summary after apply
-  - 5-second polling for updates
-- **Scan runner improvements**
-  - Orphan game cleanup (games with zero device links deleted)
-  - Stale SyncQueue cleanup for removed GameDevice links
-  - Zero-game scan guard (skips cleanup on empty scan to prevent data loss)
-  - Safe JSON.parse for device config (skips device on invalid config)
-- **3 rounds of 4-agent review** (Codex code, Codex spec, Claude code, Claude spec)
+### ROM Management & Sync — COMPLETE
+- SyncQueue Prisma model, Queue API (GET/POST/DELETE), Apply API with atomic claim + crash recovery
+- GameFiles component on game detail page (rename/delete staging with inline editor)
+- SyncPanel drawer in header (badge, queue grouped by device, apply all, clear all, retry failed)
+- Security: path traversal validation, race condition prevention, in_progress item protection
+- Multi-device rename guard (only updates originalFile on single-device games)
+- Orphan game cleanup in scan-runner and apply
 
-### Symlink Support in File Manager (Priority 1) — COMPLETE
-- SSH listDir uses SFTP readdir to detect symlinks via mode bits (was using `ls -1p`)
-- SSH listDirDetailed resolves symlink targets via SFTP readlink
+### Symlink Support — COMPLETE
+- SSH listDir uses SFTP readdir to detect symlinks via mode bits
 - FTP and Local connections also detect symlinks
-- Symlinks shown with link icon (🔗) in file manager, navigable like directories
-- Symlink target path displayed in file panel
-- Scanner follows symlinked platform directories during ROM scan
-- Sort order: directories first, symlinks second, files last
+- Symlinks shown with link icon in file manager, navigable like directories
+- Scanner follows symlinked platform directories
 
-## Priority 0: Remaining from PLAN.md
+### Scanner Overhaul — COMPLETE
+- Extension filtering: only platform-valid extensions + .7z/.zip universally accepted
+- Multi-disc: .m3u playlists imported as game entries (disc-based platforms only)
+- -multidisc directories skipped (discs represented by .m3u in parent dir)
+- Directories filtered via type !== "dir" (not just extension check)
+- Expanded skip list: .txt, .log, .sh, .lua, .toml, .ini, .bak, .pat, .ps
+- deduplicateGames collapses disc variants by title+platform
+
+### Admin Improvements
+- Danger Zone: Wipe per-device or all games (with double-confirm)
+- Scan button uses ScanContext for progress feedback (ScanBar)
+- Settings API auto-creates record on first access (upsert)
+- "Enrich" renamed to "Metadata" everywhere for clarity
+- "Surprise Me" replaced with "Get Metadata" on platform pages
+- Empty library hint replaces confusing "Device filter not working" warning
+
+### Platform Icons
+- 5 Wikimedia Commons logos downloaded (wii, nds, neogeo, ps3, xbox)
+- Download script for remaining ~30 platforms: `bash scripts/download-platform-icons.sh`
+
+### Security (4 rounds of 4-agent review)
+- Path traversal validation on all endpoints (browse, sync queue, file operations)
+- Atomic claim pattern in sync apply (prevents concurrent apply races)
+- Crash recovery for stale in_progress items (5min timeout)
+- DELETE queue/[id] rejects in_progress items
+- Filename validation (rejects /, \, ..)
+- JSON body validation with try/catch
+- Zero-game scan guard (skips cleanup on empty scan)
+
+## Priority 0: Scanner ES-DE Parity
+
+**Plan**: `docs/superpowers/plans/2026-04-14-scanner-es-de-parity.md`
+
+### Summary
+1. **Expand platforms.ts** from 51 to ~95 systems with complete extensions + `subdir` field
+2. **Recursive scan** within platform directories (depth 2) for ROMs in subdirectories
+3. **IGDB mappings** for new systems
+
+### Key Details
+- Xbox, Wii U, Xbox 360, Model 2 have ROMs in `{platform}/roms/` subdirectory — new `subdir` field handles this
+- Many platforms need additional dir aliases (megadrivejp, saturnjp, sega32xjp, etc.)
+- Extensions need completion from ES-DE defaults (NES: .fds/.unf, SNES: .swc/.fig, N3DS: .3dsx/.cci/.cxi, etc.)
+- New platforms: Atari Jaguar CD, Atari ST, Atari 800, Sega Model 2, Odyssey 2, Channel F, BBC Micro, X68000, PICO-8
+- Steam Deck has 185 ROM directories, ~25 with actual content
+
+### Steam Deck ROM Structure (reference)
+```
+/home/deck/EmuVirtual/Emulation/roms/
+├── xbox/roms/*.iso          ← subdir: "roms"
+├── xbox360/roms/*.iso       ← subdir: "roms"  
+├── wiiu/roms/*.wux          ← subdir: "roms"
+├── model2/roms/*.zip        ← subdir: "roms"
+├── snes/*.7z                ← direct (most platforms)
+├── psx/*.chd + *.m3u        ← .m3u for multi-disc
+├── psx-multidisc/*.chd      ← skipped (handled by .m3u)
+└── 3ds -> n3ds              ← symlink (already handled)
+```
+
+## Priority 1: Remaining from PLAN.md
 - Theme Toggle (Dark/Light)
 - Export/Backup (JSON/CSV)
+- Platform icons: run `bash scripts/download-platform-icons.sh` when Wikimedia rate limit clears
 
 ## Known Issues
 - Pokemon "Blaue Edition" (German ROM) not recognized in IGDB
 - Plaintext device passwords in SQLite
 - ScanBar, EnrichmentBar, TransferBar can overlap
 - Buffer-based file transfer (max 2GB)
-- FTP `readFile` with `maxBytes` doesn't abort transfer
+- FTP readFile with maxBytes doesn't abort transfer
 - Concurrent transfers rejected (409) instead of queued
-- Path reconstruction for multi-device games uses first platform dir alias — if ROM is in alternate alias, wrong path is staged
+- Path reconstruction uses first platform dir alias (dirs[0]) — wrong if ROM is in alternate alias
 - Badge updates via 5s polling (not immediate after staging)
 
 ## Git State
 - Branch: `master`
 - All changes committed locally, NOT pushed to origin
-- 12 new commits this session (6 feature + 3 fix rounds + symlink)
+- 22 new commits this session
+- Devices: Steam Deck (192.168.178.131), Retroid Pocket (192.168.178.21)
+- DB was reset this session — devices need reconfiguring after fresh clone
+
+## Dev Notes
+- Use `pnpm build` before every commit (pre-commit hooks enforce console.warn/error)
+- Use `console.warn`/`console.error` instead of custom logger
+- Prisma 6.x only (not 7.x)
+- DB: SQLite at prisma/dev.db
+- Clear `.next` cache if build gives cryptic errors: `rm -rf .next`
