@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
   // Prefer .m3u entries (canonical multi-disc representation) over per-disc entries
   const seen = new Map<string, { id: number; isM3u: boolean }>();
   const dupeIds: number[] = [];
+  const loserToWinner = new Map<number, number>();
 
   for (const game of updatedGames) {
     const key = `${game.title}|${game.platform}`;
@@ -48,9 +49,11 @@ export async function POST(request: NextRequest) {
       if (isM3u && !existing.isM3u) {
         // New entry is .m3u, old is not — replace, mark old as dupe
         dupeIds.push(existing.id);
+        loserToWinner.set(existing.id, game.id);
         seen.set(key, { id: game.id, isM3u });
       } else {
         dupeIds.push(game.id);
+        loserToWinner.set(game.id, existing.id);
       }
     } else {
       seen.set(key, { id: game.id, isM3u });
@@ -59,6 +62,20 @@ export async function POST(request: NextRequest) {
 
   let dupesDeleted = 0;
   if (dupeIds.length > 0) {
+    // Transfer device links from losers to winners before deleting
+    const loserLinks = await prisma.gameDevice.findMany({
+      where: { gameId: { in: dupeIds } },
+    });
+    for (const link of loserLinks) {
+      const winnerId = loserToWinner.get(link.gameId);
+      if (winnerId !== undefined) {
+        await prisma.gameDevice.upsert({
+          where: { gameId_deviceId: { gameId: winnerId, deviceId: link.deviceId } },
+          update: {},
+          create: { gameId: winnerId, deviceId: link.deviceId },
+        });
+      }
+    }
     const result = await prisma.game.deleteMany({
       where: { id: { in: dupeIds } },
     });
