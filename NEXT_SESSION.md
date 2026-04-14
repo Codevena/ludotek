@@ -2,113 +2,82 @@
 
 ## What was done this session
 
-### Spec C: Remote File Manager — DONE
-Full dual-panel file manager at `/files` (Total Commander style):
-- DeviceConnection extended with CRUD methods (SSH SFTP + FTP + Local filesystem)
-- API routes: mkdir, rename, delete, preview, cross-device transfer with progress
-- FilePanel, FilePreviewModal, TransferBar, ConfirmDialog/AlertDialog components
-- Hidden files toggle (`.* ` button), Local PC device support
-- 4 rounds of 4-agent code review passed
+### Device Filter & Dedup Fixes
+- **Root cause found**: GameDevice table had 0 records — games scanned before device-link code existed
+- Cross-device dedup: match by `originalFile+platform` first, then `title+platform` fallback
+- Scan-runner now upserts Platform records (were missing from sidebar)
+- Sidebar, Stats Dashboard, and Platform API all respect `activeDeviceId`
+- Pagination total adjusted after client-side dedup
+- Scanner filters `.m3u/.cue/.sbi` files automatically
 
-### Post-Review Polish
-- Custom modals replacing browser `confirm()`/`alert()` dialogs (vault theme)
-- SFTP session caching (fixes "Channel open failure" on batch operations)
-- Local filesystem protocol (`LocalConnection` class, device form, API validation)
-- Hidden dotfiles filter with toggle
-- Navigation freeze fix (useCallback for selection handlers)
-- TransferBar moved to root layout (visible on all pages)
-- Device filter: `window.location.reload()` instead of `router.refresh()`
-- Game deduplication by `igdbId` in "All Devices" view
-- Context-aware empty messages ("No games on this device")
+### Platform Expansion (18 → 51)
+- Added: NDS, Wii, Wii U, PSP, PS3, PS Vita, Xbox OG, Atari (2600/5200/7800/Lynx/Jaguar), Neo Geo (AES/CD/NGP/NGPC), PC Engine, PC-FX, WonderSwan/Color, 3DO, ColecoVision, Vectrex, Intellivision, DOS, C64, Amiga, MSX, ZX Spectrum, Amstrad CPC, Arcade/MAME, Naomi, Atomiswave, ScummVM, SG-1000, Sega 32X, Virtual Boy, Pokemon Mini
+- 38 SVG icons created, PNG→SVG fallback in all icon-loading components
+- IGDB platform map expanded to match
 
-## CRITICAL — What to fix next (Priority 0)
+### Admin Cleanup
+- Removed legacy Steam Deck SSH settings (deckHost/deckUser/deckPassword) from schema, API, and UI
+- Deleted `migrate-device.ts` (migration no longer needed)
+- Maintenance tools (Fetch Critic Scores, Re-Enrich, Cleanup) moved to collapsible section at bottom
+- "Scan Steam Deck" renamed to "Scan Devices"
+- Warning banner when GameDevice links are missing
 
-### Device Filter is BROKEN
-**Problem:** When user switches device in the header dropdown, platform pages show "No games on this device for this platform" even though games exist. The device filter logic has fundamental issues:
+### Upload Process
+- Uses device credentials instead of old Settings fields
+- Creates GameDevice link on upload
+- Validates deviceId, rejects FTP/local protocols
+- Passes device port to SSH uploader
 
-**Root cause investigation needed:**
-1. **GameDevice links may be incomplete** — Games might not be properly linked to devices via the `GameDevice` join table after scanning. Check `src/lib/scan-runner.ts` and `src/lib/scanner.ts` to verify that `GameDevice` records are created for every game found on each device during scan.
+### Security Hardening
+- Strict `/^\d+$/` regex validation for all deviceId parameters across all APIs
 
-2. **Platform page server component caching** — `src/app/platform/[id]/page.tsx` reads `activeDeviceId` from Settings DB and filters with `where.devices = { some: { deviceId: activeDeviceId } }`. After `window.location.reload()`, the page should re-fetch from DB. But verify the Prisma query is actually returning results — add console.log in the platform page to debug.
+### ROM Management & Sync Design Spec
+- Written and approved: `docs/superpowers/specs/2026-04-14-rom-management-sync-design.md`
 
-3. **"All Devices" shows duplicates** — The deduplication by `igdbId` in `src/app/api/games/route.ts` only works for games that HAVE an igdbId. Games without IGDB enrichment (igdbId is null) won't be deduped. Also, if the same ROM is scanned from two devices and creates two separate `Game` records (different `originalFile`), they show as duplicates. The real fix might be: deduplicate Game records at scan time (match by title+platform, not just originalFile+platform).
+## Priority 0: Implement ROM Management & Sync
 
-4. **Sidebar game counts ignore device filter** — `src/components/layout/sidebar.tsx` fetches from `/api/platforms` which returns total game counts without device filter. When a device is selected, the sidebar still shows total counts which is misleading.
+**Spec**: `docs/superpowers/specs/2026-04-14-rom-management-sync-design.md`
 
-**Debug steps for next session:**
-```bash
-# Check GameDevice links
-sqlite3 prisma/dev.db "SELECT d.name, COUNT(gd.id) FROM Device d LEFT JOIN GameDevice gd ON d.id = gd.deviceId GROUP BY d.id;"
+### Summary
+1. **Game Detail "Files on Devices" section** — shows which file on which device, with Rename/Delete buttons that stage changes to a queue
+2. **SyncQueue DB table** — stores pending rename/delete operations
+3. **Sync Panel (Drawer)** — accessible from header, shows pending queue, "Apply All" executes changes on devices
+4. **Scan enhancement** — detect deleted ROMs, remove orphaned games (no device links left)
 
-# Check if games have igdbId for dedup
-sqlite3 prisma/dev.db "SELECT COUNT(*) as total, COUNT(igdbId) as with_igdb FROM Game;"
+### Key Design Decisions
+- Actions are **per device** (rename on Steamdeck doesn't affect Retroid)
+- Changes are **staged** in a queue, not executed immediately
+- Queue is **reviewable** before applying (staged changes concept)
+- Sync Panel is a **drawer** accessible from header with badge count
+- Scan remains **separate** from the queue (scan imports/removes, queue is for user actions)
+- Deleted games: remove GameDevice link, delete game only when zero devices remain
+- Rename only changes **filename on device**, not game title (title comes from IGDB)
 
-# Check duplicate games (same title+platform, different originalFile)
-sqlite3 prisma/dev.db "SELECT title, platform, COUNT(*) as cnt FROM Game GROUP BY title, platform HAVING cnt > 1 LIMIT 20;"
-```
+### Implementation Order
+1. Add `SyncQueue` model to Prisma schema
+2. Create sync queue API endpoints (`/api/sync/queue`, `/api/sync/apply`)
+3. Build `GameFiles` component for game detail page
+4. Build `SyncPanel` drawer component
+5. Add sync badge to header
+6. Enhance scan-runner with orphan game cleanup
 
-**Key files to investigate:**
-- `src/lib/scanner.ts` — Does it create GameDevice links? Check `scanDevice()` function
-- `src/lib/scan-runner.ts` — Orchestrates scan, should link games to devices
-- `src/app/api/games/route.ts` — Deduplication logic (line ~57+)
-- `src/app/platform/[id]/page.tsx` — Device filter in WHERE clause (line 46)
-- `src/app/page.tsx` — Home page device filter (line 108)
-- `src/components/layout/sidebar.tsx` — Game counts (no device filter applied)
+## Priority 1: Symlink Support in File Manager
+- SSH `listDir` needs to recognize symlinks (currently may skip them)
+- Important for Steam Deck where many paths are symlinks
 
-### Local PC Scan Support
-The Local PC device type was added (protocol "local", `LocalConnection` class) and the file browser works. BUT: the scanner (`src/lib/scanner.ts`) needs to handle `protocol: "local"` — currently it only scans via SSH/FTP connections. The scanner should use `LocalConnection` (or direct `fs` operations) when the device protocol is "local".
-
-**Files:** `src/lib/scanner.ts`, `src/lib/scan-runner.ts`
-
-## Priority 1: Remaining from original PLAN.md
+## Priority 2: Remaining from PLAN.md
 - Theme Toggle (Dark/Light)
 - Export/Backup (JSON/CSV)
 
 ## Known Issues
-- Pokemon "Blaue Edition" (German ROM) not recognized as duplicate in IGDB missing games
-- Plaintext device passwords in SQLite (acceptable for local app)
-- ScanBar, EnrichmentBar, and TransferBar can overlap if multiple active simultaneously
-- Scan/transfer locks are process-local
-- Buffer-based file transfer (max 2GB in memory)
-- FTP `readFile` with `maxBytes` doesn't abort network transfer
-- Concurrent transfers rejected with 409 instead of queued
+- Pokemon "Blaue Edition" (German ROM) not recognized in IGDB
+- Plaintext device passwords in SQLite
+- ScanBar, EnrichmentBar, TransferBar can overlap
+- Buffer-based file transfer (max 2GB)
+- FTP `readFile` with `maxBytes` doesn't abort transfer
+- Concurrent transfers rejected (409) instead of queued
 
 ## Git State
 - Branch: `master`
 - All changes committed locally, NOT pushed to origin
-- 55+ commits ahead of remote
-
-## Key Files Reference
-| Area | Files |
-|------|-------|
-| Prisma schema | `prisma/schema.prisma` |
-| Connection layer | `src/lib/connection.ts` (SSH, FTP, Local) |
-| Path validation | `src/lib/path-validation.ts` |
-| Scanner | `src/lib/scanner.ts` |
-| Scan runner | `src/lib/scan-runner.ts` |
-| Scan progress | `src/lib/scan-progress.ts` |
-| Transfer progress | `src/lib/transfer-progress.ts` |
-| Scan context | `src/context/scan-context.tsx` |
-| Games API | `src/app/api/games/route.ts` |
-| Device APIs | `src/app/api/devices/**` |
-| File ops APIs | `src/app/api/devices/[id]/files/**` |
-| Transfer APIs | `src/app/api/devices/transfer/**` |
-| Scan APIs | `src/app/api/scan/**` |
-| Settings API | `src/app/api/settings/route.ts` |
-| Home page | `src/app/page.tsx` |
-| Platform page | `src/app/platform/[id]/page.tsx` |
-| Files page | `src/app/files/page.tsx` |
-| Devices page | `src/app/devices/page.tsx` |
-| File panel | `src/components/file-panel.tsx` |
-| File preview | `src/components/file-preview-modal.tsx` |
-| Transfer bar | `src/components/transfer-bar.tsx` |
-| Confirm dialog | `src/components/confirm-dialog.tsx` |
-| Game grid | `src/components/infinite-game-grid.tsx` |
-| Game card | `src/components/game-card.tsx` |
-| Header | `src/components/layout/header.tsx` |
-| Sidebar | `src/components/layout/sidebar.tsx` |
-| Device form | `src/components/device-form.tsx` |
-| File browser | `src/components/file-browser.tsx` |
-| Admin | `src/app/admin/page.tsx` |
-| Specs | `docs/superpowers/specs/` |
-| Plans | `docs/superpowers/plans/` |
+- 56+ commits ahead of remote
