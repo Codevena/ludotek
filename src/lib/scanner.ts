@@ -4,9 +4,11 @@ import { getPlatformByDir, PLATFORM_CONFIG } from "./platforms";
 import { createConnection } from "./connection";
 
 const SKIP_FILES = new Set(["metadata.txt", "systeminfo.txt", "media", ".sbi"]);
-const SKIP_EXTENSIONS = new Set([".m3u", ".cue", ".sbi", ".txt", ".log", ".sh", ".lua", ".toml", ".ini", ".bak", ".pat", ".ps"]);
+const SKIP_EXTENSIONS = new Set([".cue", ".sbi", ".txt", ".log", ".sh", ".lua", ".toml", ".ini", ".bak", ".pat", ".ps"]);
 // Archive formats accepted for all platforms (ROMs are often compressed)
 const ARCHIVE_EXTENSIONS = new Set([".7z", ".zip"]);
+// Playlist format — represents a multi-disc game (should be imported as the game entry)
+const PLAYLIST_EXTENSION = ".m3u";
 
 export function matchesBlacklist(name: string, blacklist: string[]): boolean {
   const lower = name.toLowerCase();
@@ -55,6 +57,8 @@ export async function scanDevice(
           const dirs = await conn.listDir(scanPath.path);
           for (const dir of dirs) {
             if (dir.type !== "dir" && dir.type !== "symlink") continue;
+            // Skip multidisc directories — their games are represented by .m3u in the main dir
+            if (dir.name.endsWith("-multidisc")) continue;
             const subEntries = await conn.listDir(`${scanPath.path}/${dir.name}`);
             // Skip subdirectories — files and symlinks (to ROM files) pass through
             // Extension filter in parseRomListing catches any remaining non-ROM entries
@@ -118,6 +122,8 @@ export function parseRomListing(
       if (dotIdx < 0) return false; // No extension = not a ROM file
       const ext = f.slice(dotIdx).toLowerCase();
       if (SKIP_EXTENSIONS.has(ext)) return false;
+      // .m3u playlists represent multi-disc games — import as game entry
+      if (ext === PLAYLIST_EXTENSION) return true;
       // Archives (.7z, .zip) are always valid — ROMs are often compressed
       if (ARCHIVE_EXTENSIONS.has(ext)) return true;
       // If platform defines valid extensions, enforce them
