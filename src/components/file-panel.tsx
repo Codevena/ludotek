@@ -55,6 +55,7 @@ export function FilePanel({
   const [mkdirName, setMkdirName] = useState("");
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [showHidden, setShowHidden] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteAlertErrors, setDeleteAlertErrors] = useState<string[] | null>(null);
 
@@ -105,6 +106,10 @@ export function FilePanel({
     }
   }, [selected, currentPath, selectedDeviceId, onSelectionChange]);
 
+  const visibleEntries = showHidden
+    ? entries
+    : entries.filter((e) => !e.name.startsWith("."));
+
   function toggleSelect(name: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -118,10 +123,10 @@ export function FilePanel({
   }
 
   function toggleSelectAll() {
-    if (selected.size === entries.length) {
+    if (selected.size === visibleEntries.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(entries.map((e) => e.name)));
+      setSelected(new Set(visibleEntries.map((e) => e.name)));
     }
   }
 
@@ -223,7 +228,7 @@ export function FilePanel({
   }
 
   const selectedCount = selected.size;
-  const selectedSize = entries
+  const selectedSize = visibleEntries
     .filter((e) => selected.has(e.name))
     .reduce((sum, e) => sum + e.size, 0);
 
@@ -273,14 +278,26 @@ export function FilePanel({
         >
           {currentPath}
         </span>
+        <button
+          type="button"
+          onClick={() => setShowHidden((v) => !v)}
+          className={`px-2 py-1 text-xs rounded border transition-colors ${
+            showHidden
+              ? "border-vault-amber/50 text-vault-amber bg-vault-amber/10"
+              : "border-vault-border text-vault-muted hover:border-vault-muted"
+          }`}
+          title={showHidden ? "Hide hidden files" : "Show hidden files"}
+        >
+          .*
+        </button>
       </div>
 
       {/* Select All header */}
-      {selectedDeviceId && entries.length > 0 && (
+      {selectedDeviceId && visibleEntries.length > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-vault-border/50 bg-vault-bg/50">
           <input
             type="checkbox"
-            checked={selected.size === entries.length && entries.length > 0}
+            checked={selected.size === visibleEntries.length && visibleEntries.length > 0}
             onChange={toggleSelectAll}
             className="accent-vault-amber"
           />
@@ -312,7 +329,7 @@ export function FilePanel({
           </div>
         )}
 
-        {!loading && !error && selectedDeviceId && entries.length === 0 && (
+        {!loading && !error && selectedDeviceId && visibleEntries.length === 0 && (
           <div className="px-4 py-6 text-center text-sm text-vault-muted">
             Empty directory
           </div>
@@ -341,7 +358,7 @@ export function FilePanel({
 
         {!loading &&
           !error &&
-          entries.map((entry) => (
+          visibleEntries.map((entry) => (
             <div
               key={entry.name}
               className="flex items-center gap-2 px-3 py-2 text-sm border-b border-vault-border/50 last:border-b-0 hover:bg-vault-amber/5"
