@@ -22,22 +22,9 @@
 
 ---
 
-### 1.2 Duplicate Detection
+### ~~1.2 Duplicate Detection~~ — SKIPPED
 
-**Warum jetzt:** Bevor Insights und Recommendations auf den Daten aufbauen, müssen Duplikate erkannt und bereinigt werden. Sonst sind alle Statistiken und Empfehlungen verzerrt.
-
-**Scope:**
-- **Scan-Time Detection**: Während eines Device-Scans werden potentielle Duplikate markiert:
-  - Gleicher Titel, verschiedene Regionen (z.B. "Super Mario World (USA)" vs "Super Mario World (Europe)")
-  - Gleicher Titel, verschiedene Formate (z.B. `.iso` und `.chd` vom selben Spiel)
-  - Gleicher Titel auf verschiedenen Geräten (Cross-Device Dupes)
-  - Verschiedene Versionen (Rev A, Rev B, Beta, Proto)
-- **Fuzzy Matching**: Titel-Normalisierung (Klammern entfernen, Region-Tags strippen, Artikelpräfixe ignorieren) + Levenshtein-Distance für nahe Matches.
-- **Dedupe Dashboard**: Neue Seite `/duplicates` die gruppierte Duplikate anzeigt mit:
-  - Welches Device, welches Format, welche Region
-  - Empfehlung welches behalten werden sollte (bevorzugt: CHD > ISO > BIN, (USA) > (Europe) > (Japan) falls Sprache Englisch)
-  - One-Click "Keep best, queue rest for deletion" → SyncQueue
-- **Nicht im Scope:** Automatisches Löschen ohne User-Bestätigung. Immer manuelles Review.
+**Entscheidung (2026-04-14):** Übersprungen. Der bestehende `cleanFilename()` + `deduplicateGames()` fängt bereits die meisten echten Duplikate ab (Region-Varianten, Format-Varianten, Multi-Disc). Fuzzy Matching (Schreibvarianten) tritt in der Praxis selten auf bei konsistenten ROM-Sets. Cross-Platform-Info fließt stattdessen als Insight-Typ in Phase 2.1 ein.
 
 ---
 
@@ -170,11 +157,11 @@
 | Phase | Feature | Abhängigkeiten | Aufwand |
 |-------|---------|----------------|---------|
 | ~~1.1~~ | ~~Offline-First / Metadata Cache~~ | ~~—~~ | ~~DONE~~ |
-| 1.2 | Duplicate Detection | — | Mittel |
+| ~~1.2~~ | ~~Duplicate Detection~~ | ~~—~~ | ~~SKIPPED~~ |
 | 2.1 | Sammlung-Insights | 1.1 (cached data) | Mittel |
 | 2.2 | Smart Recommendations | 2.1 (Insights-Daten) | Mittel-Hoch |
 | 3.1 | Epoch-Navigation | 2.1 (Ären-Daten, Release-Dates) | Hoch |
-| 3.2 | Auto-Organization | 1.2 (Dedupe-Infra) | Mittel |
+| 3.2 | Auto-Organization | — | Mittel |
 | 4.1 | Onboarding & DX | Alle Features stehen | Mittel |
 | 4.2 | PWA (optional) | 1.1 (Offline-Cache) | Niedrig |
 
