@@ -72,6 +72,13 @@ export default function FilesPage() {
 
       if (!sourceDeviceId || !targetDeviceId || files.length === 0) return;
 
+      if (mode === "move") {
+        const count = files.length;
+        if (!confirm(`Move ${count} file${count > 1 ? "s" : ""}? Source files will be deleted after transfer.`)) {
+          return;
+        }
+      }
+
       setTransferring(true);
       try {
         const res = await fetch("/api/devices/transfer", {

@@ -21,6 +21,7 @@ declare global {
 export function TransferBar() {
   const [data, setData] = useState<TransferProgress | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const errorCountRef = useRef(0);
 
   const stopPolling = useCallback(() => {
     if (intervalRef.current) {
@@ -32,7 +33,14 @@ export function TransferBar() {
   const poll = useCallback(async () => {
     try {
       const res = await fetch("/api/devices/transfer/status");
-      if (!res.ok) return;
+      if (!res.ok) {
+        errorCountRef.current += 1;
+        if (errorCountRef.current > 30) {
+          stopPolling();
+        }
+        return;
+      }
+      errorCountRef.current = 0;
       const json: TransferProgress = await res.json();
       setData(json);
 
@@ -40,7 +48,10 @@ export function TransferBar() {
         stopPolling();
       }
     } catch {
-      // network error — keep polling
+      errorCountRef.current += 1;
+      if (errorCountRef.current > 30) {
+        stopPolling();
+      }
     }
   }, [stopPolling]);
 

@@ -5,11 +5,12 @@ import { createConnection } from "@/lib/connection";
 import type { ConnectionConfig, DeviceConnection } from "@/lib/connection";
 import { validateRemotePath } from "@/lib/path-validation";
 import {
+  clearTransferProgress,
   getTransferProgress,
   setTransferProgress,
 } from "@/lib/transfer-progress";
 
-const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB (buffer-based transfer)
 const FILE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
 function configFromDevice(device: {
@@ -35,14 +36,6 @@ async function runTransfer(
   targetPath: string,
   mode: "copy" | "move",
 ): Promise<void> {
-  setTransferProgress({
-    transferring: true,
-    totalFiles: files.length,
-    completedFiles: 0,
-    mode,
-    error: undefined,
-  });
-
   for (let i = 0; i < files.length; i++) {
     const filePath = files[i];
     const fileName = filePath.split("/").pop() ?? filePath;
@@ -59,7 +52,7 @@ async function runTransfer(
       }
       if (stats.size > MAX_FILE_SIZE) {
         setTransferProgress({
-          error: `${fileName} exceeds 2 GB limit`,
+          error: `${fileName} exceeds 500 MB limit`,
           transferring: false,
         });
         return;
@@ -140,12 +133,28 @@ export async function POST(request: NextRequest) {
   const mode: "copy" | "move" =
     body.mode === "move" ? "move" : "copy";
 
+  // Lock immediately to prevent TOCTOU race
+  setTransferProgress({
+    transferring: true,
+    totalFiles: body.files.length,
+    completedFiles: 0,
+    mode,
+    currentFile: "",
+    progress: 0,
+    error: undefined,
+  });
   for (const f of body.files) {
     const pathError = validateRemotePath(f);
-    if (pathError) return pathError;
+    if (pathError) {
+      clearTransferProgress();
+      return pathError;
+    }
   }
   const targetPathError = validateRemotePath(body.targetPath);
-  if (targetPathError) return targetPathError;
+  if (targetPathError) {
+    clearTransferProgress();
+    return targetPathError;
+  }
 
   const [sourceDevice, targetDevice] = await Promise.all([
     prisma.device.findUnique({ where: { id: body.sourceDeviceId } }),
@@ -153,12 +162,14 @@ export async function POST(request: NextRequest) {
   ]);
 
   if (!sourceDevice) {
+    clearTransferProgress();
     return NextResponse.json(
       { error: "Source device not found" },
       { status: 404 },
     );
   }
   if (!targetDevice) {
+    clearTransferProgress();
     return NextResponse.json(
       { error: "Target device not found" },
       { status: 404 },
@@ -174,6 +185,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     sourceConn?.disconnect();
     targetConn?.disconnect();
+    clearTransferProgress();
     const message =
       error instanceof Error ? error.message : "Connection failed";
     return NextResponse.json({ error: message }, { status: 502 });

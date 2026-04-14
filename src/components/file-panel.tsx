@@ -190,12 +190,16 @@ export function FilePanel({
 
   async function handleDelete() {
     if (!selectedDeviceId || selected.size === 0) return;
-    const paths = Array.from(selected).map((name) =>
+    const names = Array.from(selected);
+    const paths = names.map((name) =>
       currentPath === "/" ? `/${name}` : `${currentPath}/${name}`,
     );
+    const listing = names.length <= 10
+      ? names.map((n) => `  - ${n}`).join("\n")
+      : names.slice(0, 10).map((n) => `  - ${n}`).join("\n") + `\n  ... and ${names.length - 10} more`;
     if (
       !confirm(
-        `Delete ${paths.length} item${paths.length > 1 ? "s" : ""}? This cannot be undone.`,
+        `Delete ${names.length} item${names.length > 1 ? "s" : ""}? This cannot be undone.\n\n${listing}`,
       )
     ) {
       return;
@@ -206,7 +210,11 @@ export function FilePanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paths }),
       });
-      if (!res.ok && res.status !== 207) {
+      if (res.status === 207) {
+        const data = await res.json().catch(() => null);
+        const errorList = data?.errors?.join("\n") ?? "Some files could not be deleted";
+        alert(`Partial delete failure:\n${errorList}`);
+      } else if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error ?? "delete failed");
       }

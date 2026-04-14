@@ -368,15 +368,24 @@ class FtpConnection implements DeviceConnection {
   }
 
   async stat(path: string): Promise<FileStat> {
-    const size = await this.client.size(path);
-    let modifiedAt: string | undefined;
+    let size = 0;
+    let isDirectory = false;
     try {
-      const lastMod = await this.client.lastMod(path);
-      modifiedAt = lastMod.toISOString();
+      size = await this.client.size(path);
     } catch {
-      // lastMod not supported by all FTP servers
+      // size() throws on directories
+      isDirectory = true;
     }
-    return { size, modifiedAt, isDirectory: false };
+    let modifiedAt: string | undefined;
+    if (!isDirectory) {
+      try {
+        const lastMod = await this.client.lastMod(path);
+        modifiedAt = lastMod.toISOString();
+      } catch {
+        // lastMod not supported by all FTP servers
+      }
+    }
+    return { size, modifiedAt, isDirectory };
   }
 
   disconnect(): void {

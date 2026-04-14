@@ -11,6 +11,7 @@ const TEXT_EXTENSIONS = new Set([
   ".txt", ".log", ".cfg", ".ini", ".xml", ".json", ".m3u", ".md", ".yaml", ".yml",
 ]);
 const MAX_TEXT_BYTES = 100 * 1024; // 100 KB
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const MIME_MAP: Record<string, string> = {
   ".png": "image/png",
@@ -58,6 +59,13 @@ export async function GET(
     } as ConnectionConfig);
 
     if (IMAGE_EXTENSIONS.has(ext)) {
+      const stats = await conn.stat(filePath);
+      if (stats.size > MAX_IMAGE_BYTES) {
+        return NextResponse.json(
+          { error: `Image too large for preview (${(stats.size / (1024 * 1024)).toFixed(1)} MB, max 10 MB)` },
+          { status: 413 },
+        );
+      }
       const data = await conn.readFile(filePath);
       const mime = MIME_MAP[ext] ?? "application/octet-stream";
       return new NextResponse(new Uint8Array(data), {

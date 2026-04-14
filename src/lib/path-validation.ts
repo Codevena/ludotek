@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export function validateRemotePath(path: string): NextResponse | null {
-  if (!path || path.trim() === "") {
+  if (typeof path !== "string" || !path || path.trim() === "") {
     return NextResponse.json({ error: "Path is required" }, { status: 400 });
   }
   if (path.includes("..")) {
