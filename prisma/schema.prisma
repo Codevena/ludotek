@@ -79,6 +79,7 @@ model Settings {
   steamApiKey      String @default("")
   aiLanguage       String @default("en") // "en" or "de"
   romSearchUrl     String @default("https://romsfun.com/roms/{platformLabel}/?q={title}")
+  activeDeviceId   Int?
 }
 
 model Device {
