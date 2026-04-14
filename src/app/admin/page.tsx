@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { DeviceForm } from "@/components/device-form";
 import { useEnrichment } from "@/context/enrichment-context";
+import { useScan } from "@/context/scan-context";
 
 interface Settings {
   igdbClientId: string;
@@ -31,7 +32,7 @@ export default function AdminPage() {
     activeDeviceId: null,
   });
   const [saving, setSaving] = useState(false);
-  const [scanning, setScanning] = useState(false);
+  const { scanning, startScan } = useScan();
   const [enriching, setEnriching] = useState(false);
   const [aiEnriching, setAiEnriching] = useState(false);
   const [metacriticEnriching, setMetacriticEnriching] = useState(false);
@@ -150,15 +151,8 @@ export default function AdminPage() {
   }
 
   async function runScan() {
-    setScanning(true);
     setResult(null);
-    try {
-      const res = await fetch("/api/scan", { method: "POST" });
-      setResult(await res.json());
-    } catch (err) {
-      setResult({ error: String(err) });
-    }
-    setScanning(false);
+    await startScan();
   }
 
   async function runCleanup() {
