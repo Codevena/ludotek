@@ -122,7 +122,18 @@ export async function POST(request: NextRequest) {
               where: { gameId: item.gameId },
             });
             if (deviceCount <= 1) {
-              const newFilename = item.newPath.split("/").pop() || item.newPath;
+              // Preserve the relative path prefix (e.g. "roms/" for subdir platforms)
+              const currentGame = await prisma.game.findUnique({
+                where: { id: item.gameId },
+                select: { originalFile: true },
+              });
+              const newBasename = item.newPath.split("/").pop() || item.newPath;
+              let newFilename = newBasename;
+              if (currentGame) {
+                const lastSlash = currentGame.originalFile.lastIndexOf("/");
+                const dirPrefix = lastSlash >= 0 ? currentGame.originalFile.slice(0, lastSlash + 1) : "";
+                newFilename = dirPrefix + newBasename;
+              }
               try {
                 await prisma.game.update({
                   where: { id: item.gameId },
