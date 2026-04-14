@@ -17,10 +17,7 @@ export async function GET(request: NextRequest) {
   });
 
   const pendingCount = items.filter(
-    (i) =>
-      i.status === "pending" ||
-      i.status === "in_progress" ||
-      i.status === "failed",
+    (i) => i.status === "pending" || i.status === "failed",
   ).length;
 
   return NextResponse.json({ items, count: pendingCount });
@@ -31,7 +28,12 @@ export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  const body = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const { type, deviceId, gameId, filePath, newPath } = body;
 
   if (!type || !deviceId || !gameId || !filePath) {
@@ -147,8 +149,9 @@ export async function DELETE(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
+  // Only clear pending and failed items — in_progress items are being applied
   const { count } = await prisma.syncQueue.deleteMany({
-    where: { status: { in: ["pending", "in_progress", "failed"] } },
+    where: { status: { in: ["pending", "failed"] } },
   });
 
   return NextResponse.json({ cleared: count });

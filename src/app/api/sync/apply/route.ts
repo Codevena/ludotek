@@ -123,10 +123,19 @@ export async function POST(request: NextRequest) {
             });
             if (deviceCount <= 1) {
               const newFilename = item.newPath.split("/").pop() || item.newPath;
-              await prisma.game.update({
-                where: { id: item.gameId },
-                data: { originalFile: newFilename },
-              });
+              try {
+                await prisma.game.update({
+                  where: { id: item.gameId },
+                  data: { originalFile: newFilename },
+                });
+              } catch (dbErr) {
+                // Unique constraint violation (P2002) — file renamed on disk
+                // but DB can't update. Log but still mark as applied since
+                // the device-side operation succeeded.
+                console.warn(
+                  `Could not update originalFile for game ${item.gameId}: ${dbErr instanceof Error ? dbErr.message : "Unknown"}`,
+                );
+              }
             }
 
             await prisma.syncQueue.update({

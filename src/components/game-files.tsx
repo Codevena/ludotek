@@ -63,14 +63,19 @@ export function GameFiles({ gameId, files }: GameFilesProps) {
 
   async function stageRename(file: DeviceFile) {
     const key = fileKey(file);
-    if (!editValue.trim() || editValue === file.fileName) {
+    const safeName = editValue.trim();
+    if (!safeName || safeName === file.fileName) {
       setEditingKey(null);
+      return;
+    }
+    if (safeName.includes("/") || safeName.includes("\\") || safeName.includes("..")) {
+      console.error("Invalid filename: must not contain path separators");
       return;
     }
 
     setLoading(key);
     const dir = file.filePath.substring(0, file.filePath.lastIndexOf("/"));
-    const newPath = `${dir}/${editValue}`;
+    const newPath = `${dir}/${safeName}`;
 
     try {
       const res = await fetch("/api/sync/queue", {
