@@ -7,6 +7,7 @@ import { MarkdownContent } from "@/components/markdown-content";
 import { EnrichWizard } from "@/components/enrich-wizard";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { FavoriteButton } from "@/components/favorite-button";
+import { GameFiles } from "@/components/game-files";
 
 function safeJsonParse(str: string | null): string[] {
   if (!str) return [];
@@ -30,6 +31,28 @@ export default async function GameDetailPage({ params }: Props) {
 
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) notFound();
+
+  const gameDevices = await prisma.gameDevice.findMany({
+    where: { gameId },
+    include: { device: { select: { id: true, name: true, scanPaths: true } } },
+  });
+
+  const { PLATFORM_CONFIG } = await import("@/lib/platforms");
+
+  const deviceFiles = gameDevices.flatMap((gd) => {
+    const scanPaths = JSON.parse(gd.device.scanPaths) as { path: string; type: string }[];
+    const platDef = PLATFORM_CONFIG.find((p) => p.id === game.platform);
+    const platDir = platDef?.dirs[0] || game.platform;
+
+    return scanPaths
+      .filter((sp) => sp.type === "rom")
+      .map((sp) => ({
+        deviceId: gd.device.id,
+        deviceName: gd.device.name,
+        filePath: `${sp.path}/${platDir}/${game.originalFile}`,
+        fileName: game.originalFile,
+      }));
+  });
 
   const screenshots = safeJsonParse(game.screenshotUrls);
   const genres = safeJsonParse(game.genres);
@@ -207,6 +230,8 @@ export default async function GameDetailPage({ params }: Props) {
           <MarkdownContent content={game.aiStory} />
         </div>
       )}
+
+      <GameFiles gameId={game.id} files={deviceFiles} />
 
       <EnrichWizard gameId={game.id} gameTitle={game.title} />
     </div>
