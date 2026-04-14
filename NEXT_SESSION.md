@@ -2,70 +2,50 @@
 
 ## What was done this session
 
-### Device Filter & Dedup Fixes
-- **Root cause found**: GameDevice table had 0 records — games scanned before device-link code existed
-- Cross-device dedup: match by `originalFile+platform` first, then `title+platform` fallback
-- Scan-runner now upserts Platform records (were missing from sidebar)
-- Sidebar, Stats Dashboard, and Platform API all respect `activeDeviceId`
-- Pagination total adjusted after client-side dedup
-- Scanner filters `.m3u/.cue/.sbi` files automatically
+### ROM Management & Sync (Priority 0) — COMPLETE
+- **SyncQueue Prisma model** with relations to Game and Device (cascade delete)
+- **Sync Queue API** — GET/POST/DELETE `/api/sync/queue`, DELETE `/api/sync/queue/[id]`
+  - Path traversal validation (rejects `..`, null bytes, verifies within device scan roots)
+  - Deduplication: only latest rename kept, no duplicate deletes
+  - JSON body validation with try/catch
+- **Sync Apply API** — POST `/api/sync/apply`
+  - Atomic claim pattern (updateMany to "in_progress") prevents concurrent apply races
+  - Crash recovery: stale in_progress items reset to "failed" after 5min
+  - Groups items by device, one connection per device, disconnects after
+  - Delete: removes file, removes GameDevice link, idempotent on ENOENT
+  - Rename: renames file, verifies destination exists on ENOENT, updates originalFile only on single-device games
+  - Orphan game cleanup after deletes
+  - Failed items retryable on next Apply
+- **GameFiles component** — "Files on Devices" section on game detail page
+  - Per-device file list with reconstructed paths
+  - Inline rename with pre-selected filename, Stage/Cancel/Enter/Escape
+  - Delete with ConfirmDialog, strikethrough styling
+  - Buttons hidden after staging rename (prevents conflicting ops)
+  - Filename validation (rejects `/`, `\`, `..`)
+- **SyncPanel drawer** — accessible from header Sync badge
+  - Badge shows pending+failed count, hidden when 0
+  - Drawer shows items grouped by device with type icons
+  - Failed items shown with red styling and error messages
+  - Individual remove, Clear All (with confirm), Apply All
+  - Result summary after apply
+  - 5-second polling for updates
+- **Scan runner improvements**
+  - Orphan game cleanup (games with zero device links deleted)
+  - Stale SyncQueue cleanup for removed GameDevice links
+  - Zero-game scan guard (skips cleanup on empty scan to prevent data loss)
+  - Safe JSON.parse for device config (skips device on invalid config)
+- **3 rounds of 4-agent review** (Codex code, Codex spec, Claude code, Claude spec)
 
-### Platform Expansion (18 → 51)
-- Added: NDS, Wii, Wii U, PSP, PS3, PS Vita, Xbox OG, Atari (2600/5200/7800/Lynx/Jaguar), Neo Geo (AES/CD/NGP/NGPC), PC Engine, PC-FX, WonderSwan/Color, 3DO, ColecoVision, Vectrex, Intellivision, DOS, C64, Amiga, MSX, ZX Spectrum, Amstrad CPC, Arcade/MAME, Naomi, Atomiswave, ScummVM, SG-1000, Sega 32X, Virtual Boy, Pokemon Mini
-- 38 SVG icons created, PNG→SVG fallback in all icon-loading components
-- IGDB platform map expanded to match
+### Symlink Support in File Manager (Priority 1) — COMPLETE
+- SSH listDir uses SFTP readdir to detect symlinks via mode bits (was using `ls -1p`)
+- SSH listDirDetailed resolves symlink targets via SFTP readlink
+- FTP and Local connections also detect symlinks
+- Symlinks shown with link icon (🔗) in file manager, navigable like directories
+- Symlink target path displayed in file panel
+- Scanner follows symlinked platform directories during ROM scan
+- Sort order: directories first, symlinks second, files last
 
-### Admin Cleanup
-- Removed legacy Steam Deck SSH settings (deckHost/deckUser/deckPassword) from schema, API, and UI
-- Deleted `migrate-device.ts` (migration no longer needed)
-- Maintenance tools (Fetch Critic Scores, Re-Enrich, Cleanup) moved to collapsible section at bottom
-- "Scan Steam Deck" renamed to "Scan Devices"
-- Warning banner when GameDevice links are missing
-
-### Upload Process
-- Uses device credentials instead of old Settings fields
-- Creates GameDevice link on upload
-- Validates deviceId, rejects FTP/local protocols
-- Passes device port to SSH uploader
-
-### Security Hardening
-- Strict `/^\d+$/` regex validation for all deviceId parameters across all APIs
-
-### ROM Management & Sync Design Spec
-- Written and approved: `docs/superpowers/specs/2026-04-14-rom-management-sync-design.md`
-
-## Priority 0: Implement ROM Management & Sync
-
-**Spec**: `docs/superpowers/specs/2026-04-14-rom-management-sync-design.md`
-
-### Summary
-1. **Game Detail "Files on Devices" section** — shows which file on which device, with Rename/Delete buttons that stage changes to a queue
-2. **SyncQueue DB table** — stores pending rename/delete operations
-3. **Sync Panel (Drawer)** — accessible from header, shows pending queue, "Apply All" executes changes on devices
-4. **Scan enhancement** — detect deleted ROMs, remove orphaned games (no device links left)
-
-### Key Design Decisions
-- Actions are **per device** (rename on Steamdeck doesn't affect Retroid)
-- Changes are **staged** in a queue, not executed immediately
-- Queue is **reviewable** before applying (staged changes concept)
-- Sync Panel is a **drawer** accessible from header with badge count
-- Scan remains **separate** from the queue (scan imports/removes, queue is for user actions)
-- Deleted games: remove GameDevice link, delete game only when zero devices remain
-- Rename only changes **filename on device**, not game title (title comes from IGDB)
-
-### Implementation Order
-1. Add `SyncQueue` model to Prisma schema
-2. Create sync queue API endpoints (`/api/sync/queue`, `/api/sync/apply`)
-3. Build `GameFiles` component for game detail page
-4. Build `SyncPanel` drawer component
-5. Add sync badge to header
-6. Enhance scan-runner with orphan game cleanup
-
-## Priority 1: Symlink Support in File Manager
-- SSH `listDir` needs to recognize symlinks (currently may skip them)
-- Important for Steam Deck where many paths are symlinks
-
-## Priority 2: Remaining from PLAN.md
+## Priority 0: Remaining from PLAN.md
 - Theme Toggle (Dark/Light)
 - Export/Backup (JSON/CSV)
 
@@ -76,8 +56,10 @@
 - Buffer-based file transfer (max 2GB)
 - FTP `readFile` with `maxBytes` doesn't abort transfer
 - Concurrent transfers rejected (409) instead of queued
+- Path reconstruction for multi-device games uses first platform dir alias — if ROM is in alternate alias, wrong path is staged
+- Badge updates via 5s polling (not immediate after staging)
 
 ## Git State
 - Branch: `master`
 - All changes committed locally, NOT pushed to origin
-- 56+ commits ahead of remote
+- 12 new commits this session (6 feature + 3 fix rounds + symlink)
