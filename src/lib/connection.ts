@@ -14,7 +14,7 @@ const MAX_ENTRIES = 500;
 // ---------------------------------------------------------------------------
 export interface DirEntry {
   name: string;
-  type: "dir" | "file";
+  type: "dir" | "file" | "symlink";
 }
 
 export interface BrowseResult {
@@ -25,9 +25,10 @@ export interface BrowseResult {
 
 export interface DetailedDirEntry {
   name: string;
-  type: "dir" | "file";
+  type: "dir" | "file" | "symlink";
   size: number;
   modifiedAt?: string;
+  symlinkTarget?: string;
 }
 
 export interface FileStat {
@@ -73,10 +74,13 @@ export function buildBrowseResult(path: string, entries: DetailedDirEntry[]): Br
   return { path: normalized, parent, entries };
 }
 
-/** Sort entries: directories first, then alphabetically (case-insensitive). */
+/** Sort entries: directories first, symlinks second, files last, then alphabetically. */
 function sortEntries<T extends DirEntry>(entries: T[]): T[] {
+  const typeOrder = { dir: 0, symlink: 1, file: 2 };
   return entries.sort((a, b) => {
-    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+    const orderA = typeOrder[a.type] ?? 2;
+    const orderB = typeOrder[b.type] ?? 2;
+    if (orderA !== orderB) return orderA - orderB;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
 }
@@ -141,23 +145,52 @@ class SshConnection implements DeviceConnection {
   }
 
   async listDir(path: string): Promise<DirEntry[]> {
-    // Sanitize path to prevent shell injection
-    const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
-    const cmd = `ls -1p -- "${safePath}" 2>/dev/null | head -${MAX_ENTRIES}`;
-    const output = await sshExec(this.conn, cmd);
+    // Use SFTP readdir to properly detect symlinks
+    try {
+      const sftp = await this.getSftp();
+      const items = await new Promise<import("ssh2").FileEntryWithStats[]>(
+        (resolve, reject) => {
+          sftp.readdir(path, (err, list) => {
+            if (err) return reject(err);
+            resolve(list);
+          });
+        },
+      );
 
-    const entries: DirEntry[] = output
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map((line): DirEntry => {
-        if (line.endsWith("/")) {
-          return { name: line.slice(0, -1), type: "dir" };
-        }
-        return { name: line, type: "file" };
-      });
+      const entries: DirEntry[] = items
+        .filter((item) => item.filename !== "." && item.filename !== "..")
+        .slice(0, MAX_ENTRIES)
+        .map((item) => {
+          const isLink = (item.attrs.mode! & 0o170000) === 0o120000;
+          if (isLink) {
+            return { name: item.filename, type: "symlink" as const };
+          }
+          return {
+            name: item.filename,
+            type: (item.attrs.isDirectory() ? "dir" : "file") as "dir" | "file",
+          };
+        });
 
-    return sortEntries(entries);
+      return sortEntries(entries);
+    } catch {
+      // Fallback to ls -1p if SFTP fails
+      const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
+      const cmd = `ls -1p -- "${safePath}" 2>/dev/null | head -${MAX_ENTRIES}`;
+      const output = await sshExec(this.conn, cmd);
+
+      const entries: DirEntry[] = output
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line): DirEntry => {
+          if (line.endsWith("/")) {
+            return { name: line.slice(0, -1), type: "dir" };
+          }
+          return { name: line, type: "file" };
+        });
+
+      return sortEntries(entries);
+    }
   }
 
   async listDirDetailed(path: string): Promise<DetailedDirEntry[]> {
@@ -171,17 +204,39 @@ class SshConnection implements DeviceConnection {
       },
     );
 
-    const entries: DetailedDirEntry[] = items
+    const filtered = items
       .filter((item) => item.filename !== "." && item.filename !== "..")
-      .slice(0, MAX_ENTRIES)
-      .map((item) => ({
+      .slice(0, MAX_ENTRIES);
+
+    const entries: DetailedDirEntry[] = [];
+    for (const item of filtered) {
+      const isLink = (item.attrs.mode! & 0o170000) === 0o120000;
+      let symlinkTarget: string | undefined;
+
+      if (isLink) {
+        // Resolve symlink target to get real path
+        try {
+          symlinkTarget = await new Promise<string>((resolve, reject) => {
+            sftp.readlink(`${path}/${item.filename}`, (err, target) => {
+              if (err) return reject(err);
+              resolve(target);
+            });
+          });
+        } catch {
+          // Can't resolve target — still show as symlink
+        }
+      }
+
+      entries.push({
         name: item.filename,
-        type: (item.attrs.isDirectory() ? "dir" : "file") as "dir" | "file",
+        type: isLink ? "symlink" : item.attrs.isDirectory() ? "dir" : "file",
         size: item.attrs.size,
         modifiedAt: item.attrs.mtime
           ? new Date(item.attrs.mtime * 1000).toISOString()
           : undefined,
-      }));
+        symlinkTarget,
+      });
+    }
 
     return sortEntries(entries);
   }
@@ -311,7 +366,11 @@ class FtpConnection implements DeviceConnection {
       .slice(0, MAX_ENTRIES)
       .map((item) => ({
         name: item.name,
-        type: item.isDirectory ? "dir" : "file",
+        type: item.isSymbolicLink
+          ? "symlink" as const
+          : item.isDirectory
+            ? "dir" as const
+            : "file" as const,
       }));
 
     return sortEntries(entries);
@@ -325,11 +384,16 @@ class FtpConnection implements DeviceConnection {
       .slice(0, MAX_ENTRIES)
       .map((item) => ({
         name: item.name,
-        type: (item.isDirectory ? "dir" : "file") as "dir" | "file",
+        type: (item.isSymbolicLink
+          ? "symlink"
+          : item.isDirectory
+            ? "dir"
+            : "file") as "dir" | "file" | "symlink",
         size: item.size,
         modifiedAt: item.rawModifiedAt
           ? new Date(item.rawModifiedAt).toISOString()
           : undefined,
+        symlinkTarget: item.isSymbolicLink ? item.link : undefined,
       }));
 
     return sortEntries(entries);
@@ -433,7 +497,11 @@ class LocalConnection implements DeviceConnection {
       .slice(0, MAX_ENTRIES)
       .map((item) => ({
         name: item.name,
-        type: item.isDirectory() ? "dir" as const : "file" as const,
+        type: item.isSymbolicLink()
+          ? "symlink" as const
+          : item.isDirectory()
+            ? "dir" as const
+            : "file" as const,
       }));
     return sortEntries(entries);
   }
@@ -448,22 +516,40 @@ class LocalConnection implements DeviceConnection {
       if (item.name === "." || item.name === "..") continue;
       let size = 0;
       let modifiedAt: string | undefined;
+      let symlinkTarget: string | undefined;
+      const fullPath = nodePath.join(path, item.name);
+
+      if (item.isSymbolicLink()) {
+        try {
+          symlinkTarget = await fs.readlink(fullPath);
+        } catch {
+          // Can't resolve target
+        }
+      }
+
       try {
-        const stats = await fs.stat(nodePath.join(path, item.name));
+        // Use stat (follows symlinks) to get real size/mtime
+        const stats = await fs.stat(fullPath);
         size = stats.isDirectory() ? 0 : stats.size;
         modifiedAt = stats.mtime.toISOString();
       } catch {
-        // stat can fail for permission-denied items
+        // stat can fail for permission-denied items or broken symlinks
       }
+
       entries.push({
         name: item.name,
-        type: item.isDirectory() ? "dir" : "file",
+        type: item.isSymbolicLink()
+          ? "symlink"
+          : item.isDirectory()
+            ? "dir"
+            : "file",
         size,
         modifiedAt,
+        symlinkTarget,
       });
     }
 
-    return sortEntries(entries as unknown as DirEntry[]) as unknown as DetailedDirEntry[];
+    return sortEntries(entries);
   }
 
   async mkdir(path: string): Promise<void> {

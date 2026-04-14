@@ -52,7 +52,7 @@ export async function scanDevice(
         if (scanPath.type === "rom") {
           const dirs = await conn.listDir(scanPath.path);
           for (const dir of dirs) {
-            if (dir.type !== "dir") continue;
+            if (dir.type !== "dir" && dir.type !== "symlink") continue;
             const subEntries = await conn.listDir(`${scanPath.path}/${dir.name}`);
             const listing = subEntries.map((e) => e.name).join("\n");
             if (listing) {
@@ -63,7 +63,7 @@ export async function scanDevice(
         } else {
           const entries = await conn.listDir(scanPath.path);
           const steamGames = entries
-            .filter((e) => e.type === "dir")
+            .filter((e) => e.type === "dir" || e.type === "symlink")
             .filter((e) => !matchesBlacklist(e.name, device.blacklist))
             .map((e) => ({
               originalFile: e.name,

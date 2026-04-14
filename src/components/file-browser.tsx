@@ -10,7 +10,7 @@ interface FileBrowserProps {
 
 interface BrowseEntry {
   name: string;
-  type: "dir" | "file";
+  type: "dir" | "file" | "symlink";
 }
 
 export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserProps) {
@@ -115,17 +115,17 @@ export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserP
             <div
               key={entry.name}
               className={`flex items-center gap-2 px-3 py-2 text-sm border-b border-vault-border/50 last:border-b-0 ${
-                entry.type === "dir"
+                entry.type === "dir" || entry.type === "symlink"
                   ? "cursor-pointer hover:bg-vault-amber/5 text-vault-text"
                   : "text-vault-muted"
               }`}
               onClick={
-                entry.type === "dir"
+                entry.type === "dir" || entry.type === "symlink"
                   ? () => navigateToFolder(entry.name)
                   : undefined
               }
             >
-              <span>{entry.type === "dir" ? "\u{1F4C1}" : "\u{1F4C4}"}</span>
+              <span>{entry.type === "dir" ? "\u{1F4C1}" : entry.type === "symlink" ? "\u{1F517}" : "\u{1F4C4}"}</span>
               <span className="truncate">{entry.name}</span>
             </div>
           ))}

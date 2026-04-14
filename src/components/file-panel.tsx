@@ -5,9 +5,10 @@ import { ConfirmDialog, AlertDialog } from "@/components/confirm-dialog";
 
 interface DetailedEntry {
   name: string;
-  type: "dir" | "file";
+  type: "dir" | "file" | "symlink";
   size: number;
   modifiedAt?: string;
+  symlinkTarget?: string;
 }
 
 interface DeviceOption {
@@ -369,7 +370,7 @@ export function FilePanel({
                 onChange={() => toggleSelect(entry.name)}
                 className="accent-vault-amber"
               />
-              <span>{entry.type === "dir" ? "\uD83D\uDCC1" : "\uD83D\uDCC4"}</span>
+              <span>{entry.type === "dir" ? "\uD83D\uDCC1" : entry.type === "symlink" ? "\uD83D\uDD17" : "\uD83D\uDCC4"}</span>
               {renameTarget === entry.name ? (
                 <input
                   autoFocus
@@ -387,12 +388,12 @@ export function FilePanel({
               ) : (
                 <span
                   className={`truncate flex-1 ${
-                    entry.type === "dir"
+                    entry.type === "dir" || entry.type === "symlink"
                       ? "cursor-pointer text-vault-text hover:text-vault-amber"
                       : "cursor-pointer text-vault-muted hover:text-vault-text"
                   }`}
                   onClick={() => {
-                    if (entry.type === "dir") {
+                    if (entry.type === "dir" || entry.type === "symlink") {
                       const nextPath =
                         currentPath === "/"
                           ? `/${entry.name}`
@@ -411,7 +412,13 @@ export function FilePanel({
                 </span>
               )}
               <span className="text-xs text-vault-muted whitespace-nowrap">
-                {entry.type === "dir" ? "\u2014" : formatSize(entry.size)}
+                {entry.type === "dir"
+                  ? "\u2014"
+                  : entry.type === "symlink"
+                    ? entry.symlinkTarget
+                      ? `\u2192 ${entry.symlinkTarget}`
+                      : "\u{1F517}"
+                    : formatSize(entry.size)}
               </span>
             </div>
           ))}
