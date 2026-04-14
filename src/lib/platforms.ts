@@ -117,10 +117,13 @@ export function getPlatformByDir(dir: string): PlatformDef | undefined {
   return dirToPlatform.get(dir.toLowerCase());
 }
 
+// First-registered wins — earlier platforms in PLATFORM_CONFIG take priority
 const extensionToPlatform = new Map<string, PlatformDef>();
 for (const p of PLATFORM_CONFIG) {
   for (const ext of p.extensions) {
-    extensionToPlatform.set(ext.toLowerCase(), p);
+    if (!extensionToPlatform.has(ext.toLowerCase())) {
+      extensionToPlatform.set(ext.toLowerCase(), p);
+    }
   }
 }
 

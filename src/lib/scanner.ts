@@ -1,6 +1,6 @@
 import { Client } from "ssh2";
 import { cleanFilename } from "./filename-cleaner";
-import { getPlatformByDir, PLATFORM_CONFIG } from "./platforms";
+import { getPlatformByDir } from "./platforms";
 import { createConnection } from "./connection";
 
 const SKIP_FILES = new Set(["metadata.txt", "systeminfo.txt", "media", ".sbi"]);
@@ -79,6 +79,8 @@ export async function scanDevice(
                 if (entry.type === "file" || entry.type === "symlink") {
                   allFiles.push(entry.name);
                 } else if (entry.type === "dir") {
+                  // Skip hidden directories
+                  if (entry.name.startsWith(".")) continue;
                   // Recurse one level into subdirectories (for region/genre folders)
                   try {
                     const subEntries = await conn.listDir(`${romPath}/${entry.name}`);
@@ -183,20 +185,13 @@ export function parseRomListing(
 
 export function deduplicateGames(games: ScannedGame[]): ScannedGame[] {
   const seen = new Map<string, ScannedGame>();
-  const canonicalIds = new Set(PLATFORM_CONFIG.map((p) => p.id));
 
   for (const game of games) {
     // Deduplicate by cleaned title + platform ID (not filename)
     // This collapses multi-disc games (Disc 1, Disc 2) and regional variants
     // (USA/game vs Europe/game) into one entry — first-seen wins
     const key = `${game.title}|${game.platform}`;
-    const existing = seen.get(key);
-    if (!existing) {
-      seen.set(key, game);
-    } else if (
-      canonicalIds.has(game.platform) &&
-      !canonicalIds.has(existing.platform)
-    ) {
+    if (!seen.has(key)) {
       seen.set(key, game);
     }
   }
