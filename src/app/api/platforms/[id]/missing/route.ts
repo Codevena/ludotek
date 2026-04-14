@@ -50,7 +50,7 @@ export async function GET(
         "Content-Type": "text/plain",
       },
       body: `fields name, total_rating, cover.image_id, first_release_date, genres.name, involved_companies.company.name, involved_companies.developer, summary, screenshots.image_id, videos.video_id;
-where platforms = (${igdbPlatformId}) & total_rating > 75 & total_rating_count > 10;
+where platforms = (${igdbPlatformId}) & total_rating > 75 & total_rating_count > 50;
 sort total_rating desc;
 limit 30;`,
     });

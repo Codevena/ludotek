@@ -1,6 +1,8 @@
 export interface PlatformDef {
   id: string;
   label: string;
+  /** URL-safe slug for ROM search sites (defaults to slugified label if omitted) */
+  slug?: string;
   icon: string;
   color: string;
   sortOrder: number;
@@ -12,7 +14,7 @@ export const PLATFORM_CONFIG: PlatformDef[] = [
   { id: "snes", label: "Super Nintendo", icon: "🎮", color: "#7c3aed", sortOrder: 1, dirs: ["snes", "super-nintendo", "super-famicom", "supernintendo", "superfamicom"], extensions: [".sfc", ".smc"] },
   { id: "gba", label: "Game Boy Advance", icon: "📱", color: "#8b5cf6", sortOrder: 2, dirs: ["gba", "gameboy-advance", "game-boy-advance", "gameboyadvance"], extensions: [".gba"] },
   { id: "gb", label: "Game Boy", icon: "🎲", color: "#6d28d9", sortOrder: 3, dirs: ["gb", "gameboy", "game-boy"], extensions: [".gb"] },
-  { id: "megadrive", label: "Mega Drive / Genesis", icon: "🕹️", color: "#1d4ed8", sortOrder: 4, dirs: ["megadrive", "genesis", "mega-drive", "sega-genesis", "segagenesis"], extensions: [".md", ".smd", ".gen"] },
+  { id: "megadrive", label: "Mega Drive / Genesis", slug: "sega-genesis", icon: "🕹️", color: "#1d4ed8", sortOrder: 4, dirs: ["megadrive", "genesis", "mega-drive", "sega-genesis", "segagenesis"], extensions: [".md", ".smd", ".gen"] },
   { id: "nes", label: "Nintendo Entertainment System", icon: "🎮", color: "#dc2626", sortOrder: 5, dirs: ["nes"], extensions: [".nes"] },
   { id: "gbc", label: "Game Boy Color", icon: "🟣", color: "#a855f7", sortOrder: 6, dirs: ["gbc", "gameboy-color", "game-boy-color", "gameboycolor"], extensions: [".gbc"] },
   { id: "gamegear", label: "Game Gear", icon: "🔵", color: "#2563eb", sortOrder: 7, dirs: ["gamegear", "game-gear"], extensions: [".gg"] },

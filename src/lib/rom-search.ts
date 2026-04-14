@@ -6,13 +6,13 @@
  * - {titleSlug}      — slug: lowercase, hyphens, no special chars
  * - {titleEncoded}   — raw title, URL-encoded (%20)
  * - {platform}       — platform ID (e.g. "snes")
- * - {platformLabel}  — platform label as slug (e.g. "super-nintendo")
+ * - {platformLabel}  — platform slug for ROM sites (e.g. "super-nintendo", "sega-genesis")
  */
 export function buildRomSearchUrl(
   template: string,
   title: string,
   platform: string,
-  platformLabel?: string
+  platformSlug?: string
 ): string {
   const slugify = (s: string) =>
     s
@@ -27,9 +27,9 @@ export function buildRomSearchUrl(
   // Replace longer variable names first to avoid partial matches
   // (e.g. {platformLabel} contains {platform})
   return template
-    .replace("{platformLabel}", slugify(platformLabel || platform))
-    .replace("{titleEncoded}", encodeURIComponent(title))
-    .replace("{titleSlug}", slugify(title))
-    .replace("{platform}", platform)
-    .replace("{title}", titleQuery);
+    .replace(/\{platformLabel\}/g, platformSlug || slugify(platform))
+    .replace(/\{titleEncoded\}/g, encodeURIComponent(title))
+    .replace(/\{titleSlug\}/g, slugify(title))
+    .replace(/\{platform\}/g, platform)
+    .replace(/\{title\}/g, titleQuery);
 }

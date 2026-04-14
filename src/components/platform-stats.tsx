@@ -387,7 +387,9 @@ function DetailModal({
 /* ---------- Main Component ---------- */
 
 export function PlatformStats({ platformId }: PlatformStatsProps) {
-  const resolvedLabel = PLATFORM_CONFIG.find((p) => p.id === platformId)?.label || platformId;
+  const platformConfig = PLATFORM_CONFIG.find((p) => p.id === platformId);
+  const resolvedLabel = platformConfig?.label || platformId;
+  const resolvedSlug = platformConfig?.slug;
   const [stats, setStats] = useState<StatsData | null>(null);
   const [missing, setMissing] = useState<MissingGame[] | null>(null);
   const [missingError, setMissingError] = useState(false);
@@ -549,7 +551,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
         }
       }
     },
-    [wishlistMap, wishlistKey, platformId]
+    [wishlistMap, wishlistKey, platformId, resolvedLabel]
   );
 
   if (loading) return <SkeletonCards />;
@@ -604,8 +606,8 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
       {missingError ? (
         <div className="mb-6">
           <p className="text-vault-muted text-sm">
-            IGDB-Zugangsdaten in den Admin Settings konfigurieren um
-            Empfehlungen zu sehen
+            Configure IGDB credentials in Admin Settings to see
+            recommendations
           </p>
         </div>
       ) : (
@@ -649,7 +651,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
             {missingExpanded && (
               <div className="px-4 pb-4 min-w-0 max-w-full">
                 <p className="text-vault-muted text-xs mb-3">
-                  Top-rated {platformId} games not in your collection according
+                  Top-rated {resolvedLabel} games not in your collection according
                   to IGDB
                 </p>
 
@@ -675,7 +677,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
                         onSelect={() => setSelectedGame(game)}
                         romSearchUrl={romSearchUrl}
                         platformId={platformId}
-                        platformLabel={resolvedLabel}
+                        platformLabel={resolvedSlug || resolvedLabel}
                       />
                     ))}
                   </div>
@@ -706,7 +708,7 @@ export function PlatformStats({ platformId }: PlatformStatsProps) {
           isWishlisted={isWishlisted(selectedGame.title)}
           onToggleWishlist={() => toggleWishlist(selectedGame)}
           onClose={() => setSelectedGame(null)}
-          searchUrl={romSearchUrl ? buildRomSearchUrl(romSearchUrl, selectedGame.title, platformId, resolvedLabel) : undefined}
+          searchUrl={romSearchUrl ? buildRomSearchUrl(romSearchUrl, selectedGame.title, platformId, resolvedSlug || resolvedLabel) : undefined}
         />
       )}
     </div>

@@ -22,8 +22,28 @@ export interface BrowseResult {
   entries: DirEntry[];
 }
 
+export interface DetailedDirEntry {
+  name: string;
+  type: "dir" | "file";
+  size: number;
+  modifiedAt?: string;
+}
+
+export interface FileStat {
+  size: number;
+  modifiedAt?: string;
+  isDirectory: boolean;
+}
+
 export interface DeviceConnection {
   listDir(path: string): Promise<DirEntry[]>;
+  listDirDetailed(path: string): Promise<DetailedDirEntry[]>;
+  mkdir(path: string): Promise<void>;
+  rename(oldPath: string, newPath: string): Promise<void>;
+  remove(path: string): Promise<void>;
+  readFile(path: string, maxBytes?: number): Promise<Buffer>;
+  writeFile(remotePath: string, data: Buffer): Promise<void>;
+  stat(path: string): Promise<FileStat>;
   disconnect(): void;
 }
 
@@ -106,6 +126,15 @@ export function sshExec(conn: SshClient, command: string): Promise<string> {
 class SshConnection implements DeviceConnection {
   constructor(private conn: SshClient) {}
 
+  private getSftp(): Promise<import("ssh2").SFTPWrapper> {
+    return new Promise((resolve, reject) => {
+      this.conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+        resolve(sftp);
+      });
+    });
+  }
+
   async listDir(path: string): Promise<DirEntry[]> {
     // Sanitize path to prevent shell injection
     const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
@@ -124,6 +153,126 @@ class SshConnection implements DeviceConnection {
       });
 
     return sortEntries(entries);
+  }
+
+  async listDirDetailed(path: string): Promise<DetailedDirEntry[]> {
+    const sftp = await this.getSftp();
+    const items = await new Promise<import("ssh2").FileEntry[]>(
+      (resolve, reject) => {
+        sftp.readdir(path, (err, list) => {
+          if (err) return reject(err);
+          resolve(list);
+        });
+      },
+    );
+
+    const entries: DetailedDirEntry[] = items
+      .filter((item) => item.filename !== "." && item.filename !== "..")
+      .slice(0, MAX_ENTRIES)
+      .map((item) => ({
+        name: item.filename,
+        type: (item.attrs.isDirectory() ? "dir" : "file") as "dir" | "file",
+        size: item.attrs.size,
+        modifiedAt: item.attrs.mtime
+          ? new Date(item.attrs.mtime * 1000).toISOString()
+          : undefined,
+      }));
+
+    return sortEntries(entries as unknown as DirEntry[]) as unknown as DetailedDirEntry[];
+  }
+
+  async mkdir(path: string): Promise<void> {
+    const sftp = await this.getSftp();
+    return new Promise((resolve, reject) => {
+      sftp.mkdir(path, (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  }
+
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    const sftp = await this.getSftp();
+    return new Promise((resolve, reject) => {
+      sftp.rename(oldPath, newPath, (err) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  }
+
+  async remove(path: string): Promise<void> {
+    const info = await this.stat(path);
+    if (info.isDirectory) {
+      const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
+      await sshExec(this.conn, `rm -rf "${safePath}"`);
+    } else {
+      const sftp = await this.getSftp();
+      return new Promise((resolve, reject) => {
+        sftp.unlink(path, (err) => {
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+    }
+  }
+
+  async readFile(path: string, maxBytes?: number): Promise<Buffer> {
+    const sftp = await this.getSftp();
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      let totalRead = 0;
+
+      const stream = sftp.createReadStream(path);
+
+      stream.on("data", (chunk: Buffer) => {
+        if (maxBytes !== undefined) {
+          const remaining = maxBytes - totalRead;
+          if (remaining <= 0) {
+            stream.destroy();
+            return;
+          }
+          const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+          chunks.push(slice);
+          totalRead += slice.length;
+          if (totalRead >= maxBytes) {
+            stream.destroy();
+          }
+        } else {
+          chunks.push(chunk);
+        }
+      });
+
+      stream.on("end", () => resolve(Buffer.concat(chunks)));
+      stream.on("close", () => resolve(Buffer.concat(chunks)));
+      stream.on("error", reject);
+    });
+  }
+
+  async writeFile(remotePath: string, data: Buffer): Promise<void> {
+    const sftp = await this.getSftp();
+    return new Promise((resolve, reject) => {
+      const stream = sftp.createWriteStream(remotePath);
+      stream.on("error", reject);
+      stream.on("close", () => resolve());
+      stream.end(data);
+    });
+  }
+
+  async stat(path: string): Promise<FileStat> {
+    const sftp = await this.getSftp();
+    return new Promise((resolve, reject) => {
+      sftp.stat(path, (err, stats) => {
+        if (err) return reject(err);
+        resolve({
+          size: stats.size,
+          modifiedAt: stats.mtime
+            ? new Date(stats.mtime * 1000).toISOString()
+            : undefined,
+          isDirectory: stats.isDirectory(),
+        });
+      });
+    });
   }
 
   disconnect(): void {
