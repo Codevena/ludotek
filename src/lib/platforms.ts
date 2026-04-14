@@ -35,16 +35,16 @@ export const PLATFORM_CONFIG: PlatformDef[] = [
   { id: "sg1000", label: "SG-1000", icon: "🔵", color: "#1e3a5f", sortOrder: 20, dirs: ["sg1000", "sg-1000"], extensions: [".sg", ".sc"] },
   { id: "mastersystem", label: "Master System", icon: "🔴", color: "#ef4444", sortOrder: 21, dirs: ["mastersystem", "master-system", "sms"], extensions: [".sms", ".bin"] },
   { id: "megadrive", label: "Mega Drive / Genesis", slug: "sega-genesis", icon: "🕹️", color: "#1d4ed8", sortOrder: 22, dirs: ["megadrive", "genesis", "mega-drive", "sega-genesis", "segagenesis", "megadrivejp", "genesiswide"], extensions: [".md", ".smd", ".gen", ".bin", ".68k", ".sgd"] },
-  { id: "segacd", label: "Sega CD", icon: "💿", color: "#0891b2", sortOrder: 23, dirs: ["segacd", "sega-cd", "mega-cd", "megacd", "megacdjp"], extensions: [".chd", ".iso", ".bin", ".cue"] },
+  { id: "segacd", label: "Sega CD", icon: "💿", color: "#0891b2", sortOrder: 23, dirs: ["segacd", "sega-cd", "mega-cd", "megacd", "megacdjp"], extensions: [".chd", ".iso", ".bin"] },
   { id: "sega32x", label: "Sega 32X", icon: "🔶", color: "#d97706", sortOrder: 24, dirs: ["sega32x", "32x", "sega-32x", "sega32xjp", "sega32xna"], extensions: [".32x", ".bin", ".smd", ".md"] },
-  { id: "saturn", label: "Sega Saturn", icon: "🪐", color: "#6366f1", sortOrder: 25, dirs: ["saturn", "saturn-multidisc", "sega-saturn", "saturnjp"], extensions: [".chd", ".iso", ".bin", ".cue", ".ccd", ".mds"] },
-  { id: "dreamcast", label: "Dreamcast", icon: "🌀", color: "#f97316", sortOrder: 26, dirs: ["dreamcast", "dreamcast-multidisc"], extensions: [".chd", ".gdi", ".cdi", ".bin", ".cue", ".elf"] },
+  { id: "saturn", label: "Sega Saturn", icon: "🪐", color: "#6366f1", sortOrder: 25, dirs: ["saturn", "saturn-multidisc", "sega-saturn", "saturnjp"], extensions: [".chd", ".iso", ".bin", ".ccd", ".mds"] },
+  { id: "dreamcast", label: "Dreamcast", icon: "🌀", color: "#f97316", sortOrder: 26, dirs: ["dreamcast", "dreamcast-multidisc"], extensions: [".chd", ".gdi", ".cdi", ".bin", ".elf"] },
   { id: "gamegear", label: "Game Gear", icon: "🔵", color: "#2563eb", sortOrder: 27, dirs: ["gamegear", "game-gear"], extensions: [".gg", ".bin"] },
   { id: "model2", label: "Sega Model 2", icon: "🕹️", color: "#0369a1", sortOrder: 28, dirs: ["model2"], subdir: "roms", extensions: [".zip"] },
 
   // ── Sony ──
-  { id: "psx", label: "PlayStation", icon: "🎮", color: "#3b82f6", sortOrder: 30, dirs: ["psx", "psx-multidisc", "ps1", "playstation", "playstation1"], extensions: [".chd", ".iso", ".bin", ".cue", ".pbp", ".ecm", ".mds"] },
-  { id: "ps2", label: "PlayStation 2", icon: "🎮", color: "#1e40af", sortOrder: 31, dirs: ["ps2", "playstation2", "playstation-2", "ps2-multidisc"], extensions: [".chd", ".iso", ".bin", ".cso", ".cue", ".gz"] },
+  { id: "psx", label: "PlayStation", icon: "🎮", color: "#3b82f6", sortOrder: 30, dirs: ["psx", "psx-multidisc", "ps1", "playstation", "playstation1"], extensions: [".chd", ".iso", ".bin", ".pbp", ".ecm", ".mds"] },
+  { id: "ps2", label: "PlayStation 2", icon: "🎮", color: "#1e40af", sortOrder: 31, dirs: ["ps2", "playstation2", "playstation-2", "ps2-multidisc"], extensions: [".chd", ".iso", ".bin", ".cso", ".gz"] },
   { id: "ps3", label: "PlayStation 3", icon: "🎮", color: "#1e3a5f", sortOrder: 32, dirs: ["ps3", "playstation3", "playstation-3"], extensions: [".iso", ".bin"] },
   { id: "psp", label: "PlayStation Portable", icon: "📱", color: "#475569", sortOrder: 33, dirs: ["psp", "playstation-portable"], extensions: [".iso", ".cso", ".pbp", ".chd"] },
   { id: "psvita", label: "PlayStation Vita", icon: "📱", color: "#1e40af", sortOrder: 34, dirs: ["psvita", "vita", "ps-vita"], extensions: [".vpk"] },
@@ -59,18 +59,18 @@ export const PLATFORM_CONFIG: PlatformDef[] = [
   { id: "atari7800", label: "Atari 7800", icon: "🕹️", color: "#b45309", sortOrder: 52, dirs: ["atari7800", "atari-7800", "7800"], extensions: [".a78", ".bin"] },
   { id: "atari800", label: "Atari 800", icon: "🕹️", color: "#854d0e", sortOrder: 53, dirs: ["atari800", "atari-800", "atarixe"], extensions: [".atr", ".atx", ".bas", ".bin", ".car", ".cas", ".com", ".rom", ".xex", ".xfd"] },
   { id: "lynx", label: "Atari Lynx", icon: "🔶", color: "#ea580c", sortOrder: 54, dirs: ["lynx", "atari-lynx", "atarilynx"], extensions: [".lnx", ".o"] },
-  { id: "jaguar", label: "Atari Jaguar", icon: "🐆", color: "#991b1b", sortOrder: 55, dirs: ["jaguar", "atari-jaguar", "atarijaguar"], extensions: [".j64", ".jag", ".abs", ".bin", ".cof", ".cue", ".prg", ".rom"] },
-  { id: "jaguarcd", label: "Atari Jaguar CD", icon: "🐆", color: "#7f1d1d", sortOrder: 56, dirs: ["atarijaguarcd", "jaguar-cd", "jaguarcd"], extensions: [".abs", ".bin", ".cdi", ".cof", ".cue", ".j64", ".jag", ".prg", ".rom"] },
+  { id: "jaguar", label: "Atari Jaguar", icon: "🐆", color: "#991b1b", sortOrder: 55, dirs: ["jaguar", "atari-jaguar", "atarijaguar"], extensions: [".j64", ".jag", ".abs", ".bin", ".cof", ".prg", ".rom"] },
+  { id: "jaguarcd", label: "Atari Jaguar CD", icon: "🐆", color: "#7f1d1d", sortOrder: 56, dirs: ["atarijaguarcd", "jaguar-cd", "jaguarcd"], extensions: [".abs", ".bin", ".cdi", ".cof", ".j64", ".jag", ".prg", ".rom"] },
   { id: "atarist", label: "Atari ST", icon: "💾", color: "#78350f", sortOrder: 57, dirs: ["atarist", "atari-st"], extensions: [".st", ".stx", ".msa", ".dim", ".ipf", ".rom"] },
 
   // ── NEC ──
-  { id: "pcengine", label: "TurboGrafx-16 / PC Engine", slug: "turbografx-16", icon: "🔴", color: "#e11d48", sortOrder: 60, dirs: ["pcengine", "pc-engine", "tg16", "turbografx", "turbografx16", "tg-16", "pcenginecd", "pce", "tg-cd", "supergrafx", "sgb"], extensions: [".pce", ".chd", ".cue", ".iso", ".sgx"] },
-  { id: "pcfx", label: "PC-FX", icon: "💿", color: "#be123c", sortOrder: 61, dirs: ["pcfx", "pc-fx"], extensions: [".chd", ".iso", ".cue"] },
+  { id: "pcengine", label: "TurboGrafx-16 / PC Engine", slug: "turbografx-16", icon: "🔴", color: "#e11d48", sortOrder: 60, dirs: ["pcengine", "pc-engine", "tg16", "turbografx", "turbografx16", "tg-16", "pcenginecd", "pce", "tg-cd", "supergrafx", "sgb"], extensions: [".pce", ".chd", ".iso", ".sgx"] },
+  { id: "pcfx", label: "PC-FX", icon: "💿", color: "#be123c", sortOrder: 61, dirs: ["pcfx", "pc-fx"], extensions: [".chd", ".iso"] },
 
   // ── SNK ──
   { id: "neogeo", label: "Neo Geo", icon: "🕹️", color: "#b91c1c", sortOrder: 65, dirs: ["neogeo", "neo-geo", "neogeoaes", "neogeo-aes"], extensions: [".zip"] },
-  { id: "neogeocd", label: "Neo Geo CD", icon: "💿", color: "#991b1b", sortOrder: 66, dirs: ["neogeocd", "neo-geo-cd", "neocd", "neogeocdjp"], extensions: [".chd", ".iso", ".cue"] },
-  { id: "ngp", label: "Neo Geo Pocket", icon: "📱", color: "#9f1239", sortOrder: 67, dirs: ["ngp", "neo-geo-pocket", "neogeopocket"], extensions: [".ngp", ".ngc"] },
+  { id: "neogeocd", label: "Neo Geo CD", icon: "💿", color: "#991b1b", sortOrder: 66, dirs: ["neogeocd", "neo-geo-cd", "neocd", "neogeocdjp"], extensions: [".chd", ".iso"] },
+  { id: "ngp", label: "Neo Geo Pocket", icon: "📱", color: "#9f1239", sortOrder: 67, dirs: ["ngp", "neo-geo-pocket", "neogeopocket"], extensions: [".ngp"] },
   { id: "ngpc", label: "Neo Geo Pocket Color", icon: "📱", color: "#be185d", sortOrder: 68, dirs: ["ngpc", "neo-geo-pocket-color", "neogeopocketcolor"], extensions: [".ngc", ".ngp"] },
 
   // ── Bandai ──
@@ -78,7 +78,7 @@ export const PLATFORM_CONFIG: PlatformDef[] = [
   { id: "wsc", label: "WonderSwan Color", icon: "📱", color: "#6366f1", sortOrder: 71, dirs: ["wonderswancolor", "wonderswan-color", "wsc", "wscolor"], extensions: [".wsc"] },
 
   // ── 3DO / Other Consoles ──
-  { id: "3do", label: "3DO", icon: "💿", color: "#b45309", sortOrder: 75, dirs: ["3do", "panasonic-3do"], extensions: [".chd", ".iso", ".cue", ".bin"] },
+  { id: "3do", label: "3DO", icon: "💿", color: "#b45309", sortOrder: 75, dirs: ["3do", "panasonic-3do"], extensions: [".chd", ".iso", ".bin"] },
   { id: "coleco", label: "ColecoVision", icon: "🕹️", color: "#1e3a5f", sortOrder: 76, dirs: ["coleco", "colecovision"], extensions: [".col", ".bin", ".rom"] },
   { id: "vectrex", label: "Vectrex", icon: "🕹️", color: "#334155", sortOrder: 77, dirs: ["vectrex"], extensions: [".vec", ".bin", ".gam"] },
   { id: "intellivision", label: "Intellivision", icon: "🕹️", color: "#1e3a5f", sortOrder: 78, dirs: ["intellivision"], extensions: [".int", ".bin", ".rom"] },
@@ -88,7 +88,7 @@ export const PLATFORM_CONFIG: PlatformDef[] = [
   // ── Computers ──
   { id: "dos", label: "DOS", icon: "💾", color: "#1e293b", sortOrder: 81, dirs: ["dos", "dosbox", "pc-dos", "pc"], extensions: [".exe", ".com", ".bat", ".conf", ".dosz"] },
   { id: "c64", label: "Commodore 64", icon: "💾", color: "#713f12", sortOrder: 82, dirs: ["c64", "commodore64", "commodore-64", "c16", "vic20"], extensions: [".d64", ".t64", ".prg", ".crt", ".tap", ".g64", ".p00", ".vsf"] },
-  { id: "amiga", label: "Amiga", icon: "💾", color: "#b91c1c", sortOrder: 83, dirs: ["amiga", "commodore-amiga", "amiga600", "amiga1200", "amigacd32", "cdtv"], extensions: [".adf", ".lha", ".hdf", ".ipf", ".dms", ".adz", ".rp9", ".chd", ".iso", ".cue"] },
+  { id: "amiga", label: "Amiga", icon: "💾", color: "#b91c1c", sortOrder: 83, dirs: ["amiga", "commodore-amiga", "amiga600", "amiga1200", "amigacd32", "cdtv"], extensions: [".adf", ".lha", ".hdf", ".ipf", ".dms", ".adz", ".rp9", ".chd", ".iso"] },
   { id: "msx", label: "MSX", icon: "💾", color: "#1e40af", sortOrder: 84, dirs: ["msx", "msx1", "msx2", "msxturbor"], extensions: [".rom", ".mx1", ".mx2", ".dsk", ".cas", ".col"] },
   { id: "zxspectrum", label: "ZX Spectrum", icon: "💾", color: "#dc2626", sortOrder: 85, dirs: ["zxspectrum", "zx-spectrum", "spectrum", "zx81"], extensions: [".z80", ".tap", ".tzx", ".sna", ".szx", ".rzx", ".dsk", ".scl", ".trd"] },
   { id: "amstrad", label: "Amstrad CPC", icon: "💾", color: "#1d4ed8", sortOrder: 86, dirs: ["amstradcpc", "amstrad", "amstrad-cpc", "cpc", "gx4000"], extensions: [".dsk", ".sna", ".cdt", ".cpr", ".kcr"] },

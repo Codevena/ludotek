@@ -25,7 +25,11 @@ export async function POST(request: NextRequest) {
 
   let titlesCleaned = 0;
   for (const game of allGames) {
-    const cleanedTitle = cleanFilename(game.originalFile);
+    // Extract basename for subdir-backed platforms (e.g. "roms/Halo.iso" → "Halo.iso")
+    const rawName = game.originalFile.includes("/")
+      ? game.originalFile.split("/").pop()!
+      : game.originalFile;
+    const cleanedTitle = cleanFilename(rawName);
     if (cleanedTitle && cleanedTitle !== game.title) {
       await prisma.game.update({
         where: { id: game.id },
