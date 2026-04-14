@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { FilePanel } from "@/components/file-panel";
 import { FilePreviewModal } from "@/components/file-preview-modal";
 import { TransferBar } from "@/components/transfer-bar";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 interface DeviceOption {
   id: number;
@@ -32,6 +33,10 @@ export default function FilesPage() {
   const [refreshRight, setRefreshRight] = useState(0);
   const [transferring, setTransferring] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [moveConfirm, setMoveConfirm] = useState<{
+    direction: "left-to-right" | "right-to-left";
+    files: string[];
+  } | null>(null);
 
   useEffect(() => {
     async function loadDevices() {
@@ -61,7 +66,7 @@ export default function FilesPage() {
     };
   }, []);
 
-  const startTransfer = useCallback(
+  const doTransfer = useCallback(
     async (
       direction: "left-to-right" | "right-to-left",
       mode: "copy" | "move",
@@ -78,13 +83,6 @@ export default function FilesPage() {
         direction === "left-to-right" ? rightPath : leftPath;
 
       if (!sourceDeviceId || !targetDeviceId || files.length === 0) return;
-
-      if (mode === "move") {
-        const count = files.length;
-        if (!confirm(`Move ${count} file${count > 1 ? "s" : ""}? Source files will be deleted after transfer.`)) {
-          return;
-        }
-      }
 
       setTransferring(true);
       try {
@@ -149,6 +147,24 @@ export default function FilesPage() {
       leftPath,
       rightPath,
     ],
+  );
+
+  const startTransfer = useCallback(
+    (
+      direction: "left-to-right" | "right-to-left",
+      mode: "copy" | "move",
+    ) => {
+      const files =
+        direction === "left-to-right" ? leftSelection : rightSelection;
+
+      if (mode === "move") {
+        setMoveConfirm({ direction, files });
+        return;
+      }
+
+      doTransfer(direction, mode);
+    },
+    [leftSelection, rightSelection, doTransfer],
   );
 
   const canTransferRight =
@@ -248,6 +264,23 @@ export default function FilesPage() {
 
       {/* Transfer progress bar */}
       <TransferBar />
+
+      <ConfirmDialog
+        open={moveConfirm !== null}
+        title="Move Files"
+        message={`Move ${moveConfirm?.files.length ?? 0} file${(moveConfirm?.files.length ?? 0) > 1 ? "s" : ""}? Source files will be deleted after transfer.`}
+        items={moveConfirm?.files.map(f => f.split("/").pop() ?? f)}
+        confirmLabel="Move"
+        confirmVariant="warning"
+        onConfirm={() => {
+          if (moveConfirm) {
+            const { direction } = moveConfirm;
+            setMoveConfirm(null);
+            doTransfer(direction, "move");
+          }
+        }}
+        onCancel={() => setMoveConfirm(null)}
+      />
     </div>
   );
 }

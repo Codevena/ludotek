@@ -125,12 +125,16 @@ export function sshExec(conn: SshClient, command: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 class SshConnection implements DeviceConnection {
+  private sftpSession: import("ssh2").SFTPWrapper | null = null;
+
   constructor(private conn: SshClient) {}
 
-  private getSftp(): Promise<import("ssh2").SFTPWrapper> {
+  private async getSftp(): Promise<import("ssh2").SFTPWrapper> {
+    if (this.sftpSession) return this.sftpSession;
     return new Promise((resolve, reject) => {
       this.conn.sftp((err, sftp) => {
         if (err) return reject(err);
+        this.sftpSession = sftp;
         resolve(sftp);
       });
     });

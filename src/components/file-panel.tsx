@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { ConfirmDialog, AlertDialog } from "@/components/confirm-dialog";
 
 interface DetailedEntry {
   name: string;
@@ -54,6 +55,8 @@ export function FilePanel({
   const [mkdirName, setMkdirName] = useState("");
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteAlertErrors, setDeleteAlertErrors] = useState<string[] | null>(null);
 
   const browse = useCallback(
     async (path: string) => {
@@ -187,22 +190,17 @@ export function FilePanel({
     }
   }
 
-  async function handleDelete() {
+  function handleDelete() {
+    if (!selectedDeviceId || selected.size === 0) return;
+    setDeleteConfirm(true);
+  }
+
+  async function doDelete() {
     if (!selectedDeviceId || selected.size === 0) return;
     const names = Array.from(selected);
     const paths = names.map((name) =>
       currentPath === "/" ? `/${name}` : `${currentPath}/${name}`,
     );
-    const listing = names.length <= 10
-      ? names.map((n) => `  - ${n}`).join("\n")
-      : names.slice(0, 10).map((n) => `  - ${n}`).join("\n") + `\n  ... and ${names.length - 10} more`;
-    if (
-      !confirm(
-        `Delete ${names.length} item${names.length > 1 ? "s" : ""}? This cannot be undone.\n\n${listing}`,
-      )
-    ) {
-      return;
-    }
     try {
       const res = await fetch(`/api/devices/${selectedDeviceId}/files`, {
         method: "DELETE",
@@ -211,8 +209,8 @@ export function FilePanel({
       });
       if (res.status === 207) {
         const data = await res.json().catch(() => null);
-        const errorList = data?.errors?.join("\n") ?? "Some files could not be deleted";
-        alert(`Partial delete failure:\n${errorList}`);
+        const errors: string[] = data?.errors ?? ["Some files could not be deleted"];
+        setDeleteAlertErrors(errors);
       } else if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error ?? "delete failed");
@@ -438,6 +436,27 @@ export function FilePanel({
           Delete
         </button>
       </div>
+
+      <ConfirmDialog
+        open={deleteConfirm}
+        title="Delete Items"
+        message={`Delete ${selectedCount} item${selectedCount > 1 ? "s" : ""}? This cannot be undone.`}
+        items={Array.from(selected)}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        onConfirm={() => {
+          setDeleteConfirm(false);
+          doDelete();
+        }}
+        onCancel={() => setDeleteConfirm(false)}
+      />
+      <AlertDialog
+        open={deleteAlertErrors !== null}
+        title="Delete Errors"
+        message="Some items could not be deleted:"
+        items={deleteAlertErrors ?? []}
+        onClose={() => setDeleteAlertErrors(null)}
+      />
     </div>
   );
 }
