@@ -149,7 +149,9 @@ export function parseRomListing(
     .split("\n")
     .map((f) => f.trim())
     .filter((f) => {
-      if (!f || f.startsWith(".") || SKIP_FILES.has(f)) return false;
+      // For files in subdirectories (e.g. "USA/.DS_Store"), check basename
+      const baseName = f.includes("/") ? f.split("/").pop()! : f;
+      if (!f || baseName.startsWith(".") || SKIP_FILES.has(baseName)) return false;
       const dotIdx = f.lastIndexOf(".");
       if (dotIdx < 0) return false; // No extension = not a ROM file
       const ext = f.slice(dotIdx).toLowerCase();
@@ -185,7 +187,8 @@ export function deduplicateGames(games: ScannedGame[]): ScannedGame[] {
 
   for (const game of games) {
     // Deduplicate by cleaned title + platform ID (not filename)
-    // This collapses multi-disc games (Disc 1, Disc 2) into one entry
+    // This collapses multi-disc games (Disc 1, Disc 2) and regional variants
+    // (USA/game vs Europe/game) into one entry — first-seen wins
     const key = `${game.title}|${game.platform}`;
     const existing = seen.get(key);
     if (!existing) {
