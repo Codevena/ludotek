@@ -52,7 +52,15 @@ export async function PUT(request: NextRequest) {
 
   // Handle activeDeviceId (integer, not string)
   if (body.activeDeviceId !== undefined) {
-    (data as Record<string, unknown>).activeDeviceId = body.activeDeviceId === null ? null : Number(body.activeDeviceId);
+    if (body.activeDeviceId === null) {
+      (data as Record<string, unknown>).activeDeviceId = null;
+    } else {
+      const numVal = Number(body.activeDeviceId);
+      if (!Number.isInteger(numVal)) {
+        return NextResponse.json({ error: "activeDeviceId must be an integer or null" }, { status: 400 });
+      }
+      (data as Record<string, unknown>).activeDeviceId = numVal;
+    }
   }
 
   const settings = await prisma.settings.update({

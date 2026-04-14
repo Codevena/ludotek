@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
-  return NextResponse.json(devices.map(maskPassword));
+  return NextResponse.json({ devices: devices.map(maskPassword) });
 }
 
 export async function POST(request: NextRequest) {

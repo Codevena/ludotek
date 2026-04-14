@@ -101,7 +101,7 @@ export default function AdminPage() {
   function loadDevices() {
     fetch("/api/devices")
       .then((r) => r.json())
-      .then((data: Array<{ id: number; name: string; type: string; host: string; port: number; user: string; protocol: string }>) => setDevices(data))
+      .then((data) => setDevices(data.devices ?? []))
       .catch((err) => console.error("Failed to load devices:", err));
   }
 

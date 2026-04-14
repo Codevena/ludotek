@@ -62,6 +62,11 @@ export default function DevicesPage() {
     loadDevices();
   }, [loadDevices]);
 
+  // Clear scan result when switching devices
+  useEffect(() => {
+    setScanResult(null);
+  }, [selectedDeviceId]);
+
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId) ?? null;
 
   const scanPaths: ScanPath[] = selectedDevice?.scanPaths
