@@ -157,7 +157,7 @@ class SshConnection implements DeviceConnection {
 
   async listDirDetailed(path: string): Promise<DetailedDirEntry[]> {
     const sftp = await this.getSftp();
-    const items = await new Promise<import("ssh2").FileEntry[]>(
+    const items = await new Promise<import("ssh2").FileEntryWithStats[]>(
       (resolve, reject) => {
         sftp.readdir(path, (err, list) => {
           if (err) return reject(err);
@@ -299,6 +299,41 @@ class FtpConnection implements DeviceConnection {
       }));
 
     return sortEntries(entries);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async listDirDetailed(path: string): Promise<DetailedDirEntry[]> {
+    throw new Error("Not implemented");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async mkdir(path: string): Promise<void> {
+    throw new Error("Not implemented");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    throw new Error("Not implemented");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async remove(path: string): Promise<void> {
+    throw new Error("Not implemented");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async readFile(path: string, maxBytes?: number): Promise<Buffer> {
+    throw new Error("Not implemented");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async writeFile(remotePath: string, data: Buffer): Promise<void> {
+    throw new Error("Not implemented");
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async stat(path: string): Promise<FileStat> {
+    throw new Error("Not implemented");
   }
 
   disconnect(): void {
