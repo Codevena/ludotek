@@ -27,11 +27,10 @@ export async function GET(request: NextRequest) {
     ];
   }
   if (deviceId && deviceId !== "all") {
-    const parsedDeviceId = parseInt(deviceId, 10);
-    if (isNaN(parsedDeviceId)) {
+    if (!/^\d+$/.test(deviceId)) {
       return NextResponse.json({ error: "Invalid deviceId" }, { status: 400 });
     }
-    where.devices = { some: { deviceId: parsedDeviceId } };
+    where.devices = { some: { deviceId: parseInt(deviceId, 10) } };
   }
 
   const orderBy: Record<string, string> = {};
@@ -59,31 +58,47 @@ export async function GET(request: NextRequest) {
     devices: game.devices.map((gd) => gd.device),
   }));
 
-  // Deduplicate games by igdbId when showing all devices
+  // Deduplicate games when showing all devices
   // (same game scanned from different devices creates separate Game records)
   let deduped = gamesWithDevices;
   if (!deviceId || deviceId === "all") {
-    const seen = new Map<number, typeof gamesWithDevices[0]>();
+    const seenByIgdb = new Map<number, typeof gamesWithDevices[0]>();
+    const seenByTitlePlatform = new Map<string, typeof gamesWithDevices[0]>();
     const result: typeof gamesWithDevices = [];
     for (const game of gamesWithDevices) {
-      if (game.igdbId && seen.has(game.igdbId)) {
+      let existing: typeof gamesWithDevices[0] | undefined;
+
+      if (game.igdbId) {
+        existing = seenByIgdb.get(game.igdbId);
+      }
+      if (!existing) {
+        const key = `${game.title}|${game.platform}`;
+        existing = seenByTitlePlatform.get(key);
+      }
+
+      if (existing) {
         // Merge devices into existing entry
-        const existing = seen.get(game.igdbId)!;
         for (const dev of game.devices) {
           if (!existing.devices.some((d) => d.id === dev.id)) {
             existing.devices.push(dev);
           }
         }
       } else {
-        if (game.igdbId) seen.set(game.igdbId, game);
+        if (game.igdbId) seenByIgdb.set(game.igdbId, game);
+        seenByTitlePlatform.set(`${game.title}|${game.platform}`, game);
         result.push(game);
       }
     }
     deduped = result;
   }
 
+  // When deduplicating, adjust total to reflect unique count
+  const adjustedTotal = deduped.length < gamesWithDevices.length
+    ? Math.max(total - (gamesWithDevices.length - deduped.length), deduped.length)
+    : total;
+
   return NextResponse.json({
     games: deduped,
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    pagination: { page, limit, total: adjustedTotal, totalPages: Math.ceil(adjustedTotal / limit) },
   });
 }

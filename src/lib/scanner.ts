@@ -4,6 +4,7 @@ import { getPlatformByDir, PLATFORM_CONFIG } from "./platforms";
 import { createConnection } from "./connection";
 
 const SKIP_FILES = new Set(["metadata.txt", "systeminfo.txt", "media", ".sbi"]);
+const SKIP_EXTENSIONS = new Set([".m3u", ".cue", ".sbi"]);
 
 export function matchesBlacklist(name: string, blacklist: string[]): boolean {
   const lower = name.toLowerCase();
@@ -23,7 +24,7 @@ interface ScanPath {
 
 interface DeviceConfig {
   id: number;
-  protocol: "ssh" | "ftp";
+  protocol: "ssh" | "ftp" | "local";
   host: string;
   port: number;
   user: string;
@@ -101,7 +102,11 @@ export function parseRomListing(
   const mapped: (ScannedGame | null)[] = lsOutput
     .split("\n")
     .map((f) => f.trim())
-    .filter((f) => f && !SKIP_FILES.has(f) && !f.startsWith("."))
+    .filter((f) => {
+      if (!f || f.startsWith(".") || SKIP_FILES.has(f)) return false;
+      const ext = f.lastIndexOf(".") >= 0 ? f.slice(f.lastIndexOf(".")).toLowerCase() : "";
+      return !SKIP_EXTENSIONS.has(ext);
+    })
     .map((f) => {
       const title = cleanFilename(f);
       if (!title) return null;

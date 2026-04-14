@@ -22,10 +22,33 @@ export async function getIgdbToken(clientId: string, clientSecret: string): Prom
 }
 
 export const IGDB_PLATFORM_MAP: Record<string, number> = {
-  snes: 19, gba: 24, gb: 33, megadrive: 29, nes: 18, gbc: 22,
-  gamegear: 35, mastersystem: 64, n64: 4, psx: 7, ps2: 8,
-  dreamcast: 23, saturn: 32, gc: 21, switch: 130, segacd: 78,
-  n3ds: 37, xbox360: 12, steam: 6,
+  // Nintendo Handhelds
+  gb: 33, gbc: 22, gba: 24, nds: 20, n3ds: 37, virtualboy: 87, pokemini: 211,
+  // Nintendo Home
+  nes: 18, snes: 19, n64: 4, gc: 21, wii: 5, wiiu: 41, switch: 130,
+  // Sega
+  sg1000: 84, mastersystem: 64, megadrive: 29, segacd: 78, sega32x: 30,
+  saturn: 32, dreamcast: 23, gamegear: 35,
+  // Sony
+  psx: 7, ps2: 8, ps3: 9, psp: 38, psvita: 46,
+  // Microsoft
+  xbox: 11, xbox360: 12,
+  // Atari
+  atari2600: 59, atari5200: 66, atari7800: 60, lynx: 61, jaguar: 62,
+  // NEC
+  pcengine: 86, pcfx: 274,
+  // SNK
+  neogeo: 80, neogeocd: 136, ngp: 119, ngpc: 119,
+  // Bandai
+  wonderswan: 57, wsc: 123,
+  // Other consoles
+  "3do": 50, coleco: 68, vectrex: 70, intellivision: 67,
+  // Computers
+  dos: 13, c64: 15, amiga: 16, msx: 27, zxspectrum: 26, amstrad: 25,
+  // Arcade
+  arcade: 52, naomi: 52, atomiswave: 52,
+  // PC
+  steam: 6, scummvm: 6,
 };
 
 export interface IgdbGameData {

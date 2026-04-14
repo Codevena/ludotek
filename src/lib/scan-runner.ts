@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { scanDevice } from "@/lib/scanner";
 import { setScanProgress, clearScanProgress } from "@/lib/scan-progress";
-import { migrateSettingsToDevice } from "@/lib/migrate-device";
 
 interface DeviceScanResult {
   device: string;
@@ -26,8 +25,6 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
   });
 
   try {
-    await migrateSettingsToDevice();
-
     const devices = deviceId
       ? await prisma.device.findMany({ where: { id: deviceId } })
       : await prisma.device.findMany();
@@ -86,7 +83,7 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
         const games = await scanDevice(
           {
             id: device.id,
-            protocol: device.protocol as "ssh" | "ftp",
+            protocol: device.protocol as "ssh" | "ftp" | "local",
             host: device.host,
             port: device.port,
             user: device.user,
@@ -115,38 +112,47 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
         let updatedCount = 0;
         const scannedGameIds: number[] = [];
 
-        // Collect existing game IDs for this device's platforms before upserting
-        const existingKeys = new Set(
-          (await prisma.game.findMany({
-            where: {
-              OR: games.map((g) => ({
-                originalFile: g.originalFile,
-                platform: g.platform,
-              })),
-            },
-            select: { originalFile: true, platform: true },
-          })).map((g) => `${g.originalFile}|${g.platform}`),
-        );
-
         for (const game of games) {
-          const isNew = !existingKeys.has(`${game.originalFile}|${game.platform}`);
-
-          const result = await prisma.game.upsert({
+          // First try exact file match (same ROM, same platform)
+          let existing = await prisma.game.findUnique({
             where: {
               originalFile_platform: {
                 originalFile: game.originalFile,
                 platform: game.platform,
               },
             },
-            update: { title: game.title },
-            create: {
-              title: game.title,
-              originalFile: game.originalFile,
-              platform: game.platform,
-              platformLabel: game.platformLabel,
-              source: game.source,
-            },
           });
+
+          // Fall back to title+platform match (cross-device dedup for same game with different filename)
+          if (!existing) {
+            existing = await prisma.game.findFirst({
+              where: { title: game.title, platform: game.platform },
+            });
+          }
+
+          let result;
+          if (existing) {
+            // Update title if it changed (e.g. ROM renamed on disk)
+            if (existing.title !== game.title) {
+              await prisma.game.update({
+                where: { id: existing.id },
+                data: { title: game.title },
+              });
+            }
+            result = existing;
+            updatedCount++;
+          } else {
+            result = await prisma.game.create({
+              data: {
+                title: game.title,
+                originalFile: game.originalFile,
+                platform: game.platform,
+                platformLabel: game.platformLabel,
+                source: game.source,
+              },
+            });
+            newCount++;
+          }
 
           scannedGameIds.push(result.id);
 
@@ -164,12 +170,6 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
               deviceId: device.id,
             },
           });
-
-          if (isNew) {
-            newCount++;
-          } else {
-            updatedCount++;
-          }
         }
 
         // Clean up stale GameDevice links for games no longer on this device
@@ -216,28 +216,22 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
       }
     }
 
-    // Update platform game counts
+    // Update platform game counts — upsert so new platforms get created
+    const { PLATFORM_CONFIG } = await import("@/lib/platforms");
     const platformCounts = await prisma.game.groupBy({ by: ["platform"], _count: true });
     await prisma.platform.updateMany({ data: { gameCount: 0 } });
     for (const pc of platformCounts) {
-      await prisma.platform.updateMany({
-        where: { id: pc.platform },
-        data: { gameCount: pc._count },
-      });
-    }
-
-    const steamCount = platformCounts.find((p) => p.platform === "steam");
-    if (steamCount) {
+      const platDef = PLATFORM_CONFIG.find((p) => p.id === pc.platform);
       await prisma.platform.upsert({
-        where: { id: "steam" },
-        update: { gameCount: steamCount._count },
+        where: { id: pc.platform },
+        update: { gameCount: pc._count },
         create: {
-          id: "steam",
-          label: "Steam",
-          icon: "🎮",
-          color: "#171a21",
-          gameCount: steamCount._count,
-          sortOrder: 19,
+          id: pc.platform,
+          label: platDef?.label || pc.platform,
+          icon: platDef?.icon || "🎮",
+          color: platDef?.color || "#6366f1",
+          gameCount: pc._count,
+          sortOrder: platDef?.sortOrder || 99,
         },
       });
     }

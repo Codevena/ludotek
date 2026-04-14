@@ -82,7 +82,14 @@ export function StatsDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/stats")
+    // Fetch active device, then stats filtered by device
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((settings) => {
+        const deviceId = settings.activeDeviceId;
+        const url = deviceId ? `/api/stats?deviceId=${deviceId}` : "/api/stats";
+        return fetch(url);
+      })
       .then((res) => res.json())
       .then((json) => setData(json))
       .catch((err) => console.error("Failed to load stats:", err))

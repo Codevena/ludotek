@@ -32,7 +32,7 @@ describe("Platform Config", () => {
     expect(getPlatformByDir("unknown")).toBeUndefined();
   });
 
-  it("has all 18 platforms", () => {
-    expect(getAllPlatforms()).toHaveLength(18);
+  it("has all platforms defined", () => {
+    expect(getAllPlatforms().length).toBeGreaterThanOrEqual(50);
   });
 });

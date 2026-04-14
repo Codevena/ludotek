@@ -21,11 +21,12 @@ export async function GET(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  const devices = await prisma.device.findMany({
-    orderBy: { createdAt: "asc" },
-  });
+  const [devices, gameDeviceCount] = await Promise.all([
+    prisma.device.findMany({ orderBy: { createdAt: "asc" } }),
+    prisma.gameDevice.count(),
+  ]);
 
-  return NextResponse.json({ devices: devices.map(maskPassword) });
+  return NextResponse.json({ devices: devices.map(maskPassword), gameDeviceCount });
 }
 
 export async function POST(request: NextRequest) {

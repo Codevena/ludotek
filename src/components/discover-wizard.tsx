@@ -126,7 +126,17 @@ export function DiscoverWizard({
                       : "border-vault-border bg-vault-surface text-vault-muted hover:border-vault-amber hover:text-vault-text"
                   }`}
                 >
-                  <img src={`/platforms/${platform.id}.png`} alt="" className="w-5 h-5 object-contain inline-block mr-1.5 -mt-0.5" />
+                  <img src={`/platforms/${platform.id}.png`} alt="" className="w-5 h-5 object-contain inline-block mr-1.5 -mt-0.5"
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement;
+                      if (!img.dataset.triedSvg) {
+                        img.dataset.triedSvg = "1";
+                        img.src = `/platforms/${platform.id}.svg`;
+                      } else {
+                        img.style.display = "none";
+                      }
+                    }}
+                  />
                   {platform.label}
                 </button>
               );

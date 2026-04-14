@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  let body: { sessionId?: string; platform?: string; gameIds?: string[] };
+  let body: { sessionId?: string; platform?: string; gameIds?: string[]; deviceId?: number };
   try {
     body = await request.json();
   } catch {
@@ -43,13 +43,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid sessionId" }, { status: 400 });
   }
 
-  // Load settings for SSH and IGDB credentials
+  // Load settings for IGDB credentials and determine target device
   const settings = await prisma.settings.findFirst({ where: { id: 1 } });
-  if (!settings?.deckHost || !settings?.deckUser || !settings?.deckPassword) {
+  const rawDeviceId = body.deviceId ?? settings?.activeDeviceId;
+  if (rawDeviceId === undefined || rawDeviceId === null) {
     return NextResponse.json(
-      { error: "Steam Deck SSH credentials not configured" },
+      { error: "No target device specified. Select a device or set an active device." },
       { status: 400 }
     );
+  }
+  const targetDeviceId = typeof rawDeviceId === "number" ? rawDeviceId : parseInt(String(rawDeviceId), 10);
+  if (!Number.isInteger(targetDeviceId) || targetDeviceId <= 0) {
+    return NextResponse.json(
+      { error: "No target device specified. Select a device or set an active device." },
+      { status: 400 }
+    );
+  }
+  const targetDevice = await prisma.device.findUnique({ where: { id: targetDeviceId } });
+  if (!targetDevice) {
+    return NextResponse.json({ error: "Target device not found" }, { status: 404 });
+  }
+  if (targetDevice.protocol === "local") {
+    return NextResponse.json({ error: "Upload to local devices is not supported yet" }, { status: 400 });
+  }
+  if (targetDevice.protocol === "ftp") {
+    return NextResponse.json({ error: "Upload via FTP is not supported yet" }, { status: 400 });
   }
 
   // Re-read files from session dir and rebuild game list
@@ -183,10 +201,11 @@ export async function POST(request: NextRequest) {
           }));
 
           await transferFiles(
-            settings.deckHost,
-            settings.deckUser,
-            settings.deckPassword,
-            transferJobs
+            targetDevice.host,
+            targetDevice.user,
+            targetDevice.password,
+            transferJobs,
+            targetDevice.port
           );
 
           // Multi-disc: generate and transfer M3U
@@ -195,12 +214,13 @@ export async function POST(request: NextRequest) {
             const m3uContent = generateM3u(game.title, platform, discFilenames);
             const m3uFilename = `${game.title}.m3u`;
             await transferM3u(
-              settings.deckHost,
-              settings.deckUser,
-              settings.deckPassword,
+              targetDevice.host,
+              targetDevice.user,
+              targetDevice.password,
               m3uFilename,
               m3uContent,
-              platform
+              platform,
+              targetDevice.port
             );
           }
 
@@ -229,6 +249,13 @@ export async function POST(request: NextRequest) {
             },
           });
 
+          // Link game to target device
+          await prisma.gameDevice.upsert({
+            where: { gameId_deviceId: { gameId: dbGame.id, deviceId: targetDevice.id } },
+            update: {},
+            create: { gameId: dbGame.id, deviceId: targetDevice.id },
+          });
+
           // Update platform counts
           const count = await prisma.game.count({ where: { platform } });
           await prisma.platform.upsert({
@@ -247,7 +274,7 @@ export async function POST(request: NextRequest) {
           // ── STEP 4: ENRICH (non-fatal) ──
           let coverUrl: string | null = null;
 
-          if (settings.igdbClientId && settings.igdbClientSecret) {
+          if (settings?.igdbClientId && settings?.igdbClientSecret) {
             send({ type: "game-step", gameId: game.id, step: "enrich" });
 
             try {

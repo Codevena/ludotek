@@ -7,9 +7,6 @@ import { DeviceForm } from "@/components/device-form";
 import { useEnrichment } from "@/context/enrichment-context";
 
 interface Settings {
-  deckHost: string;
-  deckUser: string;
-  deckPassword: string;
   igdbClientId: string;
   igdbClientSecret: string;
   steamgriddbKey: string;
@@ -29,7 +26,6 @@ interface ActionResult {
 export default function AdminPage() {
   const { startEnrichment, isRunning: enrichmentRunning } = useEnrichment();
   const [settings, setSettings] = useState<Settings>({
-    deckHost: "", deckUser: "", deckPassword: "",
     igdbClientId: "", igdbClientSecret: "", steamgriddbKey: "",
     openrouterKey: "", steamApiKey: "", aiLanguage: "en", romSearchUrl: "",
     activeDeviceId: null,
@@ -52,6 +48,8 @@ export default function AdminPage() {
   const [showDeviceForm, setShowDeviceForm] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
   const [authError, setAuthError] = useState("");
+  const [deviceLinkCount, setDeviceLinkCount] = useState<number | null>(null);
+  const [showMaintenance, setShowMaintenance] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -101,7 +99,10 @@ export default function AdminPage() {
   function loadDevices() {
     fetch("/api/devices")
       .then((r) => r.json())
-      .then((data) => setDevices(data.devices ?? []))
+      .then((data) => {
+        setDevices(data.devices ?? []);
+        setDeviceLinkCount(data.gameDeviceCount ?? null);
+      })
       .catch((err) => console.error("Failed to load devices:", err));
   }
 
@@ -243,11 +244,28 @@ export default function AdminPage() {
 
       <h1 className="font-heading text-2xl font-bold mb-8">Admin</h1>
 
+      {/* Device Link Warning */}
+      {deviceLinkCount === 0 && devices.length > 0 && (
+        <div className="card mb-6 border-orange-500/50 bg-orange-500/5">
+          <div className="flex items-start gap-3">
+            <span className="text-orange-400 text-lg">&#9888;</span>
+            <div>
+              <p className="text-sm text-orange-300 font-medium">Device filter is not working</p>
+              <p className="text-xs text-vault-muted mt-1">
+                No games are linked to devices yet. Run &quot;Scan Devices&quot; to populate device links.
+                Make sure each device has scan paths configured on the{" "}
+                <a href="/devices" className="text-vault-amber hover:underline">Devices page</a>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <button onClick={runScan} disabled={scanning || enrichmentRunning}
           className={`${btnClass} bg-vault-amber text-black hover:bg-vault-amber-hover`}>
-          {scanning ? "Scanning..." : "Scan Steam Deck"}
+          {scanning ? "Scanning..." : "Scan Devices"}
         </button>
         <button onClick={() => {
             const body = selectedPlatforms.length > 0 ? { platforms: selectedPlatforms } : undefined;
@@ -270,23 +288,6 @@ export default function AdminPage() {
       >
         Upload ROMs
       </Link>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <button onClick={() => runStreamingAction("/api/enrich/metacritic", setMetacriticEnriching)}
-          disabled={scanning || enrichmentRunning || cleaning}
-          className={`${btnClass} bg-cyan-600 text-white hover:bg-cyan-500`}>
-          {metacriticEnriching ? "Fetching..." : "Fetch Critic Scores"}
-        </button>
-        <button onClick={() => runStreamingAction("/api/enrich/refresh", setReEnriching)}
-          disabled={scanning || enrichmentRunning || cleaning}
-          className={`${btnClass} bg-orange-600 text-white hover:bg-orange-500`}>
-          {reEnriching ? "Re-Enriching..." : "Re-Enrich Missing Fields"}
-        </button>
-        <button onClick={runCleanup} disabled={scanning || enrichmentRunning || cleaning}
-          className={`${btnClass} bg-red-600/80 text-white hover:bg-red-500`}>
-          {cleaning ? "Cleaning..." : "Cleanup Duplicates & .m3u"}
-        </button>
-      </div>
 
       {/* Platform Filter */}
       <div className="mb-8">
@@ -337,7 +338,15 @@ export default function AdminPage() {
                       src={`/platforms/${p.id}.png`}
                       alt={p.label}
                       className="w-5 h-5 object-contain"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      onError={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        if (!img.dataset.triedSvg) {
+                          img.dataset.triedSvg = "1";
+                          img.src = `/platforms/${p.id}.svg`;
+                        } else {
+                          img.style.display = "none";
+                        }
+                      }}
                     />
                     <span className="truncate">{p.label}</span>
                     <span className="ml-auto opacity-60">{p.gameCount}</span>
@@ -354,7 +363,7 @@ export default function AdminPage() {
         <div className="card mb-8 border-vault-amber/50">
           <div className="flex items-center gap-3">
             <div className="w-4 h-4 rounded-full bg-vault-amber animate-pulse" />
-            <span className="text-sm text-vault-muted">Scanning Steam Deck via SSH...</span>
+            <span className="text-sm text-vault-muted">Scanning devices...</span>
           </div>
         </div>
       )}
@@ -369,27 +378,6 @@ export default function AdminPage() {
       {/* Settings */}
       <div className="card space-y-6">
         <h2 className="font-heading text-lg font-bold">Settings</h2>
-
-        <div className="space-y-4">
-          <h3 className="text-vault-amber text-sm font-semibold uppercase tracking-wide">Steam Deck SSH</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="deck-host" className="text-vault-muted text-xs mb-1 block">Host</label>
-              <input id="deck-host" className={inputClass} value={settings.deckHost}
-                onChange={(e) => setSettings({ ...settings, deckHost: e.target.value })} placeholder="192.168.178.131" />
-            </div>
-            <div>
-              <label htmlFor="deck-user" className="text-vault-muted text-xs mb-1 block">User</label>
-              <input id="deck-user" className={inputClass} value={settings.deckUser}
-                onChange={(e) => setSettings({ ...settings, deckUser: e.target.value })} placeholder="deck" />
-            </div>
-          </div>
-          <div>
-            <label htmlFor="deck-password" className="text-vault-muted text-xs mb-1 block">Password</label>
-            <input id="deck-password" className={inputClass} type="password" value={settings.deckPassword}
-              onChange={(e) => setSettings({ ...settings, deckPassword: e.target.value })} />
-          </div>
-        </div>
 
         <div className="space-y-4">
           <h3 className="text-vault-amber text-sm font-semibold uppercase tracking-wide">IGDB API</h3>
@@ -589,6 +577,40 @@ export default function AdminPage() {
           className={`${btnClass} bg-vault-amber text-black hover:bg-vault-amber-hover w-full`}>
           {saving ? "Saving..." : "Save Settings"}
         </button>
+      </div>
+
+      {/* Maintenance Tools */}
+      <div className="card mt-8 space-y-4">
+        <button
+          onClick={() => setShowMaintenance(!showMaintenance)}
+          className="w-full flex items-center justify-between"
+        >
+          <h2 className="font-heading text-lg font-bold text-vault-muted">Maintenance Tools</h2>
+          <span className="text-vault-muted text-sm">{showMaintenance ? "▲" : "▼"}</span>
+        </button>
+        {showMaintenance && (
+          <>
+            <p className="text-vault-muted text-xs">
+              Repair tools for edge cases — use when enrichment data is incomplete or duplicates slipped through.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <button onClick={() => runStreamingAction("/api/enrich/metacritic", setMetacriticEnriching)}
+                disabled={scanning || enrichmentRunning || cleaning}
+                className={`${btnClass} bg-cyan-600/80 text-white hover:bg-cyan-500`}>
+                {metacriticEnriching ? "Fetching..." : "Fetch Critic Scores"}
+              </button>
+              <button onClick={() => runStreamingAction("/api/enrich/refresh", setReEnriching)}
+                disabled={scanning || enrichmentRunning || cleaning}
+                className={`${btnClass} bg-orange-600/80 text-white hover:bg-orange-500`}>
+                {reEnriching ? "Re-Enriching..." : "Re-Enrich Missing Fields"}
+              </button>
+              <button onClick={runCleanup} disabled={scanning || enrichmentRunning || cleaning}
+                className={`${btnClass} bg-red-600/80 text-white hover:bg-red-500`}>
+                {cleaning ? "Cleaning..." : "Cleanup Duplicates & .m3u"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

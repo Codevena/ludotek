@@ -14,7 +14,6 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ...settings,
-    deckPassword: settings.deckPassword ? "********" : "",
     igdbClientSecret: settings.igdbClientSecret ? "********" : "",
     openrouterKey: settings.openrouterKey ? "********" : "",
     steamApiKey: settings.steamApiKey ? "********" : "",
@@ -35,7 +34,6 @@ export async function PUT(request: NextRequest) {
 
   const data: Record<string, string> = {};
   const fields = [
-    "deckHost", "deckUser", "deckPassword",
     "igdbClientId", "igdbClientSecret", "steamgriddbKey",
     "openrouterKey", "steamApiKey", "aiLanguage", "romSearchUrl",
   ];
@@ -72,7 +70,6 @@ export async function PUT(request: NextRequest) {
     success: true,
     settings: {
       ...settings,
-      deckPassword: settings.deckPassword ? "********" : "",
       igdbClientSecret: settings.igdbClientSecret ? "********" : "",
       openrouterKey: settings.openrouterKey ? "********" : "",
       steamApiKey: settings.steamApiKey ? "********" : "",

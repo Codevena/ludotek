@@ -70,9 +70,6 @@ model Platform {
 
 model Settings {
   id               Int    @id @default(1)
-  deckHost         String @default("192.168.178.131")
-  deckUser         String @default("deck")
-  deckPassword     String @default("")
   igdbClientId     String @default("")
   igdbClientSecret String @default("")
   steamgriddbKey   String @default("")

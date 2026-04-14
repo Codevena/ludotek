@@ -48,7 +48,8 @@ export async function transferFiles(
   host: string,
   user: string,
   password: string,
-  jobs: TransferJob[]
+  jobs: TransferJob[],
+  port: number = 22
 ): Promise<void> {
   const conn = new Client();
 
@@ -94,7 +95,7 @@ export async function transferFiles(
       reject(connErr);
     });
 
-    conn.connect({ host, port: 22, username: user, password });
+    conn.connect({ host, port, username: user, password });
   });
 }
 
@@ -107,7 +108,8 @@ export async function transferM3u(
   password: string,
   m3uFilename: string,
   m3uContent: string,
-  platform: string
+  platform: string,
+  port: number = 22
 ): Promise<void> {
   const conn = new Client();
 
@@ -147,7 +149,7 @@ export async function transferM3u(
       reject(connErr);
     });
 
-    conn.connect({ host, port: 22, username: user, password });
+    conn.connect({ host, port, username: user, password });
   });
 }
 

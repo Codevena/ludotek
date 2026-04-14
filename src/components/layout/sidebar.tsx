@@ -22,12 +22,20 @@ export function Sidebar() {
   const isWishlistActive = pathname === "/wishlist";
 
   useEffect(() => {
-    fetch("/api/platforms")
+    // Fetch active device to filter platform counts
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((settings) => {
+        const deviceId = settings.activeDeviceId;
+        const url = deviceId ? `/api/platforms?deviceId=${deviceId}` : "/api/platforms";
+        return fetch(url);
+      })
       .then((r) => r.json())
       .then((data: PlatformItem[]) => {
         setPlatforms(data);
         setTotalGames(data.reduce((sum, p) => sum + p.gameCount, 0));
-      });
+      })
+      .catch((err) => console.error("Failed to load platforms:", err));
   }, []);
 
   return (
@@ -113,8 +121,13 @@ export function Sidebar() {
                 className="w-6 h-6 object-contain flex-shrink-0"
                 onError={(e) => {
                   const img = e.target as HTMLImageElement;
-                  img.style.display = "none";
-                  img.nextElementSibling?.classList.remove("hidden");
+                  if (!img.dataset.triedSvg) {
+                    img.dataset.triedSvg = "1";
+                    img.src = `/platforms/${p.id}.svg`;
+                  } else {
+                    img.style.display = "none";
+                    img.nextElementSibling?.classList.remove("hidden");
+                  }
                 }}
               />
               <span className="hidden text-base">{p.icon}</span>

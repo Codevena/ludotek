@@ -12,6 +12,9 @@ export async function POST(
   if (authError) return authError;
 
   const { id } = await params;
+  if (!/^\d+$/.test(id)) {
+    return NextResponse.json({ error: "Invalid device ID" }, { status: 400 });
+  }
   const deviceId = parseInt(id, 10);
   if (isNaN(deviceId)) {
     return NextResponse.json({ error: "Invalid device ID" }, { status: 400 });

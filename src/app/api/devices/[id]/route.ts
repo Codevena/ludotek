@@ -11,8 +11,8 @@ function maskPassword<T extends { password: string }>(
 }
 
 function parseDeviceId(id: string): number | null {
-  const parsed = parseInt(id, 10);
-  return isNaN(parsed) ? null : parsed;
+  if (!/^\d+$/.test(id)) return null;
+  return parseInt(id, 10);
 }
 
 export async function GET(
