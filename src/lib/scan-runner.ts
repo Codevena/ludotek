@@ -182,6 +182,20 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
           },
         });
 
+        // Remove orphaned games (no remaining device links)
+        const orphanedGames = await prisma.game.findMany({
+          where: { devices: { none: {} } },
+          select: { id: true },
+        });
+        if (orphanedGames.length > 0) {
+          await prisma.game.deleteMany({
+            where: { id: { in: orphanedGames.map((g) => g.id) } },
+          });
+          console.warn(
+            `Removed ${orphanedGames.length} orphaned games with no device links`,
+          );
+        }
+
         totalNew += newCount;
         totalUpdated += updatedCount;
         totalGamesFound += games.length;
