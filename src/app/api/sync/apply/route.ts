@@ -115,12 +115,19 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            // Update originalFile in the game record
-            const newFilename = item.newPath.split("/").pop() || item.newPath;
-            await prisma.game.update({
-              where: { id: item.gameId },
-              data: { originalFile: newFilename },
+            // Update originalFile only if this game is on a single device
+            // Multi-device games keep originalFile unchanged to avoid corrupting
+            // path reconstruction for other devices
+            const deviceCount = await prisma.gameDevice.count({
+              where: { gameId: item.gameId },
             });
+            if (deviceCount <= 1) {
+              const newFilename = item.newPath.split("/").pop() || item.newPath;
+              await prisma.game.update({
+                where: { id: item.gameId },
+                data: { originalFile: newFilename },
+              });
+            }
 
             await prisma.syncQueue.update({
               where: { id: item.id },
