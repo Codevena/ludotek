@@ -48,7 +48,11 @@ async function runTransfer(
     try {
       const stats = await sourceConn.stat(filePath);
       if (stats.isDirectory) {
-        continue; // Skip directories
+        setTransferProgress({
+          error: `${fileName} is a directory — only files can be transferred`,
+          transferring: false,
+        });
+        return;
       }
       if (stats.size > MAX_FILE_SIZE) {
         setTransferProgress({

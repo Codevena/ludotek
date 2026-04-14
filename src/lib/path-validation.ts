@@ -30,7 +30,7 @@ export async function loadDevice(
 > {
   const { prisma } = await import("@/lib/prisma");
   const deviceId = parseInt(id, 10);
-  if (isNaN(deviceId)) {
+  if (!Number.isInteger(deviceId) || deviceId <= 0) {
     return {
       error: NextResponse.json(
         { error: "Invalid device ID" },
