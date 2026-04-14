@@ -7,7 +7,9 @@ import { MarkdownContent } from "@/components/markdown-content";
 import { EnrichWizard } from "@/components/enrich-wizard";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { FavoriteButton } from "@/components/favorite-button";
+import { RefreshMetadataButton } from "@/components/refresh-metadata-button";
 import { GameFiles } from "@/components/game-files";
+import { coverUrl, screenshotUrls, artworkUrls } from "@/lib/image-url";
 
 function safeJsonParse(str: string | null): string[] {
   if (!str) return [];
@@ -60,12 +62,13 @@ export default async function GameDetailPage({ params }: Props) {
       }));
   });
 
-  const screenshots = safeJsonParse(game.screenshotUrls);
+  const screenshots = screenshotUrls(game);
   const genres = safeJsonParse(game.genres);
   const videoIds = safeJsonParse(game.videoIds);
   const safeVideoIds = videoIds.filter((vid) => /^[a-zA-Z0-9_-]{6,15}$/.test(vid));
-  const artworks = safeJsonParse(game.artworkUrls);
+  const artworks = artworkUrls(game);
   const themes = safeJsonParse(game.themes);
+  const resolvedCoverUrl = coverUrl(game);
 
   const platform = await prisma.platform.findUnique({ where: { id: game.platform } });
   const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -93,8 +96,8 @@ export default async function GameDetailPage({ params }: Props) {
         {/* Cover + Title overlay */}
         <div className="absolute bottom-0 left-0 right-0 p-6 flex items-end gap-5">
           <div className="w-24 h-32 bg-vault-surface rounded-lg overflow-hidden border-2 border-vault-border flex-shrink-0 shadow-xl">
-            {game.coverUrl ? (
-              <img src={game.coverUrl} alt={game.title} className="w-full h-full object-cover" />
+            {resolvedCoverUrl ? (
+              <img src={resolvedCoverUrl} alt={game.title} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-vault-muted text-xs">No Cover</div>
             )}
@@ -165,19 +168,22 @@ export default async function GameDetailPage({ params }: Props) {
 
       {/* Info + Summary */}
       <div className="mt-6 space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          {game.developer && (
-            <div><span className="text-vault-muted text-xs">Developer</span><p>{game.developer}</p></div>
-          )}
-          {game.publisher && (
-            <div><span className="text-vault-muted text-xs">Publisher</span><p>{game.publisher}</p></div>
-          )}
-          {game.releaseDate && (
-            <div>
-              <span className="text-vault-muted text-xs">Release Date</span>
-              <p>{new Date(game.releaseDate).toLocaleDateString("de-DE", { year: "numeric", month: "long", day: "numeric" })}</p>
-            </div>
-          )}
+        <div className="flex items-start justify-between gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm flex-1">
+            {game.developer && (
+              <div><span className="text-vault-muted text-xs">Developer</span><p>{game.developer}</p></div>
+            )}
+            {game.publisher && (
+              <div><span className="text-vault-muted text-xs">Publisher</span><p>{game.publisher}</p></div>
+            )}
+            {game.releaseDate && (
+              <div>
+                <span className="text-vault-muted text-xs">Release Date</span>
+                <p>{new Date(game.releaseDate).toLocaleDateString("de-DE", { year: "numeric", month: "long", day: "numeric" })}</p>
+              </div>
+            )}
+          </div>
+          <RefreshMetadataButton gameId={game.id} />
         </div>
 
         {game.summary && (

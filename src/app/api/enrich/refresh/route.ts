@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fetchIgdbById } from "@/lib/igdb";
 import { requireAuth } from "@/lib/auth";
+import { cacheGameImages } from "@/lib/image-cache";
 
 const DELAY_MS = parseInt(process.env.ENRICH_DELAY_MS || "500", 10) || 500;
 
@@ -112,6 +113,13 @@ export async function POST(request: NextRequest) {
                 where: { id: game.id },
                 data: updateData,
               });
+              // Cache images locally
+              try {
+                await cacheGameImages(game.id);
+              } catch (cacheErr) {
+                console.warn(`Image caching failed for "${game.title}":`, cacheErr);
+              }
+
               enriched++;
               send({ type: "enriched", title: game.title, current: i + 1, fieldsUpdated });
             } else {

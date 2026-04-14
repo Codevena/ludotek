@@ -1,9 +1,11 @@
 import { GameCard } from "./game-card";
+import { coverUrl } from "@/lib/image-url";
 
 interface Game {
   id: number;
   title: string;
   coverUrl: string | null;
+  localCoverPath?: string | null;
   platformLabel: string;
   igdbScore: number | null;
   metacriticScore: number | null;
@@ -23,7 +25,7 @@ export function GameGrid({ games }: { games: Game[] }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       {games.map((game) => (
-        <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
+        <GameCard key={game.id} id={game.id} title={game.title} coverUrl={coverUrl(game) ?? null}
           platformLabel={game.platformLabel} igdbScore={game.igdbScore}
           metacriticScore={game.metacriticScore} isFavorite={game.isFavorite} />
       ))}

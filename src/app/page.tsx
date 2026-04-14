@@ -4,6 +4,7 @@ import { GameCard } from "@/components/game-card";
 import { SortSelect } from "@/components/sort-select";
 import { StatsDashboard } from "@/components/stats-dashboard";
 import { InfiniteGameGrid } from "@/components/infinite-game-grid";
+import { coverUrl } from "@/lib/image-url";
 
 const getActiveDeviceId = cache(async () => {
   const settings = await prisma.settings.findFirst();
@@ -46,7 +47,7 @@ async function RecentlyAdded() {
       <h2 className="font-heading text-xl font-bold mb-4">Recently Added</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {gamesWithDevices.map((game) => (
-          <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
+          <GameCard key={game.id} id={game.id} title={game.title} coverUrl={coverUrl(game) ?? null}
             platformLabel={game.platformLabel} igdbScore={game.igdbScore}
             metacriticScore={game.metacriticScore} isFavorite={game.isFavorite}
             devices={game.devices} />
@@ -82,7 +83,7 @@ async function TopRated() {
       <h2 className="font-heading text-xl font-bold mb-4">Top Rated</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {gamesWithDevices.map((game) => (
-          <GameCard key={game.id} id={game.id} title={game.title} coverUrl={game.coverUrl}
+          <GameCard key={game.id} id={game.id} title={game.title} coverUrl={coverUrl(game) ?? null}
             platformLabel={game.platformLabel} igdbScore={game.igdbScore}
             metacriticScore={game.metacriticScore} isFavorite={game.isFavorite}
             devices={game.devices} />

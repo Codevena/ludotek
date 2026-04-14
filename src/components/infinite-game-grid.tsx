@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { GameCard } from "./game-card";
+import { coverUrl } from "@/lib/image-url";
 
 interface Game {
   id: number;
   title: string;
   coverUrl: string | null;
+  localCoverPath?: string | null;
   platformLabel: string;
   igdbScore: number | null;
   metacriticScore: number | null;
@@ -98,7 +100,7 @@ export function InfiniteGameGrid({ initialGames, total, fetchUrl, emptyMessage }
             key={game.id}
             id={game.id}
             title={game.title}
-            coverUrl={game.coverUrl}
+            coverUrl={coverUrl(game) ?? null}
             platformLabel={game.platformLabel}
             igdbScore={game.igdbScore}
             metacriticScore={game.metacriticScore}

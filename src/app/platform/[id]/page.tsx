@@ -5,6 +5,7 @@ import { InfiniteGameGrid } from "@/components/infinite-game-grid";
 import { SortSelect } from "@/components/sort-select";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { PlatformStats } from "@/components/platform-stats";
+import { PlatformRefreshButton } from "@/components/platform-refresh-button";
 import { Suspense } from "react";
 
 interface Props {
@@ -98,6 +99,7 @@ export default async function PlatformPage({ params, searchParams }: Props) {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <PlatformRefreshButton platformId={id} />
           <Link
             href={`/admin?enrich=${id}`}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors"

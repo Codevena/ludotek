@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { searchIgdb } from "@/lib/igdb";
 import { searchSteamGridDb } from "@/lib/steamgriddb";
 import { requireAuth } from "@/lib/auth";
+import { cacheGameImages } from "@/lib/image-cache";
 
 const DELAY_MS = parseInt(process.env.ENRICH_DELAY_MS || "500", 10) || 500;
 const MAX_RETRIES = 2;
@@ -115,6 +116,14 @@ export async function POST(request: NextRequest) {
                 themes: JSON.stringify(igdbData.themes),
               },
             });
+
+            // Cache images locally after enrichment
+            try {
+              await cacheGameImages(game.id);
+            } catch (cacheErr) {
+              console.warn(`Image caching failed for "${game.title}":`, cacheErr);
+            }
+
             enriched++;
             send({ type: "enriched", title: game.title, current: i + 1 });
           } else {

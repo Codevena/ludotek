@@ -1,3 +1,5 @@
+import { getCachedOrFetch } from "@/lib/api-cache";
+
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 export async function getIgdbToken(clientId: string, clientSecret: string): Promise<string> {
@@ -197,28 +199,33 @@ export async function searchIgdb(
   clientId: string,
   clientSecret: string
 ): Promise<IgdbGameData | null> {
-  const token = await getIgdbToken(clientId, clientSecret);
-  const platformId = IGDB_PLATFORM_MAP[platform];
+  const normalizedTitle = title.toLowerCase().trim();
+  const cacheKey = `igdb:search:${normalizedTitle}:${platform}`;
 
-  const safeTitle = title.replace(/"/g, '\\"');
-  const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
+  return getCachedOrFetch(cacheKey, async () => {
+    const token = await getIgdbToken(clientId, clientSecret);
+    const platformId = IGDB_PLATFORM_MAP[platform];
 
-  let results: RawIgdbGame[] = [];
+    const safeTitle = title.replace(/"/g, '\\"');
+    const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
 
-  if (platformId) {
-    results = (await igdbQuery(clientId, token, "games",
-      `search "${safeTitle}"; ${fields} where platforms = (${platformId}); limit 5;`
-    )) as RawIgdbGame[];
-  }
+    let results: RawIgdbGame[] = [];
 
-  if (results.length === 0) {
-    results = (await igdbQuery(clientId, token, "games",
-      `search "${safeTitle}"; ${fields} limit 5;`
-    )) as RawIgdbGame[];
-  }
+    if (platformId) {
+      results = (await igdbQuery(clientId, token, "games",
+        `search "${safeTitle}"; ${fields} where platforms = (${platformId}); limit 5;`
+      )) as RawIgdbGame[];
+    }
 
-  if (results.length === 0) return null;
-  return resolveIgdbGame(clientId, token, results[0]);
+    if (results.length === 0) {
+      results = (await igdbQuery(clientId, token, "games",
+        `search "${safeTitle}"; ${fields} limit 5;`
+      )) as RawIgdbGame[];
+    }
+
+    if (results.length === 0) return null;
+    return resolveIgdbGame(clientId, token, results[0]);
+  }, 24);
 }
 
 export async function fetchIgdbById(
@@ -228,13 +235,17 @@ export async function fetchIgdbById(
 ): Promise<IgdbGameData | null> {
   if (!Number.isFinite(igdbId)) return null;
 
-  const token = await getIgdbToken(clientId, clientSecret);
-  const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
+  const cacheKey = `igdb:game:${igdbId}`;
 
-  const results = (await igdbQuery(clientId, token, "games",
-    `${fields} where id = ${igdbId};`
-  )) as RawIgdbGame[];
+  return getCachedOrFetch(cacheKey, async () => {
+    const token = await getIgdbToken(clientId, clientSecret);
+    const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
 
-  if (results.length === 0) return null;
-  return resolveIgdbGame(clientId, token, results[0]);
+    const results = (await igdbQuery(clientId, token, "games",
+      `${fields} where id = ${igdbId};`
+    )) as RawIgdbGame[];
+
+    if (results.length === 0) return null;
+    return resolveIgdbGame(clientId, token, results[0]);
+  }, 168); // 7 days
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { coverUrl } from "@/lib/image-url";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -52,9 +53,10 @@ export async function GET(request: NextRequest) {
     prisma.game.count({ where }),
   ]);
 
-  // Flatten device associations for frontend
+  // Flatten device associations for frontend and resolve cover URLs
   const gamesWithDevices = games.map((game) => ({
     ...game,
+    coverUrl: coverUrl(game) ?? null,
     devices: game.devices.map((gd) => gd.device),
   }));
 

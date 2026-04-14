@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { DeviceForm } from "@/components/device-form";
+import { CacheManager } from "@/components/cache-manager";
 import { useEnrichment } from "@/context/enrichment-context";
 import { useScan } from "@/context/scan-context";
 
@@ -572,6 +573,11 @@ export default function AdminPage() {
           className={`${btnClass} bg-vault-amber text-black hover:bg-vault-amber-hover w-full`}>
           {saving ? "Saving..." : "Save Settings"}
         </button>
+      </div>
+
+      {/* Cache Management */}
+      <div className="mt-8">
+        <CacheManager />
       </div>
 
       {/* Danger Zone */}
