@@ -45,6 +45,11 @@ export function ScanBar() {
           />
         </div>
 
+        {/* Percentage */}
+        <span className="flex-shrink-0 text-xs font-medium text-vault-text tabular-nums w-8 text-right">
+          {justCompleted && !scanning ? 100 : progress}%
+        </span>
+
         {/* Counts */}
         <div className="flex-shrink-0 flex items-center gap-3 text-xs text-vault-muted">
           {gamesFound > 0 && <span>{gamesFound} games</span>}
