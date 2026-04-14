@@ -17,6 +17,7 @@ interface Settings {
   steamApiKey: string;
   aiLanguage: string;
   romSearchUrl: string;
+  activeDeviceId: number | null;
 }
 
 interface ActionResult {
@@ -31,6 +32,7 @@ export default function AdminPage() {
     deckHost: "", deckUser: "", deckPassword: "",
     igdbClientId: "", igdbClientSecret: "", steamgriddbKey: "",
     openrouterKey: "", steamApiKey: "", aiLanguage: "en", romSearchUrl: "",
+    activeDeviceId: null,
   });
   const [saving, setSaving] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -544,6 +546,23 @@ export default function AdminPage() {
             >
               + Add Device
             </button>
+          )}
+          {devices.length > 0 && (
+            <div>
+              <label className="text-vault-muted text-xs mb-1 block">Default Device</label>
+              <select
+                value={settings.activeDeviceId ?? ""}
+                onChange={(e) => setSettings({ ...settings, activeDeviceId: e.target.value === "" ? null : Number(e.target.value) })}
+                className="w-full bg-vault-bg border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-amber/50"
+              >
+                <option value="">None</option>
+                {devices.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
           <Link
             href="/devices"
