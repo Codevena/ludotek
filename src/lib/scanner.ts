@@ -11,7 +11,7 @@ const ARCHIVE_EXTENSIONS = new Set([".7z", ".zip"]);
 const PLAYLIST_EXTENSION = ".m3u";
 const DISC_PLATFORMS = new Set([
   "psx", "ps2", "ps3", "saturn", "segacd", "dreamcast", "gc", "wii",
-  "3do", "pcengine", "pcfx", "neogeocd", "jaguarcd", "x68000",
+  "3do", "pcengine", "pcfx", "neogeocd", "jaguarcd",
 ]);
 
 export function matchesBlacklist(name: string, blacklist: string[]): boolean {
@@ -191,10 +191,17 @@ export function deduplicateGames(games: ScannedGame[]): ScannedGame[] {
   for (const game of games) {
     // Deduplicate by cleaned title + platform ID (not filename)
     // This collapses multi-disc games (Disc 1, Disc 2) and regional variants
-    // (USA/game vs Europe/game) into one entry — first-seen wins
+    // (USA/game vs Europe/game) into one entry — prefer .m3u (canonical multi-disc)
     const key = `${game.title}|${game.platform}`;
-    if (!seen.has(key)) {
+    const existing = seen.get(key);
+    if (!existing) {
       seen.set(key, game);
+    } else {
+      const isM3u = game.originalFile.toLowerCase().endsWith(".m3u");
+      const existingIsM3u = existing.originalFile.toLowerCase().endsWith(".m3u");
+      if (isM3u && !existingIsM3u) {
+        seen.set(key, game);
+      }
     }
   }
 

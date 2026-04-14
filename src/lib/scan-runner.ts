@@ -139,11 +139,17 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
 
           let result;
           if (existing) {
-            // Update title if it changed (e.g. ROM renamed on disk)
-            if (existing.title !== game.title) {
+            // Update title if changed, and prefer .m3u originalFile (canonical multi-disc)
+            const incomingIsM3u = game.originalFile.toLowerCase().endsWith(".m3u");
+            const existingIsM3u = existing.originalFile.toLowerCase().endsWith(".m3u");
+            const needsFileUpdate = incomingIsM3u && !existingIsM3u;
+            if (existing.title !== game.title || needsFileUpdate) {
               await prisma.game.update({
                 where: { id: existing.id },
-                data: { title: game.title },
+                data: {
+                  title: game.title,
+                  ...(needsFileUpdate ? { originalFile: game.originalFile } : {}),
+                },
               });
               updatedCount++;
             }

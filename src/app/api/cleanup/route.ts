@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
   for (const game of updatedGames) {
     const key = `${game.title}|${game.platform}`;
-    const isM3u = game.originalFile.endsWith(".m3u");
+    const isM3u = game.originalFile.toLowerCase().endsWith(".m3u");
     const existing = seen.get(key);
     if (existing) {
       if (isM3u && !existing.isM3u) {
