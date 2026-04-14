@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 /* ── Era buckets ───────────────────────────────────── */
 const ERA_BUCKETS = [
-  { name: "Dawn of Gaming", range: "1977–1982", minYear: 0, maxYear: 1982 },
+  { name: "Dawn of Gaming", range: "1977–1982", minYear: 1977, maxYear: 1982 },
   { name: "8-Bit Era", range: "1983–1988", minYear: 1983, maxYear: 1988 },
   { name: "16-Bit Golden Age", range: "1989–1993", minYear: 1989, maxYear: 1993 },
   { name: "The 3D Revolution", range: "1994–1997", minYear: 1994, maxYear: 1997 },

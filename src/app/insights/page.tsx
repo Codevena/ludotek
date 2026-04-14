@@ -229,7 +229,7 @@ export default function InsightsPage() {
                 axisLine={false}
                 tickLine={false}
               />
-              <Tooltip content={<InsightTooltip total={data.totalGames} />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+              <Tooltip content={<InsightTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {data.eras.map((era) => (
                   <Cell key={era.name} fill={ERA_COLORS[era.name] ?? "#71717a"} />
