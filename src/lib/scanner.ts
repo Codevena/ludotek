@@ -99,13 +99,21 @@ export function parseRomListing(
   const platformDef = getPlatformByDir(dirName);
   if (!platformDef) return [];
 
+  // Only accept files with valid extensions for this platform
+  const validExtensions = new Set(platformDef.extensions.map((e) => e.toLowerCase()));
+
   const mapped: (ScannedGame | null)[] = lsOutput
     .split("\n")
     .map((f) => f.trim())
     .filter((f) => {
       if (!f || f.startsWith(".") || SKIP_FILES.has(f)) return false;
-      const ext = f.lastIndexOf(".") >= 0 ? f.slice(f.lastIndexOf(".")).toLowerCase() : "";
-      return !SKIP_EXTENSIONS.has(ext);
+      const dotIdx = f.lastIndexOf(".");
+      if (dotIdx < 0) return false; // No extension = not a ROM file
+      const ext = f.slice(dotIdx).toLowerCase();
+      if (SKIP_EXTENSIONS.has(ext)) return false;
+      // If platform defines valid extensions, enforce them
+      if (validExtensions.size > 0 && !validExtensions.has(ext)) return false;
+      return true;
     })
     .map((f) => {
       const title = cleanFilename(f);
