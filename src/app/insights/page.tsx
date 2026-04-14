@@ -103,12 +103,13 @@ function RankedCard({ title, items }: { title: string; items: RankedEntry[] }) {
 export default function InsightsPage() {
   const [data, setData] = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     fetch("/api/insights")
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((json) => setData(json))
-      .catch((err) => console.error("Failed to load insights:", err))
+      .catch((err) => { console.error("Failed to load insights:", err); setError(true); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -125,6 +126,14 @@ export default function InsightsPage() {
           <div className="h-64 bg-vault-surface animate-pulse rounded-xl" />
           <div className="h-64 bg-vault-surface animate-pulse rounded-xl" />
         </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-red-400 text-lg">Failed to load insights. Please refresh.</p>
       </div>
     );
   }
