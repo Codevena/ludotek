@@ -32,7 +32,10 @@ interface DeviceConfig {
   blacklist: string[];
 }
 
-export async function scanDevice(device: DeviceConfig): Promise<ScannedGame[]> {
+export async function scanDevice(
+  device: DeviceConfig,
+  onPathStart?: (pathLabel: string) => void,
+): Promise<ScannedGame[]> {
   const conn = await createConnection({
     protocol: device.protocol,
     host: device.host,
@@ -44,6 +47,7 @@ export async function scanDevice(device: DeviceConfig): Promise<ScannedGame[]> {
     const allGames: ScannedGame[] = [];
     for (const scanPath of device.scanPaths) {
       try {
+        onPathStart?.(scanPath.path);
         if (scanPath.type === "rom") {
           const dirs = await conn.listDir(scanPath.path);
           for (const dir of dirs) {
