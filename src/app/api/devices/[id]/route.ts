@@ -124,6 +124,15 @@ export async function DELETE(
   }
 
   try {
+    // Clear activeDeviceId if this device was the active one
+    const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+    if (settings?.activeDeviceId === Number(id)) {
+      await prisma.settings.update({
+        where: { id: 1 },
+        data: { activeDeviceId: null },
+      });
+    }
+
     await prisma.device.delete({ where: { id: deviceId } });
     return NextResponse.json({ ok: true });
   } catch (error) {

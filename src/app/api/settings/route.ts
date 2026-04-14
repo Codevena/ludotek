@@ -50,6 +50,11 @@ export async function PUT(request: NextRequest) {
     }
   }
 
+  // Handle activeDeviceId (integer, not string)
+  if (body.activeDeviceId !== undefined) {
+    (data as Record<string, unknown>).activeDeviceId = body.activeDeviceId === null ? null : Number(body.activeDeviceId);
+  }
+
   const settings = await prisma.settings.update({
     where: { id: 1 },
     data,
