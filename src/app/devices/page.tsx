@@ -31,13 +31,25 @@ export default function DevicesPage() {
 
   const loadDevices = useCallback(async () => {
     try {
-      const res = await fetch("/api/devices");
-      if (!res.ok) throw new Error("Failed to load devices");
-      const data: Device[] = await res.json();
-      setDevices(data);
-      if (data.length > 0 && !hasAutoSelected.current) {
+      const [devicesRes, settingsRes] = await Promise.all([
+        fetch("/api/devices"),
+        fetch("/api/settings"),
+      ]);
+      if (!devicesRes.ok) throw new Error("Failed to load devices");
+      const devData = await devicesRes.json();
+      const deviceList: Device[] = devData.devices || [];
+      setDevices(deviceList);
+
+      if (!hasAutoSelected.current && deviceList.length > 0) {
         hasAutoSelected.current = true;
-        setSelectedDeviceId(data[0].id);
+        let initialId = deviceList[0].id;
+        if (settingsRes.ok) {
+          const setData = await settingsRes.json();
+          if (setData.activeDeviceId && deviceList.some((d: Device) => d.id === setData.activeDeviceId)) {
+            initialId = setData.activeDeviceId;
+          }
+        }
+        setSelectedDeviceId(initialId);
       }
     } catch (err) {
       console.error("Failed to load devices:", err);
