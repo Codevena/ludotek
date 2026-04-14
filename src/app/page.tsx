@@ -4,6 +4,7 @@ import { GameCard } from "@/components/game-card";
 import { SortSelect } from "@/components/sort-select";
 import { StatsDashboard } from "@/components/stats-dashboard";
 import { InfiniteGameGrid } from "@/components/infinite-game-grid";
+import { SetupRedirect } from "@/components/setup-redirect";
 import { coverUrl } from "@/lib/image-url";
 
 const getActiveDeviceId = cache(async () => {
@@ -140,6 +141,9 @@ export default async function HomePage({ searchParams }: Props) {
 
   return (
     <div>
+      <Suspense>
+        <SetupRedirect />
+      </Suspense>
       <StatsDashboard />
 
       {!search && !favorites && (
