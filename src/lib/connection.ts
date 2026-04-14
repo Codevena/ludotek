@@ -1,5 +1,6 @@
 import { Client as SshClient } from "ssh2";
 import { Client as FtpClient } from "basic-ftp";
+import { Readable, Writable } from "stream";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -205,7 +206,7 @@ class SshConnection implements DeviceConnection {
     const info = await this.stat(path);
     if (info.isDirectory) {
       const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
-      await sshExec(this.conn, `rm -rf "${safePath}"`);
+      await sshExec(this.conn, `rm -rf -- "${safePath}"`);
     } else {
       const sftp = await this.getSftp();
       return new Promise((resolve, reject) => {
@@ -301,39 +302,81 @@ class FtpConnection implements DeviceConnection {
     return sortEntries(entries);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async listDirDetailed(path: string): Promise<DetailedDirEntry[]> {
-    throw new Error("Not implemented");
+    const items = await this.client.list(path);
+
+    const entries: DetailedDirEntry[] = items
+      .filter((item) => item.name && item.name !== "." && item.name !== "..")
+      .slice(0, MAX_ENTRIES)
+      .map((item) => ({
+        name: item.name,
+        type: (item.isDirectory ? "dir" : "file") as "dir" | "file",
+        size: item.size,
+        modifiedAt: item.rawModifiedAt
+          ? new Date(item.rawModifiedAt).toISOString()
+          : undefined,
+      }));
+
+    return sortEntries(entries as unknown as DirEntry[]) as unknown as DetailedDirEntry[];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async mkdir(path: string): Promise<void> {
-    throw new Error("Not implemented");
+    await this.client.ensureDir(path);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async rename(oldPath: string, newPath: string): Promise<void> {
-    throw new Error("Not implemented");
+    await this.client.rename(oldPath, newPath);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async remove(path: string): Promise<void> {
-    throw new Error("Not implemented");
+    try {
+      await this.client.remove(path);
+    } catch {
+      await this.client.removeDir(path);
+    }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async readFile(path: string, maxBytes?: number): Promise<Buffer> {
-    throw new Error("Not implemented");
+    const chunks: Buffer[] = [];
+    let totalRead = 0;
+
+    const writable = new Writable({
+      write(chunk: Buffer, _encoding, callback) {
+        if (maxBytes !== undefined) {
+          const remaining = maxBytes - totalRead;
+          if (remaining <= 0) {
+            callback();
+            return;
+          }
+          const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+          chunks.push(slice);
+          totalRead += slice.length;
+        } else {
+          chunks.push(chunk);
+        }
+        callback();
+      },
+    });
+
+    await this.client.downloadTo(writable, path);
+    return Buffer.concat(chunks);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async writeFile(remotePath: string, data: Buffer): Promise<void> {
-    throw new Error("Not implemented");
+    const readable = Readable.from(data);
+    await this.client.uploadFrom(readable, remotePath);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async stat(path: string): Promise<FileStat> {
-    throw new Error("Not implemented");
+    const size = await this.client.size(path);
+    let modifiedAt: string | undefined;
+    try {
+      const lastMod = await this.client.lastMod(path);
+      modifiedAt = lastMod.toISOString();
+    } catch {
+      // lastMod not supported by all FTP servers
+    }
+    return { size, modifiedAt, isDirectory: false };
   }
 
   disconnect(): void {
