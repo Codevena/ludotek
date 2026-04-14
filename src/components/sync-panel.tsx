@@ -202,7 +202,7 @@ export function SyncPanel() {
                       {group.items.map((item) => (
                         <div
                           key={item.id}
-                          className="flex items-start gap-2 py-1.5 px-2 rounded bg-vault-bg/50 group"
+                          className={`flex items-start gap-2 py-1.5 px-2 rounded group ${item.status === "failed" ? "bg-red-500/5 border border-red-500/20" : "bg-vault-bg/50"}`}
                         >
                           <span
                             className={`text-xs mt-0.5 ${item.type === "delete" ? "text-red-400" : "text-vault-amber"}`}

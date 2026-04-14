@@ -8,8 +8,14 @@ export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  const pending = await prisma.syncQueue.findMany({
+  // Atomically claim all pending items to prevent concurrent apply races
+  await prisma.syncQueue.updateMany({
     where: { status: "pending" },
+    data: { status: "in_progress" },
+  });
+
+  const pending = await prisma.syncQueue.findMany({
+    where: { status: "in_progress" },
     include: { device: true, game: true },
     orderBy: { createdAt: "asc" },
   });
@@ -84,10 +90,18 @@ export async function POST(request: NextRequest) {
             try {
               await conn.rename(item.filePath, item.newPath);
             } catch (err) {
-              // If old file is gone but new file exists, treat as success
+              // If old file is gone, verify destination exists before treating as success
               const msg = err instanceof Error ? err.message : "";
               if (!msg.includes("No such file") && !msg.includes("ENOENT")) {
                 throw err;
+              }
+              // Verify the destination file actually exists
+              try {
+                await conn.stat(item.newPath);
+              } catch {
+                throw new Error(
+                  `Rename failed: source file not found and destination does not exist`,
+                );
               }
             }
 

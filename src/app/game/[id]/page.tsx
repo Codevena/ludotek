@@ -40,7 +40,13 @@ export default async function GameDetailPage({ params }: Props) {
   const { PLATFORM_CONFIG } = await import("@/lib/platforms");
 
   const deviceFiles = gameDevices.flatMap((gd) => {
-    const scanPaths = JSON.parse(gd.device.scanPaths) as { path: string; type: string }[];
+    let scanPaths: { path: string; type: string }[];
+    try {
+      scanPaths = JSON.parse(gd.device.scanPaths);
+    } catch {
+      return [];
+    }
+    if (!Array.isArray(scanPaths)) return [];
     const platDef = PLATFORM_CONFIG.find((p) => p.id === game.platform);
     const platDir = platDef?.dirs[0] || game.platform;
 

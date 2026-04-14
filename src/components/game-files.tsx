@@ -139,7 +139,7 @@ export function GameFiles({ gameId, files }: GameFilesProps) {
                         <p className="text-xs text-red-400 mt-0.5">Staged for deletion</p>
                       )}
                     </div>
-                    {!isDeleted && !isEditing && (
+                    {!isDeleted && !isEditing && !renamedTo && (
                       <div className="flex gap-1.5 flex-shrink-0">
                         <button
                           onClick={() => startRename(file)}
@@ -169,6 +169,7 @@ export function GameFiles({ gameId, files }: GameFilesProps) {
                           if (e.key === "Escape") setEditingKey(null);
                         }}
                         autoFocus
+                        onFocus={(e) => e.target.select()}
                         className="flex-1 bg-vault-bg border border-vault-border rounded px-2 py-1 text-xs font-mono text-vault-text focus:outline-none focus:border-vault-amber/50"
                       />
                       <button

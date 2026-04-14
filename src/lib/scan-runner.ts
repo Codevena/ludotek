@@ -173,14 +173,28 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
         }
 
         // Clean up stale GameDevice links for games no longer on this device
-        await prisma.gameDevice.deleteMany({
-          where: {
-            deviceId: device.id,
-            ...(scannedGameIds.length > 0
-              ? { gameId: { notIn: scannedGameIds } }
-              : {}),
-          },
-        });
+        // Only run when scan returned results — empty scan may indicate connection failure
+        if (scannedGameIds.length > 0) {
+          await prisma.gameDevice.deleteMany({
+            where: {
+              deviceId: device.id,
+              gameId: { notIn: scannedGameIds },
+            },
+          });
+
+          // Clean up stale SyncQueue items for games no longer on this device
+          await prisma.syncQueue.deleteMany({
+            where: {
+              deviceId: device.id,
+              status: "pending",
+              gameId: { notIn: scannedGameIds },
+            },
+          });
+        } else {
+          console.warn(
+            `Scan returned 0 games for ${device.name} — skipping stale link cleanup (may be a connection issue)`,
+          );
+        }
 
         // Remove orphaned games (no remaining device links)
         const orphanedGames = await prisma.game.findMany({
