@@ -331,8 +331,13 @@ class FtpConnection implements DeviceConnection {
   async remove(path: string): Promise<void> {
     try {
       await this.client.remove(path);
-    } catch {
-      await this.client.removeDir(path);
+    } catch (fileErr) {
+      try {
+        await this.client.removeDir(path);
+      } catch {
+        // Directory removal also failed — throw the original file error
+        throw fileErr;
+      }
     }
   }
 
@@ -372,9 +377,16 @@ class FtpConnection implements DeviceConnection {
     let isDirectory = false;
     try {
       size = await this.client.size(path);
-    } catch {
-      // size() throws on directories
-      isDirectory = true;
+    } catch (sizeErr) {
+      // size() throws on directories, but also on missing files
+      // Verify it's actually a directory by attempting to list it
+      try {
+        await this.client.list(path);
+        isDirectory = true;
+      } catch {
+        // Neither a file nor a directory — re-throw original error
+        throw sizeErr;
+      }
     }
     let modifiedAt: string | undefined;
     if (!isDirectory) {

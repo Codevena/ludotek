@@ -74,12 +74,13 @@ export async function GET(
     }
 
     if (TEXT_EXTENSIONS.has(ext)) {
+      const stats = await conn.stat(filePath);
+      const truncated = stats.size > MAX_TEXT_BYTES;
       const data = await conn.readFile(filePath, MAX_TEXT_BYTES);
       const text = data.toString("utf-8");
-      const stats = await conn.stat(filePath);
       return NextResponse.json({
         content: text,
-        truncated: stats.size > MAX_TEXT_BYTES,
+        truncated,
         size: stats.size,
       });
     }

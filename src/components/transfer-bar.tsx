@@ -44,7 +44,7 @@ export function TransferBar() {
       const json: TransferProgress = await res.json();
       setData(json);
 
-      if (!json.transferring && !json.error) {
+      if (!json.transferring) {
         stopPolling();
       }
     } catch {

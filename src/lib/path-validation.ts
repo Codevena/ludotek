@@ -4,9 +4,18 @@ export function validateRemotePath(path: string): NextResponse | null {
   if (typeof path !== "string" || !path || path.trim() === "") {
     return NextResponse.json({ error: "Path is required" }, { status: 400 });
   }
+  if (path.includes("\0")) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
   if (path.includes("..")) {
     return NextResponse.json(
       { error: "Path must not contain '..'" },
+      { status: 400 },
+    );
+  }
+  if (path === "/") {
+    return NextResponse.json(
+      { error: "Cannot operate on root path" },
       { status: 400 },
     );
   }

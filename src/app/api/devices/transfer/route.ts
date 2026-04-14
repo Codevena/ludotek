@@ -10,7 +10,7 @@ import {
   setTransferProgress,
 } from "@/lib/transfer-progress";
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB (buffer-based transfer)
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
 const FILE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
 function configFromDevice(device: {
@@ -52,20 +52,22 @@ async function runTransfer(
       }
       if (stats.size > MAX_FILE_SIZE) {
         setTransferProgress({
-          error: `${fileName} exceeds 500 MB limit`,
+          error: `${fileName} exceeds 2 GB limit`,
           transferring: false,
         });
         return;
       }
 
+      // Read with timeout
+      let readTimer: NodeJS.Timeout;
       const data = await Promise.race([
-        sourceConn.readFile(filePath),
-        new Promise<never>((_, reject) =>
-          setTimeout(
+        sourceConn.readFile(filePath).finally(() => clearTimeout(readTimer)),
+        new Promise<never>((_, reject) => {
+          readTimer = setTimeout(
             () => reject(new Error(`Timeout reading ${fileName}`)),
             FILE_TIMEOUT,
-          ),
-        ),
+          );
+        }),
       ]);
 
       setTransferProgress({ progress: 50 });
@@ -74,14 +76,17 @@ async function runTransfer(
         targetPath.endsWith("/")
           ? `${targetPath}${fileName}`
           : `${targetPath}/${fileName}`;
+
+      // Write with timeout
+      let writeTimer: NodeJS.Timeout;
       await Promise.race([
-        targetConn.writeFile(destPath, data),
-        new Promise<never>((_, reject) =>
-          setTimeout(
+        targetConn.writeFile(destPath, data).finally(() => clearTimeout(writeTimer)),
+        new Promise<never>((_, reject) => {
+          writeTimer = setTimeout(
             () => reject(new Error(`Timeout writing ${fileName}`)),
             FILE_TIMEOUT,
-          ),
-        ),
+          );
+        }),
       ]);
 
       setTransferProgress({ progress: 100, completedFiles: i + 1 });
@@ -113,6 +118,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Lock immediately to prevent TOCTOU race — before parsing body
+  setTransferProgress({
+    transferring: true,
+    totalFiles: 0,
+    completedFiles: 0,
+    mode: "copy",
+    currentFile: "",
+    progress: 0,
+    error: undefined,
+  });
+
   const body = await request.json().catch(() => null);
   if (
     !body?.sourceDeviceId ||
@@ -121,6 +137,7 @@ export async function POST(request: NextRequest) {
     !Array.isArray(body?.files) ||
     body.files.length === 0
   ) {
+    clearTransferProgress();
     return NextResponse.json(
       {
         error:
@@ -133,15 +150,10 @@ export async function POST(request: NextRequest) {
   const mode: "copy" | "move" =
     body.mode === "move" ? "move" : "copy";
 
-  // Lock immediately to prevent TOCTOU race
+  // Update lock with actual transfer details
   setTransferProgress({
-    transferring: true,
     totalFiles: body.files.length,
-    completedFiles: 0,
     mode,
-    currentFile: "",
-    progress: 0,
-    error: undefined,
   });
   for (const f of body.files) {
     const pathError = validateRemotePath(f);
