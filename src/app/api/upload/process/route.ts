@@ -15,7 +15,7 @@ import { PLATFORM_CONFIG } from "@/lib/platforms";
 import { readdir, stat, rm } from "fs/promises";
 import path from "path";
 
-const UPLOAD_BASE = "/tmp/game-vault-uploads";
+const UPLOAD_BASE = "/tmp/ludotek-uploads";
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);

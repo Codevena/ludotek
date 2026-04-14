@@ -41,13 +41,16 @@ export function Sidebar() {
   return (
     <aside className="w-64 h-screen sticky top-0 bg-vault-surface border-r border-vault-border overflow-y-auto flex-shrink-0">
       <div className="p-6">
-        <Link href="/" className="block mb-8">
-          <h1 className="font-heading text-2xl font-bold text-vault-amber">
-            Game Vault
-          </h1>
-          <p className="text-vault-muted text-sm mt-1">
-            {totalGames.toLocaleString()} Games
-          </p>
+        <Link href="/" className="flex items-center gap-3 mb-8">
+          <img src="/logo.png" alt="Ludotek" className="w-9 h-9" />
+          <div>
+            <h1 className="font-heading text-2xl font-bold text-vault-amber">
+              Ludotek
+            </h1>
+            <p className="text-vault-muted text-sm">
+              {totalGames.toLocaleString()} Games
+            </p>
+          </div>
         </Link>
 
         <nav className="space-y-1">

@@ -21,8 +21,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Game Vault",
+  title: "Ludotek",
   description: "Personal game collection showcase",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({

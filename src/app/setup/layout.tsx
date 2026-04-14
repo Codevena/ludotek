@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Setup — Game Vault",
+  title: "Setup — Ludotek",
 };
 
 export default function SetupLayout({ children }: { children: React.ReactNode }) {

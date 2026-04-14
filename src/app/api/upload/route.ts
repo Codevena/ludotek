@@ -5,7 +5,7 @@ import { writeFile, mkdir, unlink, readdir, stat, rm } from "fs/promises";
 import path from "path";
 import { Open } from "unzipper";
 
-const UPLOAD_BASE = "/tmp/game-vault-uploads";
+const UPLOAD_BASE = "/tmp/ludotek-uploads";
 const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /** Remove upload sessions older than 24h. Runs in background, never throws. */
