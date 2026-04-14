@@ -12,6 +12,19 @@ interface DeviceScanResult {
 }
 
 export async function runScanInBackground(deviceId?: number): Promise<void> {
+  // Set scanning=true immediately to prevent TOCTOU race on concurrent requests
+  setScanProgress({
+    scanning: true,
+    progress: 0,
+    status: "Initializing...",
+    gamesFound: 0,
+    newGames: 0,
+    updatedGames: 0,
+    totalPaths: 0,
+    completedPaths: 0,
+    deviceName: "",
+  });
+
   try {
     await migrateSettingsToDevice();
 
@@ -100,8 +113,24 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
 
         let newCount = 0;
         let updatedCount = 0;
+        const scannedGameIds: number[] = [];
+
+        // Collect existing game IDs for this device's platforms before upserting
+        const existingKeys = new Set(
+          (await prisma.game.findMany({
+            where: {
+              OR: games.map((g) => ({
+                originalFile: g.originalFile,
+                platform: g.platform,
+              })),
+            },
+            select: { originalFile: true, platform: true },
+          })).map((g) => `${g.originalFile}|${g.platform}`),
+        );
 
         for (const game of games) {
+          const isNew = !existingKeys.has(`${game.originalFile}|${game.platform}`);
+
           const result = await prisma.game.upsert({
             where: {
               originalFile_platform: {
@@ -119,6 +148,8 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
             },
           });
 
+          scannedGameIds.push(result.id);
+
           // Create GameDevice link
           await prisma.gameDevice.upsert({
             where: {
@@ -134,11 +165,21 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
             },
           });
 
-          if (result.createdAt.getTime() === result.updatedAt.getTime()) {
+          if (isNew) {
             newCount++;
           } else {
             updatedCount++;
           }
+        }
+
+        // Clean up stale GameDevice links for games no longer on this device
+        if (scannedGameIds.length > 0) {
+          await prisma.gameDevice.deleteMany({
+            where: {
+              deviceId: device.id,
+              gameId: { notIn: scannedGameIds },
+            },
+          });
         }
 
         totalNew += newCount;

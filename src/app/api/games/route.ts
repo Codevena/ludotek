@@ -27,7 +27,11 @@ export async function GET(request: NextRequest) {
     ];
   }
   if (deviceId) {
-    where.devices = { some: { deviceId: parseInt(deviceId, 10) } };
+    const parsedDeviceId = parseInt(deviceId, 10);
+    if (isNaN(parsedDeviceId)) {
+      return NextResponse.json({ error: "Invalid deviceId" }, { status: 400 });
+    }
+    where.devices = { some: { deviceId: parsedDeviceId } };
   }
 
   const orderBy: Record<string, string> = {};

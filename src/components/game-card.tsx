@@ -29,6 +29,7 @@ function deviceTypeColor(type: string): string {
 }
 
 function deviceAbbrev(name: string): string {
+  if (!name) return "??";
   const words = name.split(/\s+/);
   if (words.length >= 2) return words.map((w) => w[0]).join("").toUpperCase().slice(0, 3);
   return name.slice(0, 2).toUpperCase();

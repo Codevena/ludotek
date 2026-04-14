@@ -30,7 +30,7 @@ export async function POST(
   }
 
   // Fire and forget — scan runs in background
-  runScanInBackground(deviceId);
+  runScanInBackground(deviceId).catch((err) => console.error("Scan crashed:", err));
 
   return NextResponse.json({ success: true, message: `Scan started for ${device.name}` });
 }

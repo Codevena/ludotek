@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 
+const POLL_INTERVAL_MS = 2000;
+
 interface ScanState {
   scanning: boolean;
   progress: number;
@@ -135,7 +137,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Start polling for progress
-        pollingRef.current = setInterval(pollStatus, 2000);
+        pollingRef.current = setInterval(pollStatus, POLL_INTERVAL_MS);
       } catch (err) {
         setState((prev) => ({
           ...prev,
@@ -158,7 +160,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         if (data.scanning) {
           setState({ ...data, justCompleted: false, dismissed: false });
-          pollingRef.current = setInterval(pollStatus, 2000);
+          pollingRef.current = setInterval(pollStatus, POLL_INTERVAL_MS);
         }
       } catch {
         // Ignore

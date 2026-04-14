@@ -1,9 +1,14 @@
+import { cache, Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import { GameCard } from "@/components/game-card";
 import { SortSelect } from "@/components/sort-select";
 import { StatsDashboard } from "@/components/stats-dashboard";
 import { InfiniteGameGrid } from "@/components/infinite-game-grid";
-import { Suspense } from "react";
+
+const getActiveDeviceId = cache(async () => {
+  const settings = await prisma.settings.findFirst();
+  return settings?.activeDeviceId ?? null;
+});
 
 interface Props {
   searchParams: Promise<{
@@ -16,8 +21,7 @@ interface Props {
 }
 
 async function RecentlyAdded() {
-  const settings = await prisma.settings.findFirst();
-  const deviceId = settings?.activeDeviceId;
+  const deviceId = await getActiveDeviceId();
   const where: Record<string, unknown> = {};
   if (deviceId) where.devices = { some: { deviceId } };
 
@@ -53,8 +57,7 @@ async function RecentlyAdded() {
 }
 
 async function TopRated() {
-  const settings = await prisma.settings.findFirst();
-  const deviceId = settings?.activeDeviceId;
+  const deviceId = await getActiveDeviceId();
   const where: Record<string, unknown> = { igdbScore: { not: null } };
   if (deviceId) where.devices = { some: { deviceId } };
 
@@ -97,8 +100,7 @@ export default async function HomePage({ searchParams }: Props) {
   const favorites = params.favorites === "true";
   const limit = 48;
 
-  const settings = await prisma.settings.findFirst();
-  const activeDeviceId = settings?.activeDeviceId;
+  const activeDeviceId = await getActiveDeviceId();
 
   const where: Record<string, unknown> = {};
   if (search) where.title = { contains: search };

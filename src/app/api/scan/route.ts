@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Fire and forget — scan runs in background
-  runScanInBackground();
+  runScanInBackground().catch((err) => console.error("Scan crashed:", err));
 
   return NextResponse.json({ success: true, message: "Scan started" });
 }
