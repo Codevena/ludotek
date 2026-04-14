@@ -62,12 +62,19 @@ export async function POST(request: NextRequest) {
 
   let dupesDeleted = 0;
   if (dupeIds.length > 0) {
+    // Resolve transitive chains (A→B→C becomes A→C, B→C)
+    const resolveWinner = (id: number): number => {
+      let current = id;
+      while (loserToWinner.has(current)) current = loserToWinner.get(current)!;
+      return current;
+    };
+
     // Transfer device links from losers to winners before deleting
     const loserLinks = await prisma.gameDevice.findMany({
       where: { gameId: { in: dupeIds } },
     });
     for (const link of loserLinks) {
-      const winnerId = loserToWinner.get(link.gameId);
+      const winnerId = resolveWinner(link.gameId);
       if (winnerId !== undefined) {
         await prisma.gameDevice.upsert({
           where: { gameId_deviceId: { gameId: winnerId, deviceId: link.deviceId } },
