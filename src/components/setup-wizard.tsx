@@ -187,47 +187,53 @@ function StepDevice({
 
   async function handleSubmit(data: DeviceFormData) {
     setError(null);
-
-    const createRes = await fetch("/api/devices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!createRes.ok) {
-      const err = await createRes.json().catch(() => null);
-      setError(err?.error ?? "Failed to create device");
-      return;
-    }
-    const device = await createRes.json();
-
-    if (data.protocol !== "local") {
-      const testRes = await fetch("/api/devices/test-connection", {
+    try {
+      const createRes = await fetch("/api/devices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          protocol: data.protocol,
-          host: data.host,
-          port: data.port,
-          user: data.user,
-          password: data.password,
-        }),
+        body: JSON.stringify(data),
       });
-      const testData = await testRes.json().catch(() => null);
-      if (!testRes.ok || !testData?.ok) {
-        setError(
-          `Device saved, but connection failed: ${testData?.error ?? "Unknown error"}. Fix credentials and try again.`
-        );
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => null);
+        setError(err?.error ?? "Failed to create device");
         return;
       }
+      const device = await createRes.json();
+
+      if (data.protocol !== "local") {
+        const testRes = await fetch("/api/devices/test-connection", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            protocol: data.protocol,
+            host: data.host,
+            port: data.port,
+            user: data.user,
+            password: data.password,
+          }),
+        });
+        const testData = await testRes.json().catch(() => null);
+        if (!testRes.ok || !testData?.ok) {
+          setError(
+            `Device saved, but connection failed: ${testData?.error ?? "Unknown error"}. Fix credentials and try again.`
+          );
+          return;
+        }
+      }
+
+      const settingsRes = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ activeDeviceId: device.id }),
+      });
+      if (!settingsRes.ok) {
+        console.warn("Failed to set active device, continuing anyway");
+      }
+
+      onComplete(device.id, data.name, data.type);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     }
-
-    await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ activeDeviceId: device.id }),
-    });
-
-    onComplete(device.id, data.name, data.type);
   }
 
   return (
@@ -269,28 +275,42 @@ function StepPaths({
   onBack: () => void;
   onNext: () => void;
 }) {
-  async function persistPaths(updated: ScanPath[]) {
-    const res = await fetch(`/api/devices/${deviceId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scanPaths: JSON.stringify(updated) }),
-    });
-    if (!res.ok) {
-      console.error("Failed to persist scan paths");
-      onUpdatePaths(scanPaths); // revert on failure
+  const [savingPaths, setSavingPaths] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
+
+  async function persistPaths(updated: ScanPath[], rollback: ScanPath[]) {
+    setSavingPaths(true);
+    setPathError(null);
+    try {
+      const res = await fetch(`/api/devices/${deviceId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanPaths: JSON.stringify(updated) }),
+      });
+      if (!res.ok) {
+        onUpdatePaths(rollback);
+        setPathError("Failed to save paths. Please try again.");
+      }
+    } catch {
+      onUpdatePaths(rollback);
+      setPathError("Failed to save paths. Please try again.");
+    } finally {
+      setSavingPaths(false);
     }
   }
 
   async function handleAddPath(path: string, type: "rom" | "steam") {
+    const previous = [...scanPaths];
     const updated = [...scanPaths, { path, type }];
     onUpdatePaths(updated);
-    await persistPaths(updated);
+    await persistPaths(updated, previous);
   }
 
   async function handleRemovePath(index: number) {
+    const previous = [...scanPaths];
     const updated = scanPaths.filter((_, i) => i !== index);
     onUpdatePaths(updated);
-    await persistPaths(updated);
+    await persistPaths(updated, previous);
   }
 
   return (
@@ -342,21 +362,28 @@ function StepPaths({
         </div>
       )}
 
+      {pathError && (
+        <div className="text-sm text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-4 py-3">
+          {pathError}
+        </div>
+      )}
+
       <div className="flex justify-between pt-2">
         <button
           type="button"
           onClick={onBack}
-          className="px-4 py-2 text-sm rounded-lg border border-vault-border text-vault-muted hover:border-vault-muted transition-colors"
+          disabled={savingPaths}
+          className="px-4 py-2 text-sm rounded-lg border border-vault-border text-vault-muted hover:border-vault-muted transition-colors disabled:opacity-50"
         >
           ← Back
         </button>
         <button
           type="button"
           onClick={onNext}
-          disabled={scanPaths.length === 0}
+          disabled={scanPaths.length === 0 || savingPaths}
           className="bg-vault-amber text-black hover:bg-vault-amber-hover px-6 py-2.5 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Next →
+          {savingPaths ? "Saving..." : "Next →"}
         </button>
       </div>
     </div>
@@ -466,7 +493,8 @@ function StepApiKeys({
           <button
             type="button"
             onClick={() => onNext(false)}
-            className="px-4 py-2 text-sm text-vault-muted hover:text-vault-text transition-colors"
+            disabled={saving}
+            className="px-4 py-2 text-sm text-vault-muted hover:text-vault-text transition-colors disabled:opacity-50"
           >
             Skip for now
           </button>
