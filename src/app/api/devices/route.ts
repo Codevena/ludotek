@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/encryption";
 
 const PASSWORD_MASK = "********";
 
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
         host,
         port,
         user,
-        password,
+        password: encrypt(password),
         blacklist: JSON.stringify(blacklist),
       },
     });

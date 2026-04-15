@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/encryption";
 
 const PASSWORD_MASK = "********";
 
@@ -80,7 +81,7 @@ export async function PUT(
 
     // Don't overwrite password if the masked placeholder is sent back
     if (body.password !== undefined && body.password !== PASSWORD_MASK) {
-      data.password = body.password;
+      data.password = encrypt(body.password);
     }
 
     if (body.scanPaths !== undefined) {
