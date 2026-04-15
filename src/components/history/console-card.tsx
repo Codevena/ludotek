@@ -22,6 +22,7 @@ interface ConsoleCardProps {
   };
   milestones: ConsoleMilestone[];
   platformId: string;
+  lang?: "en" | "de";
 }
 
 export function ConsoleCard({
@@ -35,6 +36,7 @@ export function ConsoleCard({
   facts,
   milestones,
   platformId,
+  lang = "en",
 }: ConsoleCardProps) {
   return (
     <div className="relative pl-12 md:pl-16 pb-12 last:pb-0">
@@ -98,7 +100,7 @@ export function ConsoleCard({
               color,
             }}
           >
-            {romCount} {romCount === 1 ? "ROM" : "ROMs"} in deiner Sammlung
+            {romCount} {romCount === 1 ? "ROM" : "ROMs"} {lang === "de" ? "in deiner Sammlung" : "in your collection"}
           </span>
         </div>
 
@@ -114,14 +116,14 @@ export function ConsoleCard({
         {/* Facts grid */}
         <div className="mt-5 pt-4 border-t border-white/5">
           <div className="text-[10px] uppercase tracking-widest text-vault-muted mb-3">
-            Fakten
+            {lang === "de" ? "Fakten" : "Facts"}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[
-              { label: "Verkauft", value: facts.unitsSold },
+              { label: lang === "de" ? "Verkauft" : "Sold", value: facts.unitsSold },
               { label: "CPU", value: facts.cpu },
-              { label: "Spielebibliothek", value: facts.gameLibrary },
-              { label: "Launchpreis", value: facts.launchPrice },
+              { label: lang === "de" ? "Spielebibliothek" : "Game Library", value: facts.gameLibrary },
+              { label: lang === "de" ? "Launchpreis" : "Launch Price", value: facts.launchPrice },
             ].map((fact) => (
               <div key={fact.label} className="flex items-start gap-2 text-sm">
                 <span className="text-vault-amber mt-0.5">&#9632;</span>
@@ -138,7 +140,7 @@ export function ConsoleCard({
         {milestones.length > 0 && (
           <div className="mt-4 pt-4 border-t border-white/5">
             <div className="text-[10px] uppercase tracking-widest text-vault-muted mb-3">
-              Meilensteine
+              {lang === "de" ? "Meilensteine" : "Milestones"}
             </div>
             <div className="space-y-1.5">
               {milestones.map((m) => (

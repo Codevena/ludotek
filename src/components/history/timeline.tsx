@@ -27,6 +27,7 @@ interface TimelineEntry {
 
 interface TimelineProps {
   entries: TimelineEntry[];
+  lang?: "en" | "de";
 }
 
 const DECADES = [
@@ -38,7 +39,7 @@ const DECADES = [
   { label: "2020s", minYear: 2020, maxYear: 2029, color: "#e11d48" },
 ];
 
-export function Timeline({ entries }: TimelineProps) {
+export function Timeline({ entries, lang = "en" }: TimelineProps) {
   const activeDecades = useMemo(() => {
     return DECADES.filter((d) =>
       entries.some((e) => e.releaseYear >= d.minYear && e.releaseYear <= d.maxYear)
@@ -139,7 +140,7 @@ export function Timeline({ entries }: TimelineProps) {
               </div>
             );
           }
-          return <ConsoleCard key={item.data.platformId} {...item.data} />;
+          return <ConsoleCard key={item.data.platformId} {...item.data} lang={lang} />;
         })}
       </div>
     </div>

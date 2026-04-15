@@ -6,16 +6,21 @@ import { getConsoleHistory } from "@/lib/console-history";
 import { PLATFORM_CONFIG } from "@/lib/platforms";
 
 export default async function HistoryPage() {
-  // Fetch all platforms that have games
-  const platforms = await prisma.platform.findMany({
-    where: { gameCount: { gt: 0 } },
-    orderBy: { sortOrder: "asc" },
-  });
+  // Fetch all platforms that have games + language setting
+  const [platforms, settings] = await Promise.all([
+    prisma.platform.findMany({
+      where: { gameCount: { gt: 0 } },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.settings.findFirst(),
+  ]);
+
+  const lang = (settings?.aiLanguage === "de" ? "de" : "en") as "en" | "de";
 
   // Join with static history data, sort by release year
   const entries = platforms
     .map((p) => {
-      const history = getConsoleHistory(p.id);
+      const history = getConsoleHistory(p.id, lang);
       if (!history) return null;
 
       return {
@@ -55,12 +60,13 @@ export default async function HistoryPage() {
           Console History
         </h1>
         <p className="text-vault-muted text-sm md:text-base leading-relaxed max-w-2xl">
-          {entries.length} Konsolen aus {decadeCount} Dekaden Gaming-Geschichte
-          — jede einzelne Teil deiner Sammlung.
+          {lang === "de"
+            ? `${entries.length} Konsolen aus ${decadeCount} Dekaden Gaming-Geschichte — jede einzelne Teil deiner Sammlung.`
+            : `${entries.length} consoles spanning ${decadeCount} decades of gaming history — every single one part of your collection.`}
         </p>
       </div>
 
-      <Timeline entries={entries} />
+      <Timeline entries={entries} lang={lang} />
     </div>
   );
 }
