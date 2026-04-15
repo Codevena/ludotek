@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { encrypt } from "@/lib/encryption";
 
 export async function GET(request: NextRequest) {
   const authError = requireAuth(request);
@@ -58,6 +59,14 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: "activeDeviceId must be an integer or null" }, { status: 400 });
       }
       (data as Record<string, unknown>).activeDeviceId = numVal;
+    }
+  }
+
+  // Encrypt secret fields before saving
+  const secretFields = ["igdbClientSecret", "steamgriddbKey", "openrouterKey", "steamApiKey"];
+  for (const field of secretFields) {
+    if (data[field]) {
+      data[field] = encrypt(data[field]);
     }
   }
 
