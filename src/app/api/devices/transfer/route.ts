@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getDecryptedDevice } from "@/lib/encryption";
 import { createConnection } from "@/lib/connection";
 import type { ConnectionConfig, DeviceConnection } from "@/lib/connection";
 import { validateRemotePath } from "@/lib/path-validation";
@@ -202,8 +202,8 @@ export async function POST(request: NextRequest) {
   }
 
   const [sourceDevice, targetDevice] = await Promise.all([
-    prisma.device.findUnique({ where: { id: body.sourceDeviceId } }),
-    prisma.device.findUnique({ where: { id: body.targetDeviceId } }),
+    getDecryptedDevice(body.sourceDeviceId),
+    getDecryptedDevice(body.targetDeviceId),
   ]);
 
   if (!sourceDevice) {

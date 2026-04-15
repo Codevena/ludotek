@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getDecryptedDevice } from "@/lib/encryption";
 import { detectGames } from "@/lib/upload-detector";
 import { convert } from "@/lib/converter";
 import {
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  const targetDevice = await prisma.device.findUnique({ where: { id: targetDeviceId } });
+  const targetDevice = await getDecryptedDevice(targetDeviceId);
   if (!targetDevice) {
     return NextResponse.json({ error: "Target device not found" }, { status: 404 });
   }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { scanDevice } from "@/lib/scanner";
 import { setScanProgress, clearScanProgress } from "@/lib/scan-progress";
+import { decrypt } from "@/lib/encryption";
 
 interface DeviceScanResult {
   device: string;
@@ -94,7 +95,7 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
             host: device.host,
             port: device.port,
             user: device.user,
-            password: device.password,
+            password: decrypt(device.password),
             scanPaths,
             blacklist,
           },

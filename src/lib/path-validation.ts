@@ -28,7 +28,7 @@ export async function loadDevice(
   | { device: import("@prisma/client").Device; error?: never }
   | { device?: never; error: NextResponse }
 > {
-  const { prisma } = await import("@/lib/prisma");
+  const { getDecryptedDevice } = await import("@/lib/encryption");
   const deviceId = parseInt(id, 10);
   if (!Number.isInteger(deviceId) || deviceId <= 0) {
     return {
@@ -38,7 +38,7 @@ export async function loadDevice(
       ),
     };
   }
-  const device = await prisma.device.findUnique({ where: { id: deviceId } });
+  const device = await getDecryptedDevice(deviceId);
   if (!device) {
     return {
       error: NextResponse.json(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { getDecryptedDevice } from "@/lib/encryption";
 import { isScanRunning } from "@/lib/scan-progress";
 import { runScanInBackground } from "@/lib/scan-runner";
 
@@ -20,7 +20,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid device ID" }, { status: 400 });
   }
 
-  const device = await prisma.device.findUnique({ where: { id: deviceId } });
+  const device = await getDecryptedDevice(deviceId);
   if (!device) {
     return NextResponse.json({ error: "Device not found" }, { status: 404 });
   }

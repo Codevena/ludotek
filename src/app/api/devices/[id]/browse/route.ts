@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getDecryptedDevice } from "@/lib/encryption";
 import { createConnection, buildBrowseResult } from "@/lib/connection";
 import type { ConnectionConfig } from "@/lib/connection";
 import { validateRemotePath } from "@/lib/path-validation";
@@ -21,7 +21,7 @@ export async function GET(
     return NextResponse.json({ error: "Invalid device ID" }, { status: 400 });
   }
 
-  const device = await prisma.device.findUnique({ where: { id: deviceId } });
+  const device = await getDecryptedDevice(deviceId);
   if (!device) {
     return NextResponse.json({ error: "Device not found" }, { status: 404 });
   }

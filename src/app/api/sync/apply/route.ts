@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { createConnection } from "@/lib/connection";
+import { decrypt } from "@/lib/encryption";
 
 // POST /api/sync/apply — execute all pending changes on devices
 export async function POST(request: NextRequest) {
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
         host: device.host,
         port: device.port,
         user: device.user,
-        password: device.password,
+        password: decrypt(device.password),
       });
     } catch (err) {
       // Mark all items for this device as failed
