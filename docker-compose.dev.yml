@@ -1,6 +1,6 @@
 services:
   ludotek:
-    image: ghcr.io/codevena/ludotek:latest
+    build: .
     ports:
       - "3000:3000"
     volumes:
