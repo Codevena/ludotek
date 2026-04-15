@@ -78,17 +78,31 @@
 - StepApiKeys: disable Skip while save in flight
 - Route group restructure: /setup now truly standalone (no Sidebar/Header)
 
-## Next Up: Phase 4.1b — README, Docker, Contributor Docs
+### Phase 4.1b: README, Docker, Docs — COMPLETE (2026-04-15)
+- **Design Spec**: `docs/superpowers/specs/2026-04-15-readme-docker-docs-design.md`
+- **Implementation Plan**: `docs/superpowers/plans/2026-04-15-readme-docker-docs.md`
+- **README.md**: Hero mit Logo, Feature-Liste, Docker + Manual Quick-Start, Tech-Badges, Config-Tabelle
+- **Docker**:
+  - `docker-compose.yml` — User-facing, pulls `ghcr.io/codevena/ludotek:latest`
+  - `docker-compose.dev.yml` — Contributor-facing, local build
+  - `.github/workflows/docker-publish.yml` — Auto-build + push to GHCR on push to main
+- **CONTRIBUTING.md**: Prerequisites, Setup, Code Conventions, Projektstruktur, PR-Workflow
+- **docs/architecture.md**: System-Diagramm, Key Abstractions, Data Flow, DB Models, Route Groups
+- **LICENSE**: MIT
+- **scripts/take-screenshots.ts**: Playwright screenshot script (Home page)
+- **Cleanup**: Dead ENV vars entfernt (.env.example, docker-compose), Repo umbenannt zu `Codevena/ludotek`
 
-**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 4.1)
+## Next Up: Phase 4.2 — PWA (optional)
+
+**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 4.2)
 
 ### Summary
-1. **One-Click Deploy**: Docker-Compose überarbeiten, Unraid Template
-2. **README Overhaul**: Hero-Screenshot, Feature-GIFs, Quick-Start, Tech-Stack
-3. **Contributor Docs**: CONTRIBUTING.md, Architecture Overview
+- Service Worker für statische Assets
+- Manifest.json für "Add to Home Screen"
+- Offline-Fallback-Page wenn Server nicht erreichbar
+- Cache-First-Strategie für Cover-Bilder und Game-Detail-Pages
 
 ## Remaining Roadmap
-- Phase 4.1b: README/Docs/Docker Polish
 - Phase 4.2: PWA (optional)
 
 ## Bestehendes Backlog
