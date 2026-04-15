@@ -138,10 +138,10 @@ export function StatsDashboard() {
                   </linearGradient>
                 ))}
               </defs>
-              <CartesianGrid vertical={false} stroke="#27272a" />
+              <CartesianGrid vertical={false} stroke="rgb(var(--vault-border))" />
               <XAxis
                 dataKey="label"
-                tick={{ fill: "#71717a", fontSize: 11 }}
+                tick={{ fill: "rgb(var(--vault-muted))", fontSize: 11 }}
                 angle={-35}
                 textAnchor="end"
                 height={60}
@@ -151,7 +151,7 @@ export function StatsDashboard() {
               <YAxis hide />
               <Tooltip
                 content={<VaultTooltip />}
-                cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                cursor={{ fill: "rgb(var(--vault-border) / 0.3)" }}
               />
               <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                 {data.platformCounts.map((_, i) => (

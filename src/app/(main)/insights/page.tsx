@@ -225,11 +225,11 @@ export default function InsightsPage() {
                 type="category"
                 dataKey="name"
                 width={130}
-                tick={{ fill: "#a1a1aa", fontSize: 11 }}
+                tick={{ fill: "rgb(var(--vault-muted))", fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
               />
-              <Tooltip content={<InsightTooltip />} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+              <Tooltip content={<InsightTooltip />} cursor={{ fill: "rgb(var(--vault-border) / 0.3)" }} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {data.eras.map((era) => (
                   <Cell key={era.name} fill={ERA_COLORS[era.name] ?? "#71717a"} />
