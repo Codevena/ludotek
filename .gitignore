@@ -45,3 +45,12 @@ next-env.d.ts
 /data/
 !/data/.gitkeep
 data/.encryption-key
+
+# Claude / AI working files
+CLAUDE.md
+NEXT_SESSION.md
+PLAN.md
+claude-review-*.md
+codex-review-*.md
+review-*.md
+/docs/
