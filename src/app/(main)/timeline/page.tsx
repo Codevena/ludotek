@@ -8,6 +8,7 @@ import { InfiniteGameGrid } from "@/components/infinite-game-grid";
 import { SortSelect } from "@/components/sort-select";
 import { ERA_BUCKETS, findEraBySlug, type EraSlug } from "@/lib/eras";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense } from "react";
 
 interface EraCount {
@@ -231,7 +232,15 @@ export default function TimelinePage() {
       <Breadcrumbs
         items={[{ label: "Home", href: "/" }, { label: "Timeline" }]}
       />
-      <h1 className="font-heading text-2xl font-bold mb-6">Timeline</h1>
+      <div className="flex items-baseline justify-between mb-6">
+        <h1 className="font-heading text-2xl font-bold">Timeline</h1>
+        <Link
+          href="/history"
+          className="text-xs text-vault-muted hover:text-vault-amber transition-colors"
+        >
+          Console History &rarr;
+        </Link>
+      </div>
       <Suspense>
         <TimelineContent />
       </Suspense>
