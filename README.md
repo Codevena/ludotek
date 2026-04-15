@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
+  <img src="logo.png" alt="Ludotek" width="120" />
+  <h1>Ludotek</h1>
+  <p><strong>Your personal retro game library — scan, enrich, browse.</strong></p>
+  <p>
+    Ludotek scans your devices for ROMs, enriches them with metadata from IGDB,
+    and gives you a beautiful library to explore your collection.
+  </p>
 
-## Getting Started
+  <p>
+    <img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js" alt="Next.js" />
+    <img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma" alt="Prisma" />
+    <img src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite" alt="SQLite" />
+    <img src="https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss" alt="Tailwind" />
+    <img src="https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker" alt="Docker" />
+  </p>
+</div>
 
-First, run the development server:
+---
+
+![Ludotek Home](docs/screenshots/home.png)
+
+## Features
+
+- **Device Scanning** — Connect via SSH, FTP, or local filesystem. Auto-detect ROMs across 50+ platforms.
+- **IGDB Enrichment** — Covers, ratings, release dates, genres, developer info, and summaries.
+- **AI-Powered Discover** — Smart game recommendations and AI-generated stories via OpenRouter.
+- **Timeline** — Browse your collection by gaming era, from 8-bit classics to modern retro.
+- **Insights** — Genre distribution, top franchises, era charts, and collection analytics.
+- **Setup Wizard** — Guided first-run setup. Add a device, configure scan paths, enter API keys.
+- **File Manager** — Browse, rename, and delete ROMs on connected devices.
+- **ROM Upload** — Upload ROMs from your browser with automatic format detection.
+- **Docker Ready** — One-command deployment with persistent volumes.
+
+## Quick Start
+
+### Docker (recommended)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+curl -O https://raw.githubusercontent.com/Codevena/ludotek/main/docker-compose.yml
+docker compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) — the setup wizard will guide you through configuration.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Manual
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+git clone https://github.com/Codevena/ludotek.git
+cd ludotek
+pnpm install
+cp .env.example .env
+pnpm prisma migrate deploy
+pnpm dev
+```
 
-## Learn More
+Open [http://localhost:3000](http://localhost:3000).
 
-To learn more about Next.js, take a look at the following resources:
+## Configuration
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `file:./dev.db` | SQLite database path |
+| `ADMIN_TOKEN` | _(empty)_ | Optional auth token. Empty = no authentication. |
+| `OPENROUTER_MODEL` | `google/gemini-3.1-flash-lite-preview` | AI model for Discover & Stories |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+All other settings (IGDB API keys, devices, scan paths) are configured through the UI after first launch.
 
-## Deploy on Vercel
+## Contributing
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [docs/architecture.md](docs/architecture.md) for a system overview.
+
+## License
+
+[MIT](LICENSE)
