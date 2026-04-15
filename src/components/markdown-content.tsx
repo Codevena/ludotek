@@ -6,9 +6,9 @@ export function MarkdownContent({ content }: { content: string }) {
   return (
     <div
       className={[
-        "prose-vault prose prose-sm prose-invert max-w-none",
-        // Base text
-        "text-vault-muted text-sm leading-7",
+        "prose-vault prose prose-sm max-w-none",
+        // Base text — color handled by --tw-prose-body in .prose-vault
+        "text-sm leading-7",
         // Paragraphs — clear separation between blocks
         "prose-p:my-4 prose-p:leading-7",
         // Headings
