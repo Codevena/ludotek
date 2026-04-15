@@ -12,6 +12,7 @@ interface EnrichmentState {
   type: string;
   justCompleted: boolean;
   dismissed: boolean;
+  networkDown: boolean;
 }
 
 interface EnrichmentContextValue extends EnrichmentState {
@@ -33,6 +34,7 @@ const initialState: EnrichmentState = {
   type: "",
   justCompleted: false,
   dismissed: false,
+  networkDown: false,
 };
 
 const EnrichmentContext = createContext<EnrichmentContextValue>({
@@ -95,6 +97,7 @@ export function EnrichmentProvider({ children }: { children: React.ReactNode }) 
         type: "",
         justCompleted: false,
         dismissed: false,
+        networkDown: false,
       });
 
       if (fadeTimerRef.current) {
@@ -187,11 +190,15 @@ export function EnrichmentProvider({ children }: { children: React.ReactNode }) 
                     ...prev,
                     failed: failedCount,
                     ...(data.current != null ? { current: data.current } : {}),
+                    ...(data.networkDown ? { networkDown: true } : {}),
                   }));
                 } else if (data.type === "done") {
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
                   const { type: _t, ...doneFields } = data;
-                  result = { success: true, ...doneFields };
+                  result = { success: !data.networkDown, ...doneFields };
+                  if (data.networkDown) {
+                    setState((prev) => prev.dismissed ? prev : ({ ...prev, networkDown: true }));
+                  }
                 }
               } catch {
                 // skip malformed events
@@ -214,12 +221,12 @@ export function EnrichmentProvider({ children }: { children: React.ReactNode }) 
       setState((prev) => ({
         ...prev,
         isRunning: false,
-        current: prev.total || prev.current,
+        current: prev.networkDown ? prev.current : (prev.total || prev.current),
         justCompleted: !prev.dismissed,
       }));
 
       fadeTimerRef.current = setTimeout(() => {
-        setState(initialState);
+        setState((prev) => prev.networkDown ? prev : initialState);
       }, 3000);
 
       return result;

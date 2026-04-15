@@ -3,7 +3,7 @@
 import { useEnrichment } from "@/context/enrichment-context";
 
 export function EnrichmentBar() {
-  const { isRunning, current, total, enriched, failed, title, justCompleted, dismissed, dismiss } =
+  const { isRunning, current, total, enriched, failed, title, justCompleted, dismissed, dismiss, networkDown } =
     useEnrichment();
 
   if (dismissed || (!isRunning && !justCompleted)) return null;
@@ -16,14 +16,14 @@ export function EnrichmentBar() {
         {/* Pulsing dot */}
         <div
           className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-            isRunning ? "bg-amber-400 animate-pulse" : "bg-green-400"
+            networkDown ? "bg-red-400" : isRunning ? "bg-amber-400 animate-pulse" : "bg-green-400"
           }`}
         />
 
         {/* Label + title */}
         <div className="flex-shrink-0 text-sm font-medium text-vault-text">
-          {isRunning ? "Fetching Metadata" : "Done"}
-          {title && (
+          {networkDown ? "Network Unavailable" : isRunning ? "Fetching Metadata" : "Done"}
+          {title && !networkDown && isRunning && (
             <span className="text-vault-muted ml-1.5 font-normal">{title}</span>
           )}
         </div>
@@ -32,9 +32,9 @@ export function EnrichmentBar() {
         <div className="flex-1 bg-vault-bg rounded-full h-2 overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-300 ${
-              isRunning ? "bg-vault-amber" : "bg-green-400"
+              networkDown ? "bg-red-400" : isRunning ? "bg-vault-amber" : "bg-green-400"
             }`}
-            style={{ width: `${justCompleted && !isRunning ? 100 : pct}%` }}
+            style={{ width: `${justCompleted && !isRunning && !networkDown ? 100 : pct}%` }}
           />
         </div>
 

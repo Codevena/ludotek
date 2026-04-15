@@ -75,12 +75,17 @@ export async function POST(request: NextRequest) {
 
       let enriched = 0;
       let failed = 0;
+      let processed = 0;
+      let consecutiveNetworkErrors = 0;
+      let networkAborted = false;
+      const MAX_CONSECUTIVE_NETWORK_ERRORS = 3;
 
       // Sequential processing — IGDB rate limit (4 req/sec) is the bottleneck
       for (let i = 0; i < games.length; i++) {
         if (request.signal.aborted) break;
 
         const game = games[i];
+        processed++;
         send({
           type: "progress",
           current: i + 1,
@@ -94,6 +99,9 @@ export async function POST(request: NextRequest) {
             game.title, game.platform,
             settings.igdbClientId, settings.igdbClientSecret
           );
+
+          // Reset on success — network is working
+          consecutiveNetworkErrors = 0;
 
           if (igdbData) {
             let coverUrl = igdbData.coverUrl;
@@ -138,16 +146,50 @@ export async function POST(request: NextRequest) {
           // Respect IGDB rate limit: ~2 games/sec with 5 API calls each
           await new Promise((r) => setTimeout(r, DELAY_MS));
         } catch (err) {
+          const msg = err instanceof Error ? err.message : "";
+          const cause = err instanceof Error && err.cause instanceof Error ? err.cause : null;
+          const causeCode = cause && "code" in cause ? (cause as { code?: string }).code : undefined;
+          const isNetworkError =
+            msg.includes("fetch failed") ||
+            causeCode === "ENOTFOUND" ||
+            causeCode === "ENETUNREACH" ||
+            causeCode === "ECONNREFUSED" ||
+            causeCode === "EAI_AGAIN" ||
+            causeCode === "ETIMEDOUT" ||
+            cause?.message?.includes("ENOTFOUND") ||
+            cause?.message?.includes("ENETUNREACH") ||
+            cause?.message?.includes("ECONNREFUSED") ||
+            cause?.message?.includes("EAI_AGAIN") ||
+            cause?.message?.includes("ETIMEDOUT");
+
           console.warn(`Failed to enrich "${game.title}":`, err);
           failed++;
-          send({ type: "error", title: game.title, error: err instanceof Error ? err.message : "Unknown", current: i + 1 });
+
+          if (isNetworkError) {
+            consecutiveNetworkErrors++;
+            if (consecutiveNetworkErrors >= MAX_CONSECUTIVE_NETWORK_ERRORS) {
+              send({
+                type: "error",
+                title: game.title,
+                error: "Network unavailable — stopping enrichment",
+                current: i + 1,
+                networkDown: true,
+              });
+              networkAborted = true;
+              break;
+            }
+          } else {
+            consecutiveNetworkErrors = 0;
+          }
+
+          send({ type: "error", title: game.title, error: msg || "Unknown", current: i + 1 });
           // Extra delay after errors (likely rate-limited)
           await new Promise((r) => setTimeout(r, 2000));
         }
       }
 
       const remaining = await prisma.game.count({ where });
-      send({ type: "done", processed: games.length, enriched, failed, remaining });
+      send({ type: "done", processed, enriched, failed, remaining, ...(networkAborted ? { networkDown: true } : {}) });
       controller.close();
     },
   });
