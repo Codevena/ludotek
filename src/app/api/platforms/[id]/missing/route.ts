@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getDecryptedSettings } from "@/lib/encryption";
 import { getIgdbToken, IGDB_PLATFORM_MAP } from "@/lib/igdb";
 
 interface IgdbMissingGame {
@@ -24,7 +25,7 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+    const settings = await getDecryptedSettings();
     if (!settings?.igdbClientId || !settings?.igdbClientSecret) {
       return NextResponse.json(
         { error: "IGDB not configured" },

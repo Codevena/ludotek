@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getDecryptedSettings } from "@/lib/encryption";
 import { generateGameAiContent } from "@/lib/openrouter";
 import { requireAuth } from "@/lib/auth";
 
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  const settings = await prisma.settings.findFirst({ where: { id: 1 } });
+  const settings = await getDecryptedSettings();
   if (!settings?.openrouterKey) {
     return NextResponse.json({ error: "OpenRouter API key not configured" }, { status: 400 });
   }

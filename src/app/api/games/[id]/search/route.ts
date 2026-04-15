@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getDecryptedSettings } from "@/lib/encryption";
 import { IGDB_PLATFORM_MAP } from "@/lib/igdb";
 
 export async function GET(
@@ -20,7 +21,7 @@ export async function GET(
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-  const settings = await prisma.settings.findFirst({ where: { id: 1 } });
+  const settings = await getDecryptedSettings();
   if (!settings?.igdbClientId || !settings?.igdbClientSecret) {
     return NextResponse.json({ error: "IGDB not configured" }, { status: 400 });
   }

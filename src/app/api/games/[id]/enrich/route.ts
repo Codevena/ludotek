@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getDecryptedSettings } from "@/lib/encryption";
 import { fetchIgdbById, searchIgdb } from "@/lib/igdb";
 import { searchSteamGridDb } from "@/lib/steamgriddb";
 import { generateGameAiContent } from "@/lib/openrouter";
@@ -26,7 +27,7 @@ export async function POST(
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
-  const settings = await prisma.settings.findFirst({ where: { id: 1 } });
+  const settings = await getDecryptedSettings();
 
   // Determine which igdbId to use: explicit from body, or stored game's igdbId when force=true
   const resolvedIgdbId = igdbId ?? (force && game.igdbId ? game.igdbId : null);

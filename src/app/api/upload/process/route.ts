@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getDecryptedDevice } from "@/lib/encryption";
+import { getDecryptedDevice, getDecryptedSettings } from "@/lib/encryption";
 import { detectGames } from "@/lib/upload-detector";
 import { convert } from "@/lib/converter";
 import {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Load settings for IGDB credentials and determine target device
-  const settings = await prisma.settings.findFirst({ where: { id: 1 } });
+  const settings = await getDecryptedSettings();
   const rawDeviceId = body.deviceId ?? settings?.activeDeviceId;
   if (rawDeviceId === undefined || rawDeviceId === null) {
     return NextResponse.json(

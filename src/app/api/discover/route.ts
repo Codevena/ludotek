@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getDecryptedSettings } from "@/lib/encryption";
 import {
   buildLibraryPrompt,
   buildWishlistPrompt,
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
   const tab = body.tab as "library" | "wishlist" | undefined;
 
   // Load settings
-  const settings = await prisma.settings.findFirst({ where: { id: 1 } });
+  const settings = await getDecryptedSettings();
   if (!settings?.openrouterKey) {
     return NextResponse.json(
       { error: "OpenRouter API key not configured" },
