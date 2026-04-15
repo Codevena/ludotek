@@ -12,6 +12,8 @@
     --vault-muted: 120 113 108;
     --vault-amber: 217 119 6;
     --vault-amber-hover: 245 158 11;
+    --vault-prose-body: 87 83 78;
+    --vault-prose-bold: 12 10 9;
   }
 
   /* Dark mode */
@@ -23,6 +25,8 @@
     --vault-muted: 113 113 122;
     --vault-amber: 245 158 11;
     --vault-amber-hover: 251 191 36;
+    --vault-prose-body: 161 161 170;
+    --vault-prose-bold: 255 255 255;
   }
 
   * {
@@ -43,16 +47,16 @@
 
   /* Vault-themed prose overrides for MarkdownContent */
   .prose-vault {
-    --tw-prose-body: rgb(var(--vault-muted));
+    --tw-prose-body: rgb(var(--vault-prose-body));
     --tw-prose-headings: rgb(var(--vault-text));
-    --tw-prose-bold: rgb(var(--vault-text));
+    --tw-prose-bold: rgb(var(--vault-prose-bold));
     --tw-prose-links: rgb(var(--vault-amber));
     --tw-prose-bullets: rgb(var(--vault-muted));
     --tw-prose-counters: rgb(var(--vault-muted));
   }
 
   .prose-vault strong {
-    color: rgb(var(--vault-text));
+    color: rgb(var(--vault-prose-bold));
     font-weight: 700;
   }
 

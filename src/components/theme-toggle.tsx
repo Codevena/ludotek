@@ -4,7 +4,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
 export function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -21,13 +21,20 @@ export function ThemeToggle() {
     );
   }
 
+  // Cycle: dark → light → system → dark
+  function cycleTheme() {
+    if (theme === "dark") setTheme("light");
+    else if (theme === "light") setTheme("system");
+    else setTheme("dark");
+  }
+
   const isDark = resolvedTheme === "dark";
 
   return (
     <button
-      onClick={() => setTheme(isDark ? "light" : "dark")}
+      onClick={cycleTheme}
       className="bg-vault-surface border border-vault-border rounded-lg p-1.5 text-vault-muted hover:text-vault-text transition-colors"
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label={theme === "system" ? "Using system theme" : isDark ? "Switch to light mode" : "Switch to dark mode"}
     >
       {isDark ? (
         // Sun icon — shown in dark mode, click switches to light
