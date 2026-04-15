@@ -6,17 +6,18 @@ const config: Config = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
         vault: {
-          bg: "#111113",
-          surface: "#1a1a1f",
-          border: "#2a2a30",
-          text: "#e4e4e7",
-          muted: "#71717a",
-          amber: "#f59e0b",
-          "amber-hover": "#fbbf24",
+          bg: "rgb(var(--vault-bg) / <alpha-value>)",
+          surface: "rgb(var(--vault-surface) / <alpha-value>)",
+          border: "rgb(var(--vault-border) / <alpha-value>)",
+          text: "rgb(var(--vault-text) / <alpha-value>)",
+          muted: "rgb(var(--vault-muted) / <alpha-value>)",
+          amber: "rgb(var(--vault-amber) / <alpha-value>)",
+          "amber-hover": "rgb(var(--vault-amber-hover) / <alpha-value>)",
         },
       },
       fontFamily: {

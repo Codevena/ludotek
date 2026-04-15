@@ -3,6 +3,28 @@
 @tailwind utilities;
 
 @layer base {
+  /* Light mode (Warm Stone palette) */
+  :root {
+    --vault-bg: 250 250 249;
+    --vault-surface: 240 239 237;
+    --vault-border: 214 211 209;
+    --vault-text: 28 25 23;
+    --vault-muted: 120 113 108;
+    --vault-amber: 217 119 6;
+    --vault-amber-hover: 245 158 11;
+  }
+
+  /* Dark mode */
+  .dark {
+    --vault-bg: 17 17 19;
+    --vault-surface: 26 26 31;
+    --vault-border: 42 42 48;
+    --vault-text: 228 228 231;
+    --vault-muted: 113 113 122;
+    --vault-amber: 245 158 11;
+    --vault-amber-hover: 251 191 36;
+  }
+
   * {
     @apply border-vault-border;
   }
@@ -21,16 +43,16 @@
 
   /* Vault-themed prose overrides for MarkdownContent */
   .prose-vault {
-    --tw-prose-body: #a1a1aa;
-    --tw-prose-headings: #e4e4e7;
-    --tw-prose-bold: #ffffff;
-    --tw-prose-links: #f59e0b;
-    --tw-prose-bullets: #71717a;
-    --tw-prose-counters: #71717a;
+    --tw-prose-body: rgb(var(--vault-muted));
+    --tw-prose-headings: rgb(var(--vault-text));
+    --tw-prose-bold: rgb(var(--vault-text));
+    --tw-prose-links: rgb(var(--vault-amber));
+    --tw-prose-bullets: rgb(var(--vault-muted));
+    --tw-prose-counters: rgb(var(--vault-muted));
   }
 
   .prose-vault strong {
-    color: #ffffff;
+    color: rgb(var(--vault-text));
     font-weight: 700;
   }
 
@@ -43,7 +65,7 @@
   /* Bold text that starts a paragraph — acts as a sub-heading */
   .prose-vault p > strong:first-child {
     display: inline-block;
-    border-left: 2px solid #f59e0b;
+    border-left: 2px solid rgb(var(--vault-amber));
     padding-left: 0.5rem;
     margin-bottom: 0.125rem;
   }
@@ -68,7 +90,7 @@
   .prose-vault h2,
   .prose-vault h3,
   .prose-vault h4 {
-    color: #e4e4e7;
+    color: rgb(var(--vault-text));
     font-weight: 700;
     margin-top: 1.5rem;
     margin-bottom: 0.75rem;
