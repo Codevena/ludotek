@@ -44,3 +44,4 @@ next-env.d.ts
 # image cache + encryption key
 /data/
 !/data/.gitkeep
+data/.encryption-key

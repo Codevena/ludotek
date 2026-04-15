@@ -41,16 +41,22 @@ function getKey(): Buffer {
     mkdirSync(keyDir, { recursive: true });
   }
   const newKey = randomBytes(32);
-  writeFileSync(keyPath, newKey.toString("hex"), { mode: 0o600 });
-  console.warn("Generated new encryption key at data/.encryption-key");
-  _key = newKey;
+  try {
+    writeFileSync(keyPath, newKey.toString("hex"), { mode: 0o600, flag: "wx" });
+    console.warn("Generated new encryption key at data/.encryption-key");
+    _key = newKey;
+  } catch {
+    // Another process created the file first — read it instead
+    const hex = readFileSync(keyPath, "utf-8").trim();
+    _key = Buffer.from(hex, "hex");
+  }
   return _key;
 }
 
 // ── Encrypt / Decrypt ──
 
 export function encrypt(plaintext: string): string {
-  if (!plaintext) return plaintext;
+  if (!plaintext || isEncrypted(plaintext)) return plaintext;
   const key = getKey();
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);
@@ -65,13 +71,22 @@ export function decrypt(stored: string): string {
   const parts = stored.slice(PREFIX.length).split(":");
   if (parts.length !== 3) return stored;
   const [ivHex, tagHex, ciphertextHex] = parts;
-  const iv = Buffer.from(ivHex, "hex");
-  const tag = Buffer.from(tagHex, "hex");
-  const ciphertext = Buffer.from(ciphertextHex, "hex");
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  return decrypted.toString("utf8");
+  if (ivHex.length !== IV_LENGTH * 2 || tagHex.length !== 32) {
+    console.error("Corrupt encrypted value: invalid IV or auth tag length");
+    return stored;
+  }
+  try {
+    const iv = Buffer.from(ivHex, "hex");
+    const tag = Buffer.from(tagHex, "hex");
+    const ciphertext = Buffer.from(ciphertextHex, "hex");
+    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    return decrypted.toString("utf8");
+  } catch {
+    console.error("Failed to decrypt value — wrong key or corrupted data");
+    return stored;
+  }
 }
 
 export function isEncrypted(value: string): boolean {
