@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { SearchBar } from "@/components/search-bar";
 import { SyncPanel } from "@/components/sync-panel";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface DeviceOption {
   id: number;
@@ -92,7 +93,7 @@ export function Header() {
         Admin
       </Link>
 
-      {/* Sync Panel & Active Device Selector */}
+      {/* Sync Panel, Active Device Selector & Theme Toggle */}
       <div className="ml-auto flex items-center gap-3">
         <SyncPanel />
         {devices.length > 0 && (
@@ -112,6 +113,8 @@ export function Header() {
             </select>
           </div>
         )}
+        <div className="w-px h-5 bg-vault-border" />
+        <ThemeToggle />
       </div>
     </header>
   );
