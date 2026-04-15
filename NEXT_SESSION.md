@@ -92,15 +92,21 @@
 - **scripts/take-screenshots.ts**: Playwright screenshot script (Home page)
 - **Cleanup**: Dead ENV vars entfernt (.env.example, docker-compose), Repo umbenannt zu `Codevena/ludotek`
 
-## Next Up: Phase 4.2 — PWA (optional)
+### Backlog: Secret Encryption — COMPLETE (2026-04-15)
+- **Design Spec**: `docs/superpowers/specs/2026-04-15-secret-encryption-design.md`
+- **Implementation Plan**: `docs/superpowers/plans/2026-04-15-secret-encryption.md`
+- AES-256-GCM field-level encryption for Device.password + Settings API keys
+- Key management: ENV `ENCRYPTION_KEY` → `data/.encryption-key` → auto-generate
+- Auto-migration at startup via Next.js instrumentation hook
+- Encrypt on write (device create/update, settings update)
+- Decrypt on read (20+ route files using getDecryptedDevice/getDecryptedSettings)
+- 4-Agent Review passed (2x Codex, 2x Claude)
 
-**Roadmap**: `docs/superpowers/specs/2026-04-14-feature-roadmap.md` (Phase 4.2)
+## Next Up
 
-### Summary
-- Service Worker für statische Assets
-- Manifest.json für "Add to Home Screen"
-- Offline-Fallback-Page wenn Server nicht erreichbar
-- Cache-First-Strategie für Cover-Bilder und Game-Detail-Pages
+Backlog items to brainstorm:
+- Scanner ES-DE Parity (Priority 0)
+- Theme Toggle (Dark/Light)
 
 ## Remaining Roadmap
 - Phase 4.2: PWA (optional)
@@ -110,7 +116,7 @@
 - [ ] Theme Toggle (Dark/Light)
 - [ ] Export/Backup (JSON/CSV)
 - [ ] Platform Icons vervollständigen
-- [ ] Plaintext Device-Passwörter verschlüsseln
+- [x] ~~Plaintext Device-Passwörter verschlüsseln~~ (DONE)
 - [ ] Progress-Bar Overlap fixen (ScanBar/EnrichmentBar/TransferBar)
 - [ ] Buffer-basierter File-Transfer (2GB Limit)
 - [ ] Concurrent Transfer Queue statt 409
