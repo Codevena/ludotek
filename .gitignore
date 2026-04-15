@@ -41,6 +41,6 @@ yarn-error.log*
 next-env.d.ts
 .superpowers/
 
-# image cache
+# image cache + encryption key
 /data/
 !/data/.gitkeep
