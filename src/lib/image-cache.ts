@@ -62,6 +62,35 @@ function parseJsonArray(value: string | null | undefined): string[] {
   }
 }
 
+/**
+ * Upsert a per-game CacheEntry. Uses the (gameId, sourceUrl) compound unique
+ * key so multiple games can safely share an IGDB URL without overwriting each
+ * other's rows.
+ */
+async function upsertCacheEntry(
+  type: "cover" | "screenshot" | "artwork",
+  gameId: number,
+  sourceUrl: string,
+  localPath: string,
+  fileSize: number,
+): Promise<void> {
+  await prisma.cacheEntry.upsert({
+    where: { gameId_sourceUrl: { gameId, sourceUrl } },
+    create: { type, sourceUrl, localPath, fileSize, gameId },
+    update: { type, localPath, fileSize },
+  });
+}
+
+async function findCacheEntry(
+  gameId: number,
+  sourceUrl: string,
+): Promise<{ localPath: string } | null> {
+  return prisma.cacheEntry.findUnique({
+    where: { gameId_sourceUrl: { gameId, sourceUrl } },
+    select: { localPath: true },
+  });
+}
+
 export async function cacheGameImages(gameId: number): Promise<void> {
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) {
@@ -76,38 +105,36 @@ export async function cacheGameImages(gameId: number): Promise<void> {
   const localArtworkPaths: string[] = parseJsonArray(game.localArtworkPaths);
 
   // --- Cover ---
-  // Check if cached cover matches current coverUrl (re-download if source changed)
-  const existingCoverEntry = localCoverPath
-    ? await prisma.cacheEntry.findFirst({ where: { gameId, type: "cover" } })
-    : null;
-  const coverStale = existingCoverEntry && game.coverUrl && existingCoverEntry.sourceUrl !== game.coverUrl;
-  const coverSkip =
-    localCoverPath &&
-    !coverStale &&
-    fs.existsSync(path.join(DATA_DIR, localCoverPath));
+  // Skip only if this game already has a cache entry for the current coverUrl
+  // AND the file on disk exists at the entry's recorded localPath.
+  if (game.coverUrl) {
+    const existing = await findCacheEntry(gameId, game.coverUrl);
+    const existingFileOk =
+      existing && fs.existsSync(path.join(DATA_DIR, existing.localPath));
 
-  if (!coverSkip && game.coverUrl) {
-    const relativePath = `covers/${gameId}.jpg`;
-    const destPath = path.join(COVERS_DIR, `${gameId}.jpg`);
-
-    const buffer = await downloadImage(game.coverUrl, destPath);
-    if (buffer) {
-      await prisma.cacheEntry.upsert({
-        where: { sourceUrl: game.coverUrl },
-        create: {
-          type: "cover",
-          sourceUrl: game.coverUrl,
-          localPath: relativePath,
-          fileSize: buffer.length,
+    if (existingFileOk) {
+      localCoverPath = existing.localPath;
+    } else {
+      const relativePath = `covers/${gameId}.jpg`;
+      const destPath = path.join(COVERS_DIR, `${gameId}.jpg`);
+      const buffer = await downloadImage(game.coverUrl, destPath);
+      if (buffer) {
+        await upsertCacheEntry(
+          "cover",
           gameId,
-        },
-        update: {
-          localPath: relativePath,
-          fileSize: buffer.length,
-        },
-      });
-      localCoverPath = relativePath;
+          game.coverUrl,
+          relativePath,
+          buffer.length,
+        );
+        localCoverPath = relativePath;
+      } else {
+        // Download failed — clear local path so the UI falls back to remote.
+        localCoverPath = null;
+      }
     }
+  } else {
+    // No source URL — nothing to cache; ensure UI doesn't point at stale file.
+    localCoverPath = null;
   }
 
   // --- Screenshots ---
@@ -118,28 +145,21 @@ export async function cacheGameImages(gameId: number): Promise<void> {
     const relativePath = `screenshots/${gameId}/${i}.jpg`;
     const destPath = path.join(SCREENSHOTS_DIR, `${gameId}`, `${i}.jpg`);
 
-    // Skip if already cached
-    if (localScreenshotPaths.includes(relativePath) && fs.existsSync(path.join(DATA_DIR, relativePath))) {
-      newScreenshotPaths.push(relativePath);
+    const existing = await findCacheEntry(gameId, url);
+    if (existing && fs.existsSync(path.join(DATA_DIR, existing.localPath))) {
+      newScreenshotPaths.push(existing.localPath);
       continue;
     }
 
     const buffer = await downloadImage(url, destPath);
     if (buffer) {
-      await prisma.cacheEntry.upsert({
-        where: { sourceUrl: url },
-        create: {
-          type: "screenshot",
-          sourceUrl: url,
-          localPath: relativePath,
-          fileSize: buffer.length,
-          gameId,
-        },
-        update: {
-          localPath: relativePath,
-          fileSize: buffer.length,
-        },
-      });
+      await upsertCacheEntry(
+        "screenshot",
+        gameId,
+        url,
+        relativePath,
+        buffer.length,
+      );
       newScreenshotPaths.push(relativePath);
     }
   }
@@ -152,43 +172,45 @@ export async function cacheGameImages(gameId: number): Promise<void> {
     const relativePath = `artwork/${gameId}/${i}.jpg`;
     const destPath = path.join(ARTWORK_DIR, `${gameId}`, `${i}.jpg`);
 
-    // Skip if already cached
-    if (localArtworkPaths.includes(relativePath) && fs.existsSync(path.join(DATA_DIR, relativePath))) {
-      newArtworkPaths.push(relativePath);
+    const existing = await findCacheEntry(gameId, url);
+    if (existing && fs.existsSync(path.join(DATA_DIR, existing.localPath))) {
+      newArtworkPaths.push(existing.localPath);
       continue;
     }
 
     const buffer = await downloadImage(url, destPath);
     if (buffer) {
-      await prisma.cacheEntry.upsert({
-        where: { sourceUrl: url },
-        create: {
-          type: "artwork",
-          sourceUrl: url,
-          localPath: relativePath,
-          fileSize: buffer.length,
-          gameId,
-        },
-        update: {
-          localPath: relativePath,
-          fileSize: buffer.length,
-        },
-      });
+      await upsertCacheEntry(
+        "artwork",
+        gameId,
+        url,
+        relativePath,
+        buffer.length,
+      );
       newArtworkPaths.push(relativePath);
     }
   }
 
   // --- Update Game record ---
+  // Only persist array fields when the new list is non-empty; otherwise leave
+  // the previous value (consistent with prior behavior for bulk caching that
+  // partially succeeds).
   await prisma.game.update({
     where: { id: gameId },
     data: {
-      localCoverPath: localCoverPath ?? game.localCoverPath,
-      localScreenshotPaths: newScreenshotPaths.length
-        ? JSON.stringify(newScreenshotPaths)
-        : game.localScreenshotPaths,
-      localArtworkPaths: newArtworkPaths.length
-        ? JSON.stringify(newArtworkPaths)
-        : game.localArtworkPaths,
+      localCoverPath,
+      localScreenshotPaths:
+        newScreenshotPaths.length > 0
+          ? JSON.stringify(newScreenshotPaths)
+          : localScreenshotPaths.length > 0
+            ? game.localScreenshotPaths
+            : null,
+      localArtworkPaths:
+        newArtworkPaths.length > 0
+          ? JSON.stringify(newArtworkPaths)
+          : localArtworkPaths.length > 0
+            ? game.localArtworkPaths
+            : null,
     },
   });
 }
