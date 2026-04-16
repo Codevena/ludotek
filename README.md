@@ -21,6 +21,23 @@
 
 ![Ludotek Home](docs/screenshots/home.png)
 
+<details>
+<summary><strong>More Screenshots</strong></summary>
+
+#### Timeline
+![Timeline](docs/screenshots/timeline.png)
+
+#### Insights
+![Insights](docs/screenshots/insights.png)
+
+#### Discover
+![Discover](docs/screenshots/discover.png)
+
+#### Devices
+![Devices](docs/screenshots/devices.png)
+
+</details>
+
 ## Features
 
 - **Device Scanning** — Connect via SSH, FTP, or local filesystem. Auto-detect ROMs across 50+ platforms.
