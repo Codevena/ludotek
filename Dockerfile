@@ -30,12 +30,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-# Prisma CLI for db push at startup (from deps, pinned to 6.x)
-COPY --from=deps /app/node_modules/prisma ./node_modules/prisma
-COPY --from=deps /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=deps /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
-# Generated Prisma Client (from builder, after prisma generate)
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# Copy full node_modules from builder (includes generated Prisma Client + CLI)
+COPY --from=builder /app/node_modules ./node_modules
 
 EXPOSE 3000
 ENV PORT=3000
