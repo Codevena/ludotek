@@ -105,7 +105,7 @@ One-command deployment with persistent volumes for database and image cache.
 ### Docker (recommended)
 
 ```bash
-curl -O https://raw.githubusercontent.com/Codevena/ludotek/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/Codevena/ludotek/refs/heads/main/docker-compose.yml
 docker compose up -d
 ```
 
