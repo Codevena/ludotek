@@ -48,7 +48,7 @@ docs/                 # Documentation and specs
 
 ## Making Changes
 
-1. Create a feature branch from `master`
+1. Create a feature branch from `main`
 2. Make your changes
 3. Run `pnpm build` to verify everything compiles
 4. Commit with a descriptive message using conventional prefixes:
