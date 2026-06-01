@@ -131,12 +131,15 @@ model SyncQueue {
 model CacheEntry {
   id        Int      @id @default(autoincrement())
   type      String   // "cover" | "screenshot" | "artwork"
-  sourceUrl String   @unique
+  sourceUrl String
   localPath String   // relative path: "covers/123.jpg"
   fileSize  Int      // bytes
   gameId    Int
   game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+
+  @@unique([gameId, sourceUrl])
+  @@index([sourceUrl])
 }
 
 model ApiCache {

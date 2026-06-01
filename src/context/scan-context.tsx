@@ -71,16 +71,18 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return;
       const data = await res.json();
 
+      // Detect the "scan just finished" transition inside the pure updater, but
+      // run the side effects (stopPolling + fade timer) afterwards. React may
+      // invoke the updater more than once (StrictMode/concurrent), so keeping
+      // timers/intervals out of it prevents duplicate timers from wiping the
+      // state of a freshly-started scan.
+      let justFinished = false;
       setState((prev) => {
         if (prev.dismissed) return prev;
 
         // Scan just finished
         if (!data.scanning && prev.scanning) {
-          stopPolling();
-          // Auto-hide after 5 seconds
-          fadeTimerRef.current = setTimeout(() => {
-            setState(initialState);
-          }, 5000);
+          justFinished = true;
           return {
             ...prev,
             ...data,
@@ -95,6 +97,15 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
 
         return prev;
       });
+
+      if (justFinished) {
+        stopPolling();
+        // Auto-hide after 5 seconds (clear any prior timer first)
+        if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+        fadeTimerRef.current = setTimeout(() => {
+          setState(initialState);
+        }, 5000);
+      }
     } catch {
       // Ignore polling errors
     }

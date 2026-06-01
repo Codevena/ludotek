@@ -2,7 +2,7 @@
  * Build a ROM search URL from a template and game info.
  *
  * Supported variables:
- * - {title}          — raw title, spaces as + for query params
+ * - {title}          — lowercase title, spaces as + for query params
  * - {titleSlug}      — slug: lowercase, hyphens, no special chars
  * - {titleEncoded}   — raw title, URL-encoded (%20)
  * - {platform}       — platform ID (e.g. "snes")
@@ -22,12 +22,14 @@ export function buildRomSearchUrl(
       .replace(/-+/g, "-")
       .trim();
 
-  const titleQuery = title.replace(/\s+/g, "+");
+  const titleQuery = title.toLowerCase().replace(/\s+/g, "+");
 
   // Replace longer variable names first to avoid partial matches
   // (e.g. {platformLabel} contains {platform})
+  // Slugify platformSlug input too — callers may pass a human label
+  // like "PlayStation 2" when no explicit slug is configured.
   return template
-    .replace(/\{platformLabel\}/g, platformSlug || slugify(platform))
+    .replace(/\{platformLabel\}/g, slugify(platformSlug || platform))
     .replace(/\{titleEncoded\}/g, encodeURIComponent(title))
     .replace(/\{titleSlug\}/g, slugify(title))
     .replace(/\{platform\}/g, platform)

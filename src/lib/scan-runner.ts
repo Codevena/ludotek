@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { scanDevice } from "@/lib/scanner";
 import { setScanProgress, clearScanProgress } from "@/lib/scan-progress";
 import { decrypt } from "@/lib/encryption";
+import { deleteGameFiles } from "@/lib/image-cache";
 
 interface DeviceScanResult {
   device: string;
@@ -180,8 +181,15 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
           });
         }
 
-        // Clean up stale GameDevice links for games no longer on this device
-        // Only run when scan returned results — empty scan may indicate connection failure
+        // Clean up stale GameDevice links for games no longer on this device.
+        // IMPORTANT: only prune when the scan returned results. A scan path that
+        // becomes temporarily unreachable (SD card unmounted, path renamed) does
+        // NOT throw — connection.ts:listDir() falls back to `ls ... 2>/dev/null`
+        // which yields an empty list on error — so scanDevice() returns 0 games
+        // silently. Pruning on an empty result would wipe the device's entire
+        // library + orphan-delete every game. Cleaning up links for a genuinely
+        // empty device is deferred until the scanner can distinguish
+        // "directory empty" from "directory unreadable".
         if (scannedGameIds.length > 0) {
           await prisma.gameDevice.deleteMany({
             where: {
@@ -200,7 +208,7 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
           });
         } else {
           console.warn(
-            `Scan returned 0 games for ${device.name} — skipping stale link cleanup (may be a connection issue)`,
+            `Scan returned 0 games for ${device.name} — skipping stale link cleanup to avoid wiping the library on a transient path/connection error`,
           );
         }
 
@@ -210,8 +218,11 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
           select: { id: true },
         });
         if (orphanedGames.length > 0) {
+          const orphanIds = orphanedGames.map((g) => g.id);
+          // Remove cached image files before deleting the records
+          await deleteGameFiles(orphanIds);
           await prisma.game.deleteMany({
-            where: { id: { in: orphanedGames.map((g) => g.id) } },
+            where: { id: { in: orphanIds } },
           });
           console.warn(
             `Removed ${orphanedGames.length} orphaned games with no device links`,

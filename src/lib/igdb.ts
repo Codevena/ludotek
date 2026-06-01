@@ -73,7 +73,15 @@ export interface IgdbGameData {
   themes: string[];
 }
 
-async function igdbQuery(clientId: string, token: string, endpoint: string, body: string): Promise<unknown[]> {
+const IGDB_MAX_RETRIES = 2;
+
+async function igdbQuery(
+  clientId: string,
+  token: string,
+  endpoint: string,
+  body: string,
+  retries = 0,
+): Promise<unknown[]> {
   const res = await fetch(`https://api.igdb.com/v4/${endpoint}`, {
     method: "POST",
     headers: {
@@ -84,7 +92,17 @@ async function igdbQuery(clientId: string, token: string, endpoint: string, body
     body,
   });
 
-  if (!res.ok) throw new Error(`IGDB ${endpoint} failed: ${res.status}`);
+  if (!res.ok) {
+    // Retry on rate limit (429) or server errors (5xx) with exponential backoff.
+    // Applies to every IGDB call — the initial search AND the sub-queries
+    // (covers, genres, companies, screenshots, …) in resolveIgdbGame().
+    if (retries < IGDB_MAX_RETRIES && (res.status === 429 || res.status >= 500)) {
+      const backoff = (retries + 1) * 2000; // 2s, 4s
+      await new Promise((r) => setTimeout(r, backoff));
+      return igdbQuery(clientId, token, endpoint, body, retries + 1);
+    }
+    throw new Error(`IGDB ${endpoint} failed: ${res.status}`);
+  }
   return res.json();
 }
 
