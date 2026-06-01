@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { deleteGameFiles } from "@/lib/image-cache";
 
 // POST /api/devices/[id]/wipe — delete all games linked to this device
 export async function POST(
@@ -42,8 +43,11 @@ export async function POST(
   });
   let gamesRemoved = 0;
   if (orphanedGames.length > 0) {
+    const orphanIds = orphanedGames.map((g) => g.id);
+    // Remove cached image files before deleting the records
+    await deleteGameFiles(orphanIds);
     const result = await prisma.game.deleteMany({
-      where: { id: { in: orphanedGames.map((g) => g.id) } },
+      where: { id: { in: orphanIds } },
     });
     gamesRemoved = result.count;
   }

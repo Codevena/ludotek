@@ -247,6 +247,31 @@ export async function cacheAllImages(
   }
 }
 
+/**
+ * Delete all cached image files (cover, screenshots, artwork) for the given
+ * games and remove their CacheEntry rows. Call this BEFORE deleting the Game
+ * rows so the on-disk files don't accumulate indefinitely (covers/{id}.jpg,
+ * screenshots/{id}/, artwork/{id}/). Safe to call with ids that have no files.
+ */
+export async function deleteGameFiles(gameIds: number[]): Promise<void> {
+  if (gameIds.length === 0) return;
+
+  for (const gameId of gameIds) {
+    // force:true never throws on a missing path; recursive handles the dirs.
+    fs.rmSync(path.join(COVERS_DIR, `${gameId}.jpg`), { force: true });
+    fs.rmSync(path.join(SCREENSHOTS_DIR, `${gameId}`), {
+      recursive: true,
+      force: true,
+    });
+    fs.rmSync(path.join(ARTWORK_DIR, `${gameId}`), {
+      recursive: true,
+      force: true,
+    });
+  }
+
+  await prisma.cacheEntry.deleteMany({ where: { gameId: { in: gameIds } } });
+}
+
 export async function clearCache(): Promise<void> {
   // Remove files
   for (const dir of [COVERS_DIR, SCREENSHOTS_DIR, ARTWORK_DIR]) {

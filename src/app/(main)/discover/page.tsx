@@ -119,7 +119,7 @@ function DiscoverPageContent() {
             } else if (data.type === "done") {
               setLoadingMessage("");
             } else if (data.type === "error") {
-              setError(data.error);
+              setError(data.message || data.error || "Generation failed");
             }
           } catch {
             // skip malformed SSE chunks

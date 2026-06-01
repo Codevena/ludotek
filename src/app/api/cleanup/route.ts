@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { cleanFilename } from "@/lib/filename-cleaner";
+import { deleteGameFiles } from "@/lib/image-cache";
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
@@ -83,6 +84,8 @@ export async function POST(request: NextRequest) {
         });
       }
     }
+    // Remove cached image files for the duplicate records before deleting them
+    await deleteGameFiles(dupeIds);
     const result = await prisma.game.deleteMany({
       where: { id: { in: dupeIds } },
     });
