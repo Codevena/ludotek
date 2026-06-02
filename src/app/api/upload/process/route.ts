@@ -74,14 +74,20 @@ export async function POST(request: NextRequest) {
   // Re-read files from session dir and rebuild game list
   let sessionFiles: { name: string; size: number; path: string }[];
   try {
-    const entries = await readdir(sessionDir);
-    sessionFiles = await Promise.all(
-      entries.map(async (name) => {
-        const filePath = path.join(sessionDir, name);
-        const s = await stat(filePath);
-        return { name, size: s.size, path: filePath };
-      })
-    );
+    // Recursive: ZIPs are now extracted preserving their folder structure, so
+    // files can live in subdirectories. Keep `name` as the basename (the
+    // detector groups by it) and `path` as the full location.
+    const relNames = await readdir(sessionDir, { recursive: true });
+    sessionFiles = (
+      await Promise.all(
+        relNames.map(async (rel) => {
+          const filePath = path.join(sessionDir, rel as string);
+          const s = await stat(filePath);
+          if (!s.isFile()) return null;
+          return { name: path.basename(rel as string), size: s.size, path: filePath };
+        })
+      )
+    ).filter((f): f is { name: string; size: number; path: string } => f !== null);
   } catch {
     return NextResponse.json(
       { error: "Session directory not found" },

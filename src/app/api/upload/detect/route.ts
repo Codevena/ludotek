@@ -33,15 +33,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const entries = await readdir(sessionDir);
+    // Recursive: ZIPs are extracted preserving folder structure (files may live
+    // in subdirectories). `name` stays the basename (detector groups by it).
+    const relNames = await readdir(sessionDir, { recursive: true });
     const files: UploadedFile[] = [];
 
-    for (const entry of entries) {
-      const filePath = path.join(sessionDir, entry);
+    for (const rel of relNames) {
+      const filePath = path.join(sessionDir, rel as string);
       const fileStat = await stat(filePath);
       if (fileStat.isFile()) {
         files.push({
-          name: entry,
+          name: path.basename(rel as string),
           size: fileStat.size,
           path: filePath,
         });
