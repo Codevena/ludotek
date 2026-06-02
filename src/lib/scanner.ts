@@ -44,7 +44,7 @@ interface DeviceConfig {
 export async function scanDevice(
   device: DeviceConfig,
   onPathStart?: (pathLabel: string) => void,
-): Promise<ScannedGame[]> {
+): Promise<{ games: ScannedGame[]; reliable: boolean }> {
   const conn = await createConnection({
     protocol: device.protocol,
     host: device.host,
@@ -54,9 +54,19 @@ export async function scanDevice(
   });
   try {
     const allGames: ScannedGame[] = [];
+    // `reliable` stays true only if every configured scan-path root was
+    // reachable. The caller uses it to decide whether an empty result means
+    // "device genuinely has no games" (safe to prune stale links) vs. "a path
+    // was temporarily unreadable" (must NOT prune, or the whole library is lost).
+    let reliable = true;
     for (const scanPath of device.scanPaths) {
       try {
         onPathStart?.(scanPath.path);
+        // Probe the root with stat() first: it THROWS on a missing/unreadable
+        // path (and confirms SFTP works), whereas listDir() falls back to
+        // `ls 2>/dev/null` and returns [] silently on error — which would make a
+        // transient mount/connection failure look like an empty device.
+        await conn.stat(scanPath.path);
         if (scanPath.type === "rom") {
           const dirs = await conn.listDir(scanPath.path);
           for (const dir of dirs) {
@@ -123,9 +133,12 @@ export async function scanDevice(
         }
       } catch (err) {
         console.warn(`Scan path ${scanPath.path} failed, skipping:`, err);
+        // A configured root was unreachable — the result can't be trusted as a
+        // complete view of the device, so block stale-link cleanup downstream.
+        reliable = false;
       }
     }
-    return deduplicateGames(allGames);
+    return { games: deduplicateGames(allGames), reliable };
   } finally {
     conn.disconnect();
   }
