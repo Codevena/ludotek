@@ -39,6 +39,16 @@ export function SearchBar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Clear pending debounce/suggest timers on unmount so a stale navigation or
+  // state update can't fire after the component is gone (e.g. after a route
+  // change while a 300ms debounce is still queued).
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (suggestRef.current) clearTimeout(suggestRef.current);
+    };
+  }, []);
+
   const fetchSuggestions = useCallback(async (q: string) => {
     if (q.length < 2) {
       setResults([]);

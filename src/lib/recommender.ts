@@ -14,6 +14,14 @@ export interface Recommendation {
   vibeTag: string;
 }
 
+/**
+ * Strip newlines and cap length before interpolating user/library-derived text
+ * into an LLM prompt — blunts prompt-injection via crafted ROM filenames.
+ */
+function sanitizeForPrompt(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+}
+
 export function buildLibraryPrompt(
   games: GameForPrompt[],
   genres: string[],
@@ -23,7 +31,7 @@ export function buildLibraryPrompt(
   const gameLines = games
     .map(
       (g) =>
-        `- ${g.title} (${g.platformLabel}) — Genres: ${g.genres.join(", ")} | Score: ${g.igdbScore || "N/A"}`
+        `- ${sanitizeForPrompt(g.title)} (${sanitizeForPrompt(g.platformLabel)}) — Genres: ${g.genres.join(", ")} | Score: ${g.igdbScore || "N/A"}`
     )
     .join("\n");
 
@@ -56,7 +64,7 @@ export function buildWishlistPrompt(
   themes: string[],
   language: string = "en"
 ): string {
-  const titleLines = gameTitles.map((t) => `- ${t}`).join("\n");
+  const titleLines = gameTitles.map((t) => `- ${sanitizeForPrompt(t)}`).join("\n");
   const categories = [...genres, ...themes].join(", ");
   const isGerman = language === "de";
 

@@ -95,10 +95,24 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        // Step 1: Load games from DB for selected platforms
+        // Step 1: Load games from DB for selected platforms.
+        // Cap the set so very large libraries don't overflow the LLM prompt
+        // (silent output truncation → empty/partial recommendations). Prefer
+        // higher-rated titles, which make the better recommendation candidates.
         const games = await prisma.game.findMany({
           where: { platform: { in: safePlatforms } },
+          orderBy: { igdbScore: "desc" },
+          take: 500,
         });
+
+        if (games.length === 0) {
+          send({
+            type: "error",
+            message:
+              "No games found for the selected platforms — scan and enrich your library first.",
+          });
+          return;
+        }
 
         // --- LIBRARY TAB ---
         send({
@@ -133,10 +147,16 @@ export async function POST(request: NextRequest) {
             (g) => g.title.toLowerCase() === recTitle && g.platform === rec.platform
           ) || games.find(
             (g) => g.title.toLowerCase() === recTitle
-          ) || (recTitle.length >= 5 ? games.find(
+          ) || (recTitle.length >= 8 ? games.find(
             (g) => {
               const dbTitle = g.title.toLowerCase();
-              return dbTitle.includes(recTitle) || recTitle.includes(dbTitle);
+              if (!(dbTitle.includes(recTitle) || recTitle.includes(dbTitle))) return false;
+              // Require substantial overlap so e.g. "Fighter" doesn't match
+              // "Street Fighter II" and pull in the wrong cover/score.
+              const ratio =
+                Math.min(recTitle.length, dbTitle.length) /
+                Math.max(recTitle.length, dbTitle.length);
+              return ratio >= 0.7;
             }
           ) : undefined);
           if (dbGame) {

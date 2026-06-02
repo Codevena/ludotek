@@ -54,6 +54,9 @@ export function InfiniteGameGrid({ initialGames, total, fetchUrl, emptyMessage }
       } else {
         setGames((prev) => [...prev, ...newGames]);
         setPage(nextPage);
+        // `games` here is the last committed list (the setGames updater above is
+        // applied on the next render, not synchronously), so games.length is the
+        // correct pre-append base and games.length + newGames.length is the new total.
         const totalLoaded = games.length + newGames.length;
         setHasMore(totalLoaded < (data.pagination?.total ?? total));
       }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuth } from "@/lib/auth";
 
 function safeJsonParse(str: string | null): string[] {
   if (!str) return [];
@@ -12,7 +13,11 @@ function safeJsonParse(str: string | null): string[] {
 }
 
 export async function GET(request: NextRequest) {
-  // No auth required — discovery is a public feature
+  // Consistent with the main /api/discover endpoint — don't leak library
+  // genre/theme metadata to unauthenticated callers when ADMIN_TOKEN is set.
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   const platformsParam = request.nextUrl.searchParams.get("platforms");
   if (!platformsParam) {
     return NextResponse.json(

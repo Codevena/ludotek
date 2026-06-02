@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getDecryptedSettings } from "@/lib/encryption";
 import { requireAuth } from "@/lib/auth";
+import { getIgdbToken } from "@/lib/igdb";
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
@@ -21,15 +22,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, processed: 0, updated: 0, remaining: 0 });
   }
 
-  // Get IGDB token
-  const tokenRes = await fetch(
-    `https://id.twitch.tv/oauth2/token?client_id=${settings.igdbClientId}&client_secret=${settings.igdbClientSecret}&grant_type=client_credentials`,
-    { method: "POST" }
-  );
-  if (!tokenRes.ok) {
+  // Get IGDB token (shared module-level cache, avoids a Twitch auth round-trip per call)
+  let access_token: string;
+  try {
+    access_token = await getIgdbToken(settings.igdbClientId, settings.igdbClientSecret);
+  } catch {
     return NextResponse.json({ error: "IGDB auth failed" }, { status: 500 });
   }
-  const { access_token } = await tokenRes.json();
 
   const stream = new ReadableStream({
     async start(controller) {

@@ -71,24 +71,17 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return;
       const data = await res.json();
 
-      // Detect the "scan just finished" transition inside the pure updater, but
-      // run the side effects (stopPolling + fade timer) afterwards. React may
-      // invoke the updater more than once (StrictMode/concurrent), so keeping
-      // timers/intervals out of it prevents duplicate timers from wiping the
-      // state of a freshly-started scan.
-      let justFinished = false;
+      // Keep the updater pure — just flip to justCompleted on the finish
+      // transition. The completion side effects (stopPolling + fade timer) run
+      // in a dedicated effect below, NOT synchronously after setState: the
+      // updater is applied during the next render, so a flag read right after
+      // setState would always be stale.
       setState((prev) => {
         if (prev.dismissed) return prev;
 
         // Scan just finished
         if (!data.scanning && prev.scanning) {
-          justFinished = true;
-          return {
-            ...prev,
-            ...data,
-            scanning: false,
-            justCompleted: true,
-          };
+          return { ...prev, ...data, scanning: false, justCompleted: true };
         }
 
         if (data.scanning) {
@@ -97,19 +90,22 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
 
         return prev;
       });
-
-      if (justFinished) {
-        stopPolling();
-        // Auto-hide after 5 seconds (clear any prior timer first)
-        if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
-        fadeTimerRef.current = setTimeout(() => {
-          setState(initialState);
-        }, 5000);
-      }
     } catch {
       // Ignore polling errors
     }
-  }, [stopPolling]);
+  }, []);
+
+  // Run scan-completion side effects when the state transitions to justCompleted:
+  // stop polling and auto-hide the bar after 5s. Done here (not inline after the
+  // setState in pollStatus) because the state updater is applied on the next
+  // render, so the transition is only reliably observable as a committed state.
+  useEffect(() => {
+    if (state.justCompleted && !state.dismissed) {
+      stopPolling();
+      if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = setTimeout(() => setState(initialState), 5000);
+    }
+  }, [state.justCompleted, state.dismissed, stopPolling]);
 
   const startScan = useCallback(
     async (deviceId?: number) => {

@@ -188,7 +188,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const remaining = await prisma.game.count({ where });
+      // Count games still lacking enrichment — NOT `where` (which is `{}` when
+      // force=true and would report the whole library as remaining).
+      const remaining = await prisma.game.count({
+        where: { igdbId: null, ...(platforms && platforms.length > 0 ? { platform: { in: platforms } } : {}) },
+      });
       send({ type: "done", processed, enriched, failed, remaining, ...(networkAborted ? { networkDown: true } : {}) });
       controller.close();
     },

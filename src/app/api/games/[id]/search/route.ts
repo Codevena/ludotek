@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDecryptedSettings } from "@/lib/encryption";
-import { IGDB_PLATFORM_MAP } from "@/lib/igdb";
+import { IGDB_PLATFORM_MAP, getIgdbToken, sanitizeApicalypseString } from "@/lib/igdb";
 
 export async function GET(
   request: NextRequest,
@@ -28,19 +28,20 @@ export async function GET(
 
   const searchTitle = query || game.title;
 
-  // Get IGDB token
-  const tokenRes = await fetch(
-    `https://id.twitch.tv/oauth2/token?client_id=${settings.igdbClientId}&client_secret=${settings.igdbClientSecret}&grant_type=client_credentials`,
-    { method: "POST" }
-  );
-  if (!tokenRes.ok) return NextResponse.json({ error: "IGDB auth failed" }, { status: 500 });
-  const { access_token } = await tokenRes.json();
+  // Get IGDB token (shared module-level cache)
+  let access_token: string;
+  try {
+    access_token = await getIgdbToken(settings.igdbClientId, settings.igdbClientSecret);
+  } catch {
+    return NextResponse.json({ error: "IGDB auth failed" }, { status: 500 });
+  }
 
   // Search IGDB
   const platformId = IGDB_PLATFORM_MAP[game.platform];
+  const safeSearch = sanitizeApicalypseString(searchTitle);
   const body = platformId
-    ? `search "${searchTitle.replace(/"/g, '\\"')}"; fields name,rating,cover,first_release_date,summary; where platforms = (${platformId}); limit 10;`
-    : `search "${searchTitle.replace(/"/g, '\\"')}"; fields name,rating,cover,first_release_date,summary; limit 10;`;
+    ? `search "${safeSearch}"; fields name,rating,cover,first_release_date,summary; where platforms = (${platformId}); limit 10;`
+    : `search "${safeSearch}"; fields name,rating,cover,first_release_date,summary; limit 10;`;
 
   const gamesRes = await fetch("https://api.igdb.com/v4/games", {
     method: "POST",
