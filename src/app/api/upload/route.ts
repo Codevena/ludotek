@@ -70,21 +70,29 @@ export async function POST(request: NextRequest) {
       await writeFile(filePath, buffer);
 
       if (safeName.toLowerCase().endsWith(".zip")) {
-        // Extract ZIP contents, then remove the zip
+        // Extract ZIP contents, then remove the zip. Preserve the archive's
+        // directory structure (sanitized against zip-slip) so entries that share
+        // a basename across folders (e.g. disc1/track01.bin and disc2/track01.bin)
+        // don't silently overwrite each other.
         const directory = await Open.file(filePath);
         for (const entry of directory.files) {
-          if (entry.type === "File") {
-            const content = await entry.buffer();
-            const extractedName = path.basename(entry.path);
-            if (!extractedName || extractedName === "." || extractedName === "..") continue;
-            const extractedPath = path.join(sessionDir, extractedName);
-            await writeFile(extractedPath, content);
-            savedFiles.push({
-              name: extractedName,
-              size: content.length,
-              path: extractedPath,
-            });
-          }
+          if (entry.type !== "File") continue;
+          const relParts = entry.path
+            .split(/[/\\]/)
+            .filter((p) => p && p !== "." && p !== "..");
+          if (relParts.length === 0) continue;
+          const relPath = relParts.join("/");
+          const extractedPath = path.join(sessionDir, relPath);
+          // Belt-and-suspenders: ensure the resolved path stays in the session dir
+          if (!extractedPath.startsWith(sessionDir + path.sep)) continue;
+          const content = await entry.buffer();
+          await mkdir(path.dirname(extractedPath), { recursive: true });
+          await writeFile(extractedPath, content);
+          savedFiles.push({
+            name: path.basename(relPath),
+            size: content.length,
+            path: extractedPath,
+          });
         }
         await unlink(filePath);
       } else {
