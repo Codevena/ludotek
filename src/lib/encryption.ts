@@ -65,15 +65,26 @@ export function encrypt(plaintext: string): string {
   return `${PREFIX}${iv.toString("hex")}:${tag.toString("hex")}:${encrypted.toString("hex")}`;
 }
 
+// On a genuine decryption FAILURE (an enc:v1:-prefixed value we can't decrypt),
+// return "" rather than the raw ciphertext. Returning the ciphertext meant it
+// got used verbatim as an SSH/FTP password or API key, producing opaque "auth
+// failed" errors that look like wrong credentials instead of a wrong key. "" is
+// the same sentinel as an unset secret (DB default), so callers' existing
+// "not configured" / connection guards handle it gracefully — and the logged
+// error points at the real cause (ENCRYPTION_KEY). Note: a non-prefixed value
+// is NOT a failure (it's un-migrated plaintext) and is still passed through.
 export function decrypt(stored: string): string {
   if (!stored || !stored.startsWith(PREFIX)) return stored;
   const key = getKey();
   const parts = stored.slice(PREFIX.length).split(":");
-  if (parts.length !== 3) return stored;
+  if (parts.length !== 3) {
+    console.error("Failed to decrypt: malformed encrypted value — returning empty");
+    return "";
+  }
   const [ivHex, tagHex, ciphertextHex] = parts;
   if (ivHex.length !== IV_LENGTH * 2 || tagHex.length !== 32) {
-    console.error("Corrupt encrypted value: invalid IV or auth tag length");
-    return stored;
+    console.error("Failed to decrypt: invalid IV or auth tag length — returning empty");
+    return "";
   }
   try {
     const iv = Buffer.from(ivHex, "hex");
@@ -84,8 +95,10 @@ export function decrypt(stored: string): string {
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return decrypted.toString("utf8");
   } catch {
-    console.error("Failed to decrypt value — wrong key or corrupted data");
-    return stored;
+    console.error(
+      "Failed to decrypt value — wrong ENCRYPTION_KEY or corrupted data; returning empty",
+    );
+    return "";
   }
 }
 
