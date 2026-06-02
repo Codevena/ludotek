@@ -250,11 +250,11 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          // Link game to target device
+          // Link game to target device, recording the transferred filename
           await prisma.gameDevice.upsert({
             where: { gameId_deviceId: { gameId: dbGame.id, deviceId: targetDevice.id } },
-            update: {},
-            create: { gameId: dbGame.id, deviceId: targetDevice.id },
+            update: { originalFile: transferredFileName },
+            create: { gameId: dbGame.id, deviceId: targetDevice.id, originalFile: transferredFileName },
           });
 
           // Update platform counts

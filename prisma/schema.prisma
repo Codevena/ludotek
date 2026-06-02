@@ -104,11 +104,15 @@ model Device {
 }
 
 model GameDevice {
-  id       Int    @id @default(autoincrement())
-  gameId   Int
-  deviceId Int
-  game     Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  device   Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  id           Int     @id @default(autoincrement())
+  gameId       Int
+  deviceId     Int
+  // The filename this game actually has ON THIS device. Game.originalFile is the
+  // shared "representative" name (and the unique key); this column is what sync
+  // /rename must use so multi-device games and .m3u-vs-disc don't cross paths.
+  originalFile String?
+  game         Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  device       Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, deviceId])
 }
