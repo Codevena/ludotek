@@ -24,9 +24,12 @@ export async function GET(request: NextRequest) {
   if (search) where.title = { contains: search };
   if (favorites === "true") where.isFavorite = true;
   if (tag) {
+    // genres/themes are JSON arrays stored as strings (e.g. ["Horror","Sports"]).
+    // Anchor on the surrounding quotes so tag="or" doesn't match "Horror"/"Sports".
+    const quoted = `"${tag}"`;
     where.OR = [
-      { genres: { contains: tag } },
-      { themes: { contains: tag } },
+      { genres: { contains: quoted } },
+      { themes: { contains: quoted } },
     ];
   }
   if (deviceId && deviceId !== "all") {
@@ -107,10 +110,30 @@ export async function GET(request: NextRequest) {
     deduped = result;
   }
 
-  // When deduplicating, adjust total to reflect unique count
-  const adjustedTotal = deduped.length < gamesWithDevices.length
-    ? Math.max(total - (gamesWithDevices.length - deduped.length), deduped.length)
-    : total;
+  // When deduplicating, compute the EXACT unique total across the whole filtered
+  // set (not just the current page). The dedup count is order-independent, so we
+  // can mirror the two-key (igdbId, then title|platform) rule over a lightweight
+  // keys-only query rather than guessing from per-page duplicate counts.
+  let adjustedTotal = total;
+  if (!deviceId || deviceId === "all") {
+    const allKeys = await prisma.game.findMany({
+      where,
+      select: { igdbId: true, title: true, platform: true },
+    });
+    const seenIgdb = new Set<number>();
+    const seenTitlePlatform = new Set<string>();
+    let unique = 0;
+    for (const g of allKeys) {
+      const tp = `${g.title}|${g.platform}`;
+      const isDup =
+        (g.igdbId != null && seenIgdb.has(g.igdbId)) || seenTitlePlatform.has(tp);
+      if (isDup) continue;
+      unique++;
+      if (g.igdbId != null) seenIgdb.add(g.igdbId);
+      seenTitlePlatform.add(tp);
+    }
+    adjustedTotal = unique;
+  }
 
   return NextResponse.json({
     games: deduped,

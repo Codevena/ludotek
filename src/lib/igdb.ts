@@ -93,6 +93,11 @@ async function igdbQuery(
   });
 
   if (!res.ok) {
+    // A 401 means the cached token was revoked/expired early — drop it so the
+    // next call re-acquires a fresh one instead of reusing the dead token.
+    if (res.status === 401) {
+      cachedToken = null;
+    }
     // Retry on rate limit (429) or server errors (5xx) with exponential backoff.
     // Applies to every IGDB call — the initial search AND the sub-queries
     // (covers, genres, companies, screenshots, …) in resolveIgdbGame().
@@ -104,6 +109,15 @@ async function igdbQuery(
     throw new Error(`IGDB ${endpoint} failed: ${res.status}`);
   }
   return res.json();
+}
+
+/**
+ * Escapes a string for safe interpolation into an Apicalypse `search "..."`
+ * clause. Backslashes MUST be escaped before double-quotes, otherwise a title
+ * ending in `\` would escape the closing quote and break (or alter) the query.
+ */
+export function sanitizeApicalypseString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 type RawIgdbGame = {
@@ -224,7 +238,7 @@ export async function searchIgdb(
     const token = await getIgdbToken(clientId, clientSecret);
     const platformId = IGDB_PLATFORM_MAP[platform];
 
-    const safeTitle = title.replace(/"/g, '\\"');
+    const safeTitle = sanitizeApicalypseString(title);
     const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
 
     let results: RawIgdbGame[] = [];
@@ -243,7 +257,7 @@ export async function searchIgdb(
 
     // Fallback: try the left part before " - " (e.g. "Project Justice - Rival Schools 2" → "Project Justice")
     if (results.length === 0 && title.includes(" - ")) {
-      const shortTitle = title.split(" - ")[0].trim().replace(/"/g, '\\"');
+      const shortTitle = sanitizeApicalypseString(title.split(" - ")[0].trim());
       if (platformId) {
         results = (await igdbQuery(clientId, token, "games",
           `search "${shortTitle}"; ${fields} where platforms = (${platformId}); limit 5;`

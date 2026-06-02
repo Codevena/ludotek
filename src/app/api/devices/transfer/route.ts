@@ -96,7 +96,26 @@ async function runTransfer(
       setTransferProgress({ progress: 100, completedFiles: i + 1 });
 
       if (mode === "move") {
-        await sourceConn.remove(filePath);
+        try {
+          await sourceConn.remove(filePath);
+        } catch (removeErr) {
+          // The copy to the target already succeeded. Roll back by removing the
+          // just-written target file so the move doesn't leave the file on BOTH
+          // devices. If the rollback also fails, surface that explicitly.
+          const removeMsg = removeErr instanceof Error ? removeErr.message : "remove failed";
+          let rollbackOk = false;
+          try {
+            await targetConn.remove(destPath);
+            rollbackOk = true;
+          } catch (rollbackErr) {
+            console.warn(`Move rollback (delete ${destPath}) failed:`, rollbackErr);
+          }
+          throw new Error(
+            rollbackOk
+              ? `Move of ${fileName} failed: could not delete source (${removeMsg}) — target copy rolled back, file kept on source only`
+              : `Move of ${fileName} failed: could not delete source (${removeMsg}) AND target rollback failed — file may now exist on BOTH devices`,
+          );
+        }
       }
     } catch (err) {
       setTransferProgress({

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { createConnection } from "@/lib/connection";
 import { decrypt } from "@/lib/encryption";
+import { deleteGameFiles } from "@/lib/image-cache";
 
 // POST /api/sync/apply — execute all pending changes on devices
 export async function POST(request: NextRequest) {
@@ -159,10 +160,17 @@ export async function POST(request: NextRequest) {
           }
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : "Unknown error";
-          await prisma.syncQueue.update({
-            where: { id: item.id },
-            data: { status: "failed", error: errorMsg },
-          });
+          try {
+            await prisma.syncQueue.update({
+              where: { id: item.id },
+              data: { status: "failed", error: errorMsg },
+            });
+          } catch (updateErr) {
+            // The row may have been removed by a concurrent wipe (Game/Device
+            // delete cascades to SyncQueue → P2025). The remote op already ran;
+            // record the failure and keep going instead of crashing the run.
+            console.warn(`Could not mark syncQueue item ${item.id} as failed:`, updateErr);
+          }
           results.push({ id: item.id, status: "failed", error: errorMsg });
           failed++;
         }
@@ -178,9 +186,21 @@ export async function POST(request: NextRequest) {
     select: { id: true },
   });
   if (orphanedGames.length > 0) {
-    await prisma.game.deleteMany({
-      where: { id: { in: orphanedGames.map((g) => g.id) } },
-    });
+    const orphanIds = orphanedGames.map((g) => g.id);
+    // Remove cached image files before deleting the records (see IMAGECACHE-2)
+    await deleteGameFiles(orphanIds);
+    await prisma.game.deleteMany({ where: { id: { in: orphanIds } } });
+
+    // Refresh platform game counts so platforms emptied by this sync drop out
+    // of the sidebar (which filters gameCount > 0) without needing a rescan.
+    const platformCounts = await prisma.game.groupBy({ by: ["platform"], _count: true });
+    await prisma.platform.updateMany({ data: { gameCount: 0 } });
+    for (const pc of platformCounts) {
+      await prisma.platform.updateMany({
+        where: { id: pc.platform },
+        data: { gameCount: pc._count },
+      });
+    }
   }
 
   return NextResponse.json({

@@ -64,7 +64,7 @@ export const PLATFORM_CONFIG: PlatformDef[] = [
   { id: "atarist", label: "Atari ST", icon: "💾", color: "#78350f", sortOrder: 57, dirs: ["atarist", "atari-st"], extensions: [".st", ".stx", ".msa", ".dim", ".ipf", ".rom"] },
 
   // ── NEC ──
-  { id: "pcengine", label: "TurboGrafx-16 / PC Engine", slug: "turbografx-16", icon: "🔴", color: "#e11d48", sortOrder: 60, dirs: ["pcengine", "pc-engine", "tg16", "turbografx", "turbografx16", "tg-16", "pcenginecd", "pce", "tg-cd", "supergrafx", "sgb"], extensions: [".pce", ".chd", ".iso", ".sgx"] },
+  { id: "pcengine", label: "TurboGrafx-16 / PC Engine", slug: "turbografx-16", icon: "🔴", color: "#e11d48", sortOrder: 60, dirs: ["pcengine", "pc-engine", "tg16", "turbografx", "turbografx16", "tg-16", "pcenginecd", "pce", "tg-cd", "supergrafx"], extensions: [".pce", ".chd", ".iso", ".sgx"] },
   { id: "pcfx", label: "PC-FX", icon: "💿", color: "#be123c", sortOrder: 61, dirs: ["pcfx", "pc-fx"], extensions: [".chd", ".iso"] },
 
   // ── SNK ──

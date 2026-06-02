@@ -56,33 +56,31 @@ export async function POST(request: NextRequest) {
     // Always resolve label from PLATFORM_CONFIG for correctness
     const resolvedLabel = PLATFORM_CONFIG.find((p) => p.id === platform)?.label ?? platformLabel ?? platform;
 
+    // JSON array columns are stored as strings. Accept either an already-stringified
+    // value (current callers) or a raw array (direct API consumers) and normalize.
+    const toJsonString = (v: unknown): string | null =>
+      v == null ? null : typeof v === "string" ? v : JSON.stringify(v);
+    const fields = {
+      platformLabel: resolvedLabel,
+      coverUrl: coverUrl ?? null,
+      igdbScore: igdbScore ?? null,
+      summary: summary ?? null,
+      genres: toJsonString(genres),
+      screenshots: toJsonString(screenshots),
+      videoIds: toJsonString(videoIds),
+      developer: developer ?? null,
+      year: year ?? null,
+    };
+
     const item = await prisma.wishlistItem.upsert({
       where: {
         title_platform: { title, platform },
       },
-      update: {
-        platformLabel: resolvedLabel,
-        coverUrl: coverUrl ?? null,
-        igdbScore: igdbScore ?? null,
-        summary: summary ?? null,
-        genres: genres ?? null,
-        screenshots: screenshots ?? null,
-        videoIds: videoIds ?? null,
-        developer: developer ?? null,
-        year: year ?? null,
-      },
+      update: fields,
       create: {
         title,
         platform,
-        platformLabel: resolvedLabel,
-        coverUrl: coverUrl ?? null,
-        igdbScore: igdbScore ?? null,
-        summary: summary ?? null,
-        genres: genres ?? null,
-        screenshots: screenshots ?? null,
-        videoIds: videoIds ?? null,
-        developer: developer ?? null,
-        year: year ?? null,
+        ...fields,
       },
     });
 

@@ -42,17 +42,18 @@ export function SyncPanel() {
     }
   }, []);
 
-  // Poll for queue updates every 5 seconds
+  // Initial load + reload whenever the panel opens
   useEffect(() => {
     loadQueue();
-    const interval = setInterval(loadQueue, 5000);
-    return () => clearInterval(interval);
-  }, [loadQueue]);
-
-  // Reload when panel opens
-  useEffect(() => {
-    if (open) loadQueue();
   }, [open, loadQueue]);
+
+  // Adaptive polling: 5s while there is pending work or the panel is open,
+  // otherwise back off to 30s so idle sessions don't hit the API every 5s.
+  useEffect(() => {
+    const intervalMs = count > 0 || open ? 5000 : 30000;
+    const interval = setInterval(loadQueue, intervalMs);
+    return () => clearInterval(interval);
+  }, [loadQueue, count, open]);
 
   async function removeItem(id: number) {
     try {

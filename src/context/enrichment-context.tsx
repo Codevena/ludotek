@@ -184,6 +184,13 @@ export function EnrichmentProvider({ children }: { children: React.ReactNode }) 
                     enriched: enrichedCount,
                     ...(data.current != null ? { current: data.current } : {}),
                   }));
+                } else if (data.type === "skipped") {
+                  // Refresh route emits this for already-enriched games — advance
+                  // the progress position without inflating enriched/failed counts.
+                  setState((prev) => prev.dismissed ? prev : ({
+                    ...prev,
+                    ...(data.current != null ? { current: data.current } : {}),
+                  }));
                 } else if (data.type === "error" || data.type === "missed") {
                   failedCount++;
                   setState((prev) => prev.dismissed ? prev : ({
