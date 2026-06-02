@@ -32,6 +32,7 @@ export async function GET(
       port: device.port,
       user: device.user,
       password: device.password,
+      ftps: device.ftps,
     } as ConnectionConfig);
     conn.disconnect();
     return NextResponse.json({ ok: true });

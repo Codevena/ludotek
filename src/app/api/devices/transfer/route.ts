@@ -19,6 +19,7 @@ function configFromDevice(device: {
   port: number;
   user: string;
   password: string;
+  ftps?: boolean;
 }): ConnectionConfig {
   return {
     protocol: device.protocol as "ssh" | "ftp",
@@ -26,6 +27,7 @@ function configFromDevice(device: {
     port: device.port,
     user: device.user,
     password: device.password,
+    ftps: device.ftps,
   };
 }
 

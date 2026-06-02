@@ -93,6 +93,7 @@ model Device {
   protocol  String   @default("ssh")
   host      String
   port      Int      @default(22)
+  ftps      Boolean  @default(false) // explicit FTPS (AUTH TLS) for the ftp protocol
   user      String
   password  String
   scanPaths String   @default("[]")

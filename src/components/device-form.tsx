@@ -10,6 +10,7 @@ export interface DeviceFormData {
   port: number;
   user: string;
   password: string;
+  ftps: boolean;
 }
 
 interface DeviceFormProps {
@@ -50,6 +51,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
   const [port, setPort] = useState(initial?.port ?? 22);
   const [user, setUser] = useState(initial?.user ?? "deck");
   const [password, setPassword] = useState(initial?.password ?? "");
+  const [ftps, setFtps] = useState(initial?.ftps ?? false);
 
   const [submitting, setSubmitting] = useState(false);
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
@@ -81,7 +83,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
       const res = await fetch("/api/devices/test-connection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ protocol, host, port, user, password }),
+        body: JSON.stringify({ protocol, host, port, user, password, ftps: protocol === "ftp" ? ftps : false }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -109,6 +111,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
         port: protocol === "local" ? 0 : port,
         user: protocol === "local" ? "" : user,
         password: protocol === "local" ? "" : password,
+        ftps: protocol === "ftp" ? ftps : false,
       });
     } finally {
       setSubmitting(false);
@@ -231,6 +234,19 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
               />
             </div>
           </div>
+
+          {/* FTPS (TLS) — only for the FTP protocol */}
+          {protocol === "ftp" && (
+            <label className="flex items-center gap-2 text-sm text-vault-muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={ftps}
+                onChange={(e) => setFtps(e.target.checked)}
+                className="accent-vault-amber"
+              />
+              Use FTPS (explicit TLS) — encrypts the connection
+            </label>
+          )}
 
           {/* Test Connection */}
           <div className="flex items-center gap-3">

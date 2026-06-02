@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
         protocol,
         host,
         port,
+        ftps: protocol === "ftp" ? Boolean(body.ftps) : false,
         user,
         password: encrypt(password),
         blacklist: JSON.stringify(blacklist),

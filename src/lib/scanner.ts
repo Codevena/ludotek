@@ -37,6 +37,7 @@ interface DeviceConfig {
   port: number;
   user: string;
   password: string;
+  ftps?: boolean;
   scanPaths: ScanPath[];
   blacklist: string[];
 }
@@ -51,6 +52,7 @@ export async function scanDevice(
     port: device.port,
     user: device.user,
     password: device.password,
+    ftps: device.ftps,
   });
   try {
     const allGames: ScannedGame[] = [];

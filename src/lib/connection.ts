@@ -55,6 +55,8 @@ export interface ConnectionConfig {
   port: number;
   user: string;
   password: string;
+  /** Use explicit FTPS (AUTH TLS) for the FTP protocol. Ignored for ssh/local. */
+  ftps?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -658,7 +660,8 @@ async function connectFtp(config: ConnectionConfig): Promise<DeviceConnection> {
     port: config.port,
     user: config.user,
     password: config.password,
-    secure: false,
+    // Explicit FTPS (AUTH TLS) when enabled on the device; plaintext otherwise.
+    secure: config.ftps ?? false,
   });
 
   return new FtpConnection(client);

@@ -78,6 +78,7 @@ export async function PUT(
       data.port = port;
     }
     if (body.user !== undefined) data.user = body.user;
+    if (body.ftps !== undefined) data.ftps = Boolean(body.ftps);
 
     // Don't overwrite password if the masked placeholder is sent back
     if (body.password !== undefined && body.password !== PASSWORD_MASK) {
