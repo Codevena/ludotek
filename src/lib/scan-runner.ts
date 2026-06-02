@@ -89,7 +89,7 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
 
     for (const { device, scanPaths, blacklist } of deviceConfigs) {
       try {
-        const games = await scanDevice(
+        const { games, reliable } = await scanDevice(
           {
             id: device.id,
             protocol: device.protocol as "ssh" | "ftp" | "local",
@@ -182,20 +182,18 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
         }
 
         // Clean up stale GameDevice links for games no longer on this device.
-        // IMPORTANT: only prune when the scan returned results. A scan path that
-        // becomes temporarily unreachable (SD card unmounted, path renamed) does
-        // NOT throw — connection.ts:listDir() falls back to `ls ... 2>/dev/null`
-        // which yields an empty list on error — so scanDevice() returns 0 games
-        // silently. Pruning on an empty result would wipe the device's entire
-        // library + orphan-delete every game. Cleaning up links for a genuinely
-        // empty device is deferred until the scanner can distinguish
-        // "directory empty" from "directory unreadable".
-        if (scannedGameIds.length > 0) {
+        // Prune only when the scan was RELIABLE (every configured scan-path root
+        // was reachable), even if it found 0 games — that means the device was
+        // genuinely emptied. On an unreliable scan (a path was temporarily
+        // unreadable, e.g. SD card unmounted) we skip pruning, because
+        // scanDevice() can return 0 games silently for an unreachable path and
+        // pruning then would wipe the device's whole library.
+        if (reliable) {
+          const staleFilter =
+            scannedGameIds.length > 0 ? { gameId: { notIn: scannedGameIds } } : {};
+
           await prisma.gameDevice.deleteMany({
-            where: {
-              deviceId: device.id,
-              gameId: { notIn: scannedGameIds },
-            },
+            where: { deviceId: device.id, ...staleFilter },
           });
 
           // Clean up stale SyncQueue items for games no longer on this device
@@ -203,12 +201,12 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
             where: {
               deviceId: device.id,
               status: { in: ["pending", "failed"] },
-              gameId: { notIn: scannedGameIds },
+              ...staleFilter,
             },
           });
         } else {
           console.warn(
-            `Scan returned 0 games for ${device.name} — skipping stale link cleanup to avoid wiping the library on a transient path/connection error`,
+            `Scan of ${device.name} was unreliable (a scan path was unreachable) — skipping stale link cleanup to protect the library`,
           );
         }
 

@@ -457,14 +457,28 @@ class FtpConnection implements DeviceConnection {
     try {
       size = await this.client.size(path);
     } catch (sizeErr) {
-      // size() throws on directories, but also on missing files
-      // Verify it's actually a directory by attempting to list it
+      // size() throws on directories, but also on missing files. Verify it's a
+      // real directory with a CWD round-trip instead of LIST: some device FTP
+      // daemons (e.g. certain 3DS/Switch ftpd builds) answer an empty, OK LIST
+      // for a NON-existent path, which would let stat() succeed on a missing
+      // scan root and wrongly allow stale-link cleanup. CWD reliably 550s on a
+      // bad path even there. Restore the working directory afterwards.
+      let original: string | undefined;
       try {
-        await this.client.list(path);
+        original = await this.client.pwd();
+        await this.client.cd(path);
         isDirectory = true;
       } catch {
         // Neither a file nor a directory — re-throw original error
         throw sizeErr;
+      } finally {
+        if (original !== undefined) {
+          try {
+            await this.client.cd(original);
+          } catch {
+            // best-effort restore of the working directory
+          }
+        }
       }
     }
     let modifiedAt: string | undefined;
