@@ -160,6 +160,10 @@ export async function POST(request: NextRequest) {
                   inputPath,
                   outputPath,
                   format: game.conversion,
+                  // PS2 raw DVD/CD images (.iso) need createdvd (createcd rejects
+                  // them); a rare PS2 .cue/.gdi stays on createcd. Other CHD
+                  // platforms (psx/dreamcast/saturn/segacd) always use createcd.
+                  chdType: platform === "ps2" && ext === ".iso" ? "dvd" : "cd",
                   onProgress: (percent) => {
                     send({ type: "convert-progress", gameId: game.id, file: file.name, percent: Math.round(percent) });
                   },
