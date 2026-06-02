@@ -52,13 +52,18 @@ export default async function GameDetailPage({ params }: Props) {
     const platDef = PLATFORM_CONFIG.find((p) => p.id === game.platform);
     const platDir = platDef?.dirs[0] || game.platform;
 
+    // Use this device's own filename (falls back to the shared representative
+    // for links predating the per-device column) so multi-device games show the
+    // correct path per device.
+    const fileName = gd.originalFile ?? game.originalFile;
+
     return scanPaths
       .filter((sp) => sp.type === "rom")
       .map((sp) => ({
         deviceId: gd.device.id,
         deviceName: gd.device.name,
-        filePath: `${sp.path}/${platDir}/${game.originalFile}`,
-        fileName: game.originalFile,
+        filePath: `${sp.path}/${platDir}/${fileName}`,
+        fileName,
       }));
   });
 

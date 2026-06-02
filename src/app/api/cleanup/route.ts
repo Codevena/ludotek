@@ -79,8 +79,11 @@ export async function POST(request: NextRequest) {
       if (winnerId !== undefined) {
         await prisma.gameDevice.upsert({
           where: { gameId_deviceId: { gameId: winnerId, deviceId: link.deviceId } },
+          // Keep the winner's filename if it already has this device (the winner
+          // is the canonical entry, e.g. an .m3u over a disc); otherwise carry
+          // the loser's per-device filename onto the new link.
           update: {},
-          create: { gameId: winnerId, deviceId: link.deviceId },
+          create: { gameId: winnerId, deviceId: link.deviceId, originalFile: link.originalFile },
         });
       }
     }

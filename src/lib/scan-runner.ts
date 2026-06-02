@@ -165,7 +165,9 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
 
           scannedGameIds.push(result.id);
 
-          // Create GameDevice link
+          // Create/refresh the GameDevice link, recording the filename THIS
+          // device's scan saw. Updating on re-scan fixes the .m3u-supersedes-disc
+          // case (SCANNING-2) and keeps each device's path independent (SCANNING-3).
           await prisma.gameDevice.upsert({
             where: {
               gameId_deviceId: {
@@ -173,10 +175,11 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
                 deviceId: device.id,
               },
             },
-            update: {},
+            update: { originalFile: game.originalFile },
             create: {
               gameId: result.id,
               deviceId: device.id,
+              originalFile: game.originalFile,
             },
           });
         }

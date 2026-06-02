@@ -117,25 +117,39 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            // Update originalFile only if this game is on a single device
-            // Multi-device games keep originalFile unchanged to avoid corrupting
-            // path reconstruction for other devices
+            // Record the new filename after the rename. Derive the relative path
+            // prefix (e.g. "roms/" for subdir platforms) from THIS device's own
+            // recorded filename, not the shared Game.originalFile — otherwise a
+            // multi-device game would reuse another device's prefix (SCANNING-3).
+            const newBasename = item.newPath.split("/").pop() || item.newPath;
+            const link = await prisma.gameDevice.findUnique({
+              where: {
+                gameId_deviceId: { gameId: item.gameId, deviceId: item.deviceId },
+              },
+              select: { id: true, originalFile: true },
+            });
+            const devLastSlash = link?.originalFile
+              ? link.originalFile.lastIndexOf("/")
+              : -1;
+            const dirPrefix =
+              devLastSlash >= 0 ? link!.originalFile!.slice(0, devLastSlash + 1) : "";
+            const newFilename = dirPrefix + newBasename;
+
+            // Always update this device's per-device filename (safe for multi-device).
+            if (link) {
+              await prisma.gameDevice.update({
+                where: { id: link.id },
+                data: { originalFile: newFilename },
+              });
+            }
+
+            // Update the shared representative Game.originalFile (the unique key)
+            // only for single-device games — updating it for a multi-device game
+            // could corrupt path reconstruction for the other devices.
             const deviceCount = await prisma.gameDevice.count({
               where: { gameId: item.gameId },
             });
             if (deviceCount <= 1) {
-              // Preserve the relative path prefix (e.g. "roms/" for subdir platforms)
-              const currentGame = await prisma.game.findUnique({
-                where: { id: item.gameId },
-                select: { originalFile: true },
-              });
-              const newBasename = item.newPath.split("/").pop() || item.newPath;
-              let newFilename = newBasename;
-              if (currentGame) {
-                const lastSlash = currentGame.originalFile.lastIndexOf("/");
-                const dirPrefix = lastSlash >= 0 ? currentGame.originalFile.slice(0, lastSlash + 1) : "";
-                newFilename = dirPrefix + newBasename;
-              }
               try {
                 await prisma.game.update({
                   where: { id: item.gameId },
