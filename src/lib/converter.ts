@@ -4,6 +4,12 @@ export interface ConvertJob {
   inputPath: string;
   outputPath: string;
   format: "chd" | "rvz";
+  /**
+   * For CHD: "dvd" uses `chdman createdvd` (required for PS2 — its raw DVD/CD
+   * ISOs are rejected by createcd); default "cd" uses `chdman createcd` for the
+   * CD-based platforms (psx, dreamcast, saturn, segacd).
+   */
+  chdType?: "cd" | "dvd";
   onProgress?: (percent: number) => void;
 }
 
@@ -34,7 +40,7 @@ export function parseChdmanProgress(line: string): number | null {
  */
 export function convert(job: ConvertJob): Promise<void> {
   return new Promise((resolve, reject) => {
-    const { inputPath, outputPath, format, onProgress } = job;
+    const { inputPath, outputPath, format, chdType, onProgress } = job;
 
     // Check tool availability before spawning
     const toolName = format === "chd" ? "chdman" : "DolphinTool";
@@ -48,7 +54,14 @@ export function convert(job: ConvertJob): Promise<void> {
 
     const command =
       format === "chd"
-        ? { bin: "chdman", args: ["createcd", "-i", inputPath, "-o", outputPath] }
+        ? {
+            bin: "chdman",
+            args: [
+              chdType === "dvd" ? "createdvd" : "createcd",
+              "-i", inputPath,
+              "-o", outputPath,
+            ],
+          }
         : {
             bin: "DolphinTool",
             args: [
