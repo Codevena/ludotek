@@ -46,7 +46,7 @@ export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
   const [tokenInput, setTokenInput] = useState("");
-  const [devices, setDevices] = useState<Array<{ id: number; name: string; type: string; host: string; port: number; user: string; protocol: string }>>([]);
+  const [devices, setDevices] = useState<Array<{ id: number; name: string; type: string; host: string; port: number; user: string; protocol: string; ftps?: boolean }>>([]);
   const [showDeviceForm, setShowDeviceForm] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
   const [authError, setAuthError] = useState("");
@@ -454,6 +454,7 @@ export default function AdminPage() {
                           port: device.port,
                           user: device.user,
                           password: "",
+                          ftps: device.ftps ?? false,
                         }}
                         onSubmit={async (data) => {
                           const body: Record<string, unknown> = { ...data };

@@ -32,6 +32,7 @@ export async function POST(
       port: device.port,
       user: device.user,
       password: device.password,
+      ftps: device.ftps,
     } as ConnectionConfig);
     await conn.mkdir(body.path);
     return NextResponse.json({ ok: true });

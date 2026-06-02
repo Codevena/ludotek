@@ -97,6 +97,7 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
             port: device.port,
             user: device.user,
             password: decrypt(device.password),
+            ftps: device.ftps,
             scanPaths,
             blacklist,
           },

@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
         port: device.port,
         user: device.user,
         password: decrypt(device.password),
+        ftps: device.ftps,
       });
     } catch (err) {
       // Mark all items for this device as failed

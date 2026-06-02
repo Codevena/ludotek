@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { protocol, host, port, user, password } = body;
+    const { protocol, host, port, user, password, ftps } = body;
 
     if (protocol === "local") {
       // Local connections always work — just verify filesystem access
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
       port: port ?? (protocol === "ftp" ? 21 : 22),
       user,
       password: password ?? "",
+      ftps: Boolean(ftps),
     };
 
     const conn = await createConnection(config);

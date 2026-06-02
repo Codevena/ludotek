@@ -38,6 +38,7 @@ export async function GET(
       port: device.port,
       user: device.user,
       password: device.password,
+      ftps: device.ftps,
     } as ConnectionConfig);
 
     const entries = await conn.listDirDetailed(path);

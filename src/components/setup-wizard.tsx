@@ -210,6 +210,7 @@ function StepDevice({
             port: data.port,
             user: data.user,
             password: data.password,
+            ftps: data.ftps,
           }),
         });
         const testData = await testRes.json().catch(() => null);

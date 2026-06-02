@@ -37,6 +37,7 @@ export async function DELETE(
       port: device.port,
       user: device.user,
       password: device.password,
+      ftps: device.ftps,
     } as ConnectionConfig);
 
     const errors: string[] = [];
