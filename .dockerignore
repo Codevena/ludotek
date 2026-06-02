@@ -3,3 +3,9 @@ node_modules
 *.db
 .env
 .git
+# pnpm 11 writes settings here (no `packages:` field); pnpm 9 in the image would
+# misread it as a workspace root ("packages field missing or empty"). Not needed
+# for the build — keep it out of the context.
+pnpm-workspace.yaml
+audit.md
+.review

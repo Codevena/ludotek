@@ -1,5 +1,8 @@
 FROM node:20-slim AS base
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Pin pnpm to the last 9.x: pnpm 10.10+/11 require the `node:sqlite` builtin,
+# which node:20 does not provide (added in Node 22.5+ / stable in 24), so
+# `pnpm@latest` breaks `pnpm install` here. 9.15.9 reads the v9.0 lockfile fine.
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 
 FROM base AS deps
 WORKDIR /app
