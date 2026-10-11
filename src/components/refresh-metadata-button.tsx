@@ -47,7 +47,7 @@ export function RefreshMetadataButton({ gameId, gameTitle }: { gameId: number; g
     setEnriching(true);
     setStatus(null);
     try {
-      const res = await fetch(`/api/games/${gameId}/enrich`, {
+      const res = await fetch(`/api/games/${gameId}/enrich?force=true`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ igdbId, generateAi: false }),

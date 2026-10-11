@@ -4,19 +4,24 @@ const DEFAULT_TTL_HOURS = 24;
 const CLEANUP_STALE_DAYS = 7;
 const CLEANUP_LIMIT = 100;
 
+export interface ApiCacheOptions {
+  bypassCache?: boolean;
+}
+
 /**
- * Check cache for a valid entry; on miss, call fetchFn, store result, and
- * lazily clean up stale rows.
+ * Check cache for a valid entry; on miss or explicit refresh, call fetchFn,
+ * replace the cached result, and lazily clean up stale rows.
  */
 export async function getCachedOrFetch<T>(
   key: string,
   fetchFn: () => Promise<T>,
   ttlHours: number = DEFAULT_TTL_HOURS,
+  options: ApiCacheOptions = {},
 ): Promise<T> {
   const now = new Date();
 
   // Check for a non-expired cached entry
-  const cached = await prisma.apiCache.findFirst({
+  const cached = options.bypassCache ? null : await prisma.apiCache.findFirst({
     where: { cacheKey: key, expiresAt: { gt: now } },
   });
 

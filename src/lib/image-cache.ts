@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs";
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -55,11 +56,22 @@ async function downloadImage(
 function parseJsonArray(value: string | null | undefined): string[] {
   if (!value) return [];
   try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((url): url is string => typeof url === "string")
+      : [];
   } catch {
     return [];
   }
+}
+
+function imagePath(
+  directory: "covers" | "screenshots" | "artwork",
+  gameId: number,
+  sourceUrl: string,
+): string {
+  const sourceHash = createHash("sha256").update(sourceUrl).digest("hex");
+  return `${directory}/${gameId}/${sourceHash}.jpg`;
 }
 
 /**
@@ -99,24 +111,20 @@ export async function cacheGameImages(gameId: number): Promise<void> {
   }
 
   let localCoverPath = game.localCoverPath;
-  const localScreenshotPaths: string[] = parseJsonArray(
-    game.localScreenshotPaths
-  );
-  const localArtworkPaths: string[] = parseJsonArray(game.localArtworkPaths);
 
   // --- Cover ---
-  // Skip only if this game already has a cache entry for the current coverUrl
-  // AND the file on disk exists at the entry's recorded localPath.
+  // Legacy id/index paths can contain another source's bytes. Only reuse the
+  // exact URL-versioned path for this game and image type.
   if (game.coverUrl) {
+    const relativePath = imagePath("covers", gameId, game.coverUrl);
+    const destPath = path.join(DATA_DIR, relativePath);
     const existing = await findCacheEntry(gameId, game.coverUrl);
     const existingFileOk =
-      existing && fs.existsSync(path.join(DATA_DIR, existing.localPath));
+      existing?.localPath === relativePath && fs.existsSync(destPath);
 
     if (existingFileOk) {
-      localCoverPath = existing.localPath;
+      localCoverPath = relativePath;
     } else {
-      const relativePath = `covers/${gameId}.jpg`;
-      const destPath = path.join(COVERS_DIR, `${gameId}.jpg`);
       const buffer = await downloadImage(game.coverUrl, destPath);
       if (buffer) {
         await upsertCacheEntry(
@@ -139,15 +147,15 @@ export async function cacheGameImages(gameId: number): Promise<void> {
 
   // --- Screenshots ---
   const screenshotUrls = parseJsonArray(game.screenshotUrls);
-  const newScreenshotPaths: string[] = [];
+  const newScreenshotPaths: (string | null)[] = [];
   for (let i = 0; i < screenshotUrls.length; i++) {
     const url = screenshotUrls[i];
-    const relativePath = `screenshots/${gameId}/${i}.jpg`;
-    const destPath = path.join(SCREENSHOTS_DIR, `${gameId}`, `${i}.jpg`);
+    const relativePath = imagePath("screenshots", gameId, url);
+    const destPath = path.join(DATA_DIR, relativePath);
 
     const existing = await findCacheEntry(gameId, url);
-    if (existing && fs.existsSync(path.join(DATA_DIR, existing.localPath))) {
-      newScreenshotPaths.push(existing.localPath);
+    if (existing?.localPath === relativePath && fs.existsSync(destPath)) {
+      newScreenshotPaths.push(relativePath);
       continue;
     }
 
@@ -161,20 +169,22 @@ export async function cacheGameImages(gameId: number): Promise<void> {
         buffer.length,
       );
       newScreenshotPaths.push(relativePath);
+    } else {
+      newScreenshotPaths.push(null);
     }
   }
 
   // --- Artwork ---
   const artworkUrls = parseJsonArray(game.artworkUrls);
-  const newArtworkPaths: string[] = [];
+  const newArtworkPaths: (string | null)[] = [];
   for (let i = 0; i < artworkUrls.length; i++) {
     const url = artworkUrls[i];
-    const relativePath = `artwork/${gameId}/${i}.jpg`;
-    const destPath = path.join(ARTWORK_DIR, `${gameId}`, `${i}.jpg`);
+    const relativePath = imagePath("artwork", gameId, url);
+    const destPath = path.join(DATA_DIR, relativePath);
 
     const existing = await findCacheEntry(gameId, url);
-    if (existing && fs.existsSync(path.join(DATA_DIR, existing.localPath))) {
-      newArtworkPaths.push(existing.localPath);
+    if (existing?.localPath === relativePath && fs.existsSync(destPath)) {
+      newArtworkPaths.push(relativePath);
       continue;
     }
 
@@ -188,29 +198,26 @@ export async function cacheGameImages(gameId: number): Promise<void> {
         buffer.length,
       );
       newArtworkPaths.push(relativePath);
+    } else {
+      newArtworkPaths.push(null);
     }
   }
 
   // --- Update Game record ---
-  // Only persist array fields when the new list is non-empty; otherwise leave
-  // the previous value (consistent with prior behavior for bulk caching that
-  // partially succeeds).
+  // Null slots preserve source indexes after partial failure. Never retain
+  // paths from a previous source list; all failures stay eligible for retry.
   await prisma.game.update({
     where: { id: gameId },
     data: {
       localCoverPath,
       localScreenshotPaths:
-        newScreenshotPaths.length > 0
+        newScreenshotPaths.some((localPath) => localPath !== null)
           ? JSON.stringify(newScreenshotPaths)
-          : localScreenshotPaths.length > 0
-            ? game.localScreenshotPaths
-            : null,
+          : null,
       localArtworkPaths:
-        newArtworkPaths.length > 0
+        newArtworkPaths.some((localPath) => localPath !== null)
           ? JSON.stringify(newArtworkPaths)
-          : localArtworkPaths.length > 0
-            ? game.localArtworkPaths
-            : null,
+          : null,
     },
   });
 }
@@ -250,8 +257,9 @@ export async function cacheAllImages(
 /**
  * Delete all cached image files (cover, screenshots, artwork) for the given
  * games and remove their CacheEntry rows. Call this BEFORE deleting the Game
- * rows so the on-disk files don't accumulate indefinitely (covers/{id}.jpg,
- * screenshots/{id}/, artwork/{id}/). Safe to call with ids that have no files.
+ * rows so the on-disk files don't accumulate indefinitely (covers/{id}/,
+ * legacy covers/{id}.jpg, screenshots/{id}/, artwork/{id}/).
+ * Safe to call with ids that have no files.
  */
 export async function deleteGameFiles(gameIds: number[]): Promise<void> {
   if (gameIds.length === 0) return;
@@ -259,6 +267,10 @@ export async function deleteGameFiles(gameIds: number[]): Promise<void> {
   for (const gameId of gameIds) {
     // force:true never throws on a missing path; recursive handles the dirs.
     fs.rmSync(path.join(COVERS_DIR, `${gameId}.jpg`), { force: true });
+    fs.rmSync(path.join(COVERS_DIR, `${gameId}`), {
+      recursive: true,
+      force: true,
+    });
     fs.rmSync(path.join(SCREENSHOTS_DIR, `${gameId}`), {
       recursive: true,
       force: true,

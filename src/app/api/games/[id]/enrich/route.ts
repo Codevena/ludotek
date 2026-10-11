@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDecryptedSettings } from "@/lib/encryption";
-import { fetchIgdbById, searchIgdb } from "@/lib/igdb";
+import { fetchIgdbById, searchIgdb, type IgdbGameData } from "@/lib/igdb";
 import { searchSteamGridDb } from "@/lib/steamgriddb";
 import { generateGameAiContent } from "@/lib/openrouter";
 import { cacheGameImages } from "@/lib/image-cache";
@@ -15,61 +15,95 @@ export async function POST(
   if (authError) return authError;
 
   const { id } = await params;
-  const gameId = parseInt(id, 10);
-  if (isNaN(gameId)) return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
+  const gameId = Number(id);
+  if (!/^\d+$/.test(id) || !Number.isSafeInteger(gameId) || gameId <= 0) {
+    return NextResponse.json({ error: "Invalid game ID" }, { status: 400 });
+  }
 
-  const body = await request.json();
-  const { igdbId, generateAi } = body;
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const { igdbId, generateAi } = body as { igdbId?: unknown; generateAi?: unknown };
   const force = request.nextUrl.searchParams.get("force") === "true";
 
-  if (igdbId && typeof igdbId !== "number") return NextResponse.json({ error: "Invalid igdbId" }, { status: 400 });
+  if (igdbId !== undefined && (typeof igdbId !== "number" || !Number.isSafeInteger(igdbId) || igdbId <= 0)) {
+    return NextResponse.json({ error: "Invalid igdbId" }, { status: 400 });
+  }
+  if (generateAi !== undefined && typeof generateAi !== "boolean") {
+    return NextResponse.json({ error: "Invalid generateAi" }, { status: 400 });
+  }
 
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) return NextResponse.json({ error: "Game not found" }, { status: 404 });
 
   const settings = await getDecryptedSettings();
+  const metadataRequested = force || igdbId !== undefined || generateAi !== true;
+
+  if (generateAi && !settings?.openrouterKey) {
+    return NextResponse.json({ error: "AI provider is not configured" }, { status: 503 });
+  }
 
   // Determine which igdbId to use: explicit from body, or stored game's igdbId when force=true
   const resolvedIgdbId = igdbId ?? (force && game.igdbId ? game.igdbId : null);
 
   // Fetch IGDB data: by ID if available, otherwise search by title (same as bulk enricher)
-  if (settings?.igdbClientId && settings?.igdbClientSecret) {
-    const igdbData = resolvedIgdbId
-      ? await fetchIgdbById(resolvedIgdbId, settings.igdbClientId, settings.igdbClientSecret)
-      : await searchIgdb(game.title, game.platform, settings.igdbClientId, settings.igdbClientSecret);
+  if (metadataRequested) {
+    if (!settings?.igdbClientId || !settings?.igdbClientSecret) {
+      return NextResponse.json({ error: "IGDB is not configured" }, { status: 503 });
+    }
 
-    if (igdbData) {
-      let coverUrl = igdbData.coverUrl;
+    let igdbData: IgdbGameData | null;
+    let coverUrl: string | null;
+    try {
+      const options = { bypassCache: force };
+      igdbData = resolvedIgdbId
+        ? await fetchIgdbById(resolvedIgdbId, settings.igdbClientId, settings.igdbClientSecret, options)
+        : await searchIgdb(game.title, game.platform, settings.igdbClientId, settings.igdbClientSecret, options);
+
+      if (!igdbData) {
+        return NextResponse.json({ error: "No IGDB metadata found" }, { status: 404 });
+      }
+
+      coverUrl = igdbData.coverUrl;
       if (!coverUrl && settings.steamgriddbKey) {
         coverUrl = await searchSteamGridDb(game.title, settings.steamgriddbKey);
       }
+    } catch {
+      console.warn(`Metadata provider failed for game ${gameId}`);
+      return NextResponse.json({ error: "Failed to fetch metadata" }, { status: 502 });
+    }
 
-      await prisma.game.update({
-        where: { id: gameId },
-        data: {
-          igdbId: igdbData.igdbId,
-          coverUrl,
-          igdbScore: igdbData.igdbScore,
-          metacriticScore: igdbData.metacriticScore,
-          genres: JSON.stringify(igdbData.genres),
-          developer: igdbData.developer,
-          publisher: igdbData.publisher,
-          releaseDate: igdbData.releaseDate,
-          summary: igdbData.summary,
-          screenshotUrls: JSON.stringify(igdbData.screenshotUrls),
-          videoIds: JSON.stringify(igdbData.videoIds),
-          artworkUrls: JSON.stringify(igdbData.artworkUrls),
-          franchise: igdbData.franchise,
-          themes: JSON.stringify(igdbData.themes),
-        },
-      });
+    await prisma.game.update({
+      where: { id: gameId },
+      data: {
+        igdbId: igdbData.igdbId,
+        coverUrl,
+        igdbScore: igdbData.igdbScore,
+        metacriticScore: igdbData.metacriticScore,
+        genres: JSON.stringify(igdbData.genres),
+        developer: igdbData.developer,
+        publisher: igdbData.publisher,
+        releaseDate: igdbData.releaseDate,
+        summary: igdbData.summary,
+        screenshotUrls: JSON.stringify(igdbData.screenshotUrls),
+        videoIds: JSON.stringify(igdbData.videoIds),
+        artworkUrls: JSON.stringify(igdbData.artworkUrls),
+        franchise: igdbData.franchise,
+        themes: JSON.stringify(igdbData.themes),
+      },
+    });
 
-      // Cache images locally after enrichment
-      try {
-        await cacheGameImages(gameId);
-      } catch (cacheErr) {
-        console.warn(`Image caching failed for game ${gameId}:`, cacheErr);
-      }
+    // Cache images locally after enrichment
+    try {
+      await cacheGameImages(gameId);
+    } catch (cacheErr) {
+      console.warn(`Image caching failed for game ${gameId}:`, cacheErr);
     }
   }
 

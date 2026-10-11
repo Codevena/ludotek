@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { coverUrl } from "@/lib/image-url";
 import { findEraBySlug } from "@/lib/eras";
+import { groupGameIds } from "@/lib/game-groups";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -50,93 +51,48 @@ export async function GET(request: NextRequest) {
     };
   }
 
-  const orderBy: Record<string, string> = {};
   const validSorts = ["title", "igdbScore", "releaseDate", "createdAt"];
-  orderBy[validSorts.includes(sort) ? sort : "title"] = order;
+  const orderBy: Record<string, "asc" | "desc">[] = [
+    { [validSorts.includes(sort) ? sort : "title"]: order },
+    { id: "asc" },
+  ];
+  const include = {
+    devices: { include: { device: { select: { id: true, name: true, type: true } } } },
+  } as const;
+  const flatten = (game: Awaited<ReturnType<typeof prisma.game.findMany>>[number] & {
+    devices: { device: { id: number; name: string; type: string } }[];
+  }) => ({ ...game, coverUrl: coverUrl(game) ?? null, devices: game.devices.map((gd) => gd.device) });
 
-  const [games, total] = await Promise.all([
-    prisma.game.findMany({
-      where,
-      orderBy,
-      skip,
-      take: limit,
-      include: {
-        devices: {
-          include: { device: { select: { id: true, name: true, type: true } } },
-        },
-      },
-    }),
-    prisma.game.count({ where }),
-  ]);
-
-  // Flatten device associations for frontend and resolve cover URLs
-  const gamesWithDevices = games.map((game) => ({
-    ...game,
-    coverUrl: coverUrl(game) ?? null,
-    devices: game.devices.map((gd) => gd.device),
-  }));
-
-  // Deduplicate games when showing all devices
-  // (same game scanned from different devices creates separate Game records)
-  let deduped = gamesWithDevices;
-  if (!deviceId || deviceId === "all") {
-    const seenByIgdb = new Map<number, typeof gamesWithDevices[0]>();
-    const seenByTitlePlatform = new Map<string, typeof gamesWithDevices[0]>();
-    const result: typeof gamesWithDevices = [];
-    for (const game of gamesWithDevices) {
-      let existing: typeof gamesWithDevices[0] | undefined;
-
-      if (game.igdbId) {
-        existing = seenByIgdb.get(game.igdbId);
-      }
-      if (!existing) {
-        const key = `${game.title}|${game.platform}`;
-        existing = seenByTitlePlatform.get(key);
-      }
-
-      if (existing) {
-        // Merge devices into existing entry
-        for (const dev of game.devices) {
-          if (!existing.devices.some((d) => d.id === dev.id)) {
-            existing.devices.push(dev);
-          }
-        }
-      } else {
-        if (game.igdbId) seenByIgdb.set(game.igdbId, game);
-        seenByTitlePlatform.set(`${game.title}|${game.platform}`, game);
-        result.push(game);
-      }
+  // Keep grouping, count and page reads in one SQLite snapshot. Only lightweight
+  // identities are read for the full catalog; metadata is fetched for page groups.
+  const { games, total } = await prisma.$transaction(async (transaction) => {
+    if (deviceId && deviceId !== "all") {
+      const rows = await transaction.game.findMany({ where, orderBy, skip, take: limit, include });
+      return { games: rows.map(flatten), total: await transaction.game.count({ where }) };
     }
-    deduped = result;
-  }
-
-  // When deduplicating, compute the EXACT unique total across the whole filtered
-  // set (not just the current page). The dedup count is order-independent, so we
-  // can mirror the two-key (igdbId, then title|platform) rule over a lightweight
-  // keys-only query rather than guessing from per-page duplicate counts.
-  let adjustedTotal = total;
-  if (!deviceId || deviceId === "all") {
-    const allKeys = await prisma.game.findMany({
-      where,
-      select: { igdbId: true, title: true, platform: true },
+    const identities = await transaction.game.findMany({
+      where, orderBy, select: { id: true, igdbId: true, title: true, platform: true },
     });
-    const seenIgdb = new Set<number>();
-    const seenTitlePlatform = new Set<string>();
-    let unique = 0;
-    for (const g of allKeys) {
-      const tp = `${g.title}|${g.platform}`;
-      const isDup =
-        (g.igdbId != null && seenIgdb.has(g.igdbId)) || seenTitlePlatform.has(tp);
-      if (isDup) continue;
-      unique++;
-      if (g.igdbId != null) seenIgdb.add(g.igdbId);
-      seenTitlePlatform.add(tp);
-    }
-    adjustedTotal = unique;
-  }
+    const groups = groupGameIds(identities);
+    const pageGroups = groups.slice(skip, skip + limit);
+    if (pageGroups.length === 0) return { games: [], total: groups.length };
+    const rows = await transaction.game.findMany({
+      where: { id: { in: pageGroups.flat() } }, include,
+    });
+    const byId = new Map(rows.map((row) => [row.id, flatten(row)]));
+    const merged = pageGroups.map((ids) => {
+      const representative = byId.get(ids[0])!;
+      const devices = new Map(representative.devices.map((device) => [device.id, device]));
+      for (const id of ids.slice(1)) {
+        for (const device of byId.get(id)!.devices) devices.set(device.id, device);
+      }
+      return { ...representative, devices: Array.from(devices.values()) };
+    });
+    return { games: merged, total: groups.length };
+  });
 
   return NextResponse.json({
-    games: deduped,
-    pagination: { page, limit, total: adjustedTotal, totalPages: Math.ceil(adjustedTotal / limit) },
+    games,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
 }

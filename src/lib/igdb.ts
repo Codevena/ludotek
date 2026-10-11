@@ -1,4 +1,4 @@
-import { getCachedOrFetch } from "@/lib/api-cache";
+import { getCachedOrFetch, type ApiCacheOptions } from "@/lib/api-cache";
 
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
@@ -71,6 +71,11 @@ export interface IgdbGameData {
   artworkUrls: string[];
   franchise: string | null;
   themes: string[];
+}
+
+function hydrateIgdbGame(data: IgdbGameData | null): IgdbGameData | null {
+  if (!data?.releaseDate) return data;
+  return { ...data, releaseDate: new Date(data.releaseDate) };
 }
 
 const IGDB_MAX_RETRIES = 2;
@@ -229,12 +234,13 @@ export async function searchIgdb(
   title: string,
   platform: string,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  options: ApiCacheOptions = {},
 ): Promise<IgdbGameData | null> {
   const normalizedTitle = title.toLowerCase().trim();
   const cacheKey = `igdb:search:${normalizedTitle}:${platform}`;
 
-  return getCachedOrFetch(cacheKey, async () => {
+  const data = await getCachedOrFetch(cacheKey, async () => {
     const token = await getIgdbToken(clientId, clientSecret);
     const platformId = IGDB_PLATFORM_MAP[platform];
 
@@ -272,19 +278,21 @@ export async function searchIgdb(
 
     if (results.length === 0) return null;
     return resolveIgdbGame(clientId, token, results[0]);
-  }, 24);
+  }, 24, options);
+  return hydrateIgdbGame(data);
 }
 
 export async function fetchIgdbById(
   igdbId: number,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  options: ApiCacheOptions = {},
 ): Promise<IgdbGameData | null> {
-  if (!Number.isFinite(igdbId)) return null;
+  if (!Number.isSafeInteger(igdbId) || igdbId <= 0) return null;
 
   const cacheKey = `igdb:game:${igdbId}`;
 
-  return getCachedOrFetch(cacheKey, async () => {
+  const data = await getCachedOrFetch(cacheKey, async () => {
     const token = await getIgdbToken(clientId, clientSecret);
     const fields = "fields name,rating,aggregated_rating,genres,first_release_date,summary,cover,involved_companies,screenshots,videos,artworks,franchise,themes;";
 
@@ -294,5 +302,6 @@ export async function fetchIgdbById(
 
     if (results.length === 0) return null;
     return resolveIgdbGame(clientId, token, results[0]);
-  }, 168); // 7 days
+  }, 168, options); // 7 days
+  return hydrateIgdbGame(data);
 }
