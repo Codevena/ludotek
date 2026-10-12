@@ -1,6 +1,7 @@
 import { Client as SshClient } from "ssh2";
 import { Client as FtpClient } from "basic-ftp";
 import { Readable, Writable } from "stream";
+import { getLocalFilesRoots, resolveLocalPath, LocalPathError } from "@/lib/local-paths";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -23,6 +24,7 @@ export interface BrowseResult {
   path: string;
   parent: string | null;
   entries: DetailedDirEntry[];
+  virtualRoot?: boolean;
 }
 
 export interface DetailedDirEntry {
@@ -31,6 +33,7 @@ export interface DetailedDirEntry {
   size: number;
   modifiedAt?: string;
   symlinkTarget?: string;
+  absolutePath?: string;
 }
 
 export interface FileStat {
@@ -563,7 +566,8 @@ class FtpConnection implements DeviceConnection {
 class LocalConnection implements DeviceConnection {
   async listDir(path: string, options?: { requireComplete?: boolean }): Promise<DirEntry[]> {
     const fs = await import("fs/promises");
-    const items = await fs.readdir(path, { withFileTypes: true });
+    const safePath = await resolveLocalPath(path);
+    const items = await fs.readdir(safePath, { withFileTypes: true });
     const entries: DirEntry[] = limitEntries(
       items.filter((item) => item.name !== "." && item.name !== ".."),
       options?.requireComplete,
@@ -582,7 +586,12 @@ class LocalConnection implements DeviceConnection {
   async listDirDetailed(path: string): Promise<DetailedDirEntry[]> {
     const fs = await import("fs/promises");
     const nodePath = await import("path");
-    const items = await fs.readdir(path, { withFileTypes: true });
+    if (path === "/") {
+      const roots = await getLocalFilesRoots();
+      return roots.map((root) => ({ name: root, type: "dir", size: 0, absolutePath: root }));
+    }
+    const safePath = await resolveLocalPath(path);
+    const items = await fs.readdir(safePath, { withFileTypes: true });
     const entries: DetailedDirEntry[] = [];
 
     for (const item of items.slice(0, MAX_ENTRIES)) {
@@ -590,7 +599,15 @@ class LocalConnection implements DeviceConnection {
       let size = 0;
       let modifiedAt: string | undefined;
       let symlinkTarget: string | undefined;
-      const fullPath = nodePath.join(path, item.name);
+      const fullPath = nodePath.join(safePath, item.name);
+      let absolutePath: string;
+      try {
+        absolutePath = await resolveLocalPath(fullPath);
+      } catch (error) {
+        // Escaping/broken links and invalid names are never browse targets.
+        if (error instanceof LocalPathError || (error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        absolutePath = fullPath;
+      }
 
       if (item.isSymbolicLink()) {
         try {
@@ -602,7 +619,7 @@ class LocalConnection implements DeviceConnection {
 
       try {
         // Use stat (follows symlinks) to get real size/mtime
-        const stats = await fs.stat(fullPath);
+        const stats = await fs.stat(absolutePath);
         size = stats.isDirectory() ? 0 : stats.size;
         modifiedAt = stats.mtime.toISOString();
       } catch {
@@ -619,6 +636,9 @@ class LocalConnection implements DeviceConnection {
         size,
         modifiedAt,
         symlinkTarget,
+        // Keep the final directory entry for rename/remove; navigation and
+        // reads canonicalize it again through the shared guard.
+        absolutePath: fullPath,
       });
     }
 
@@ -627,23 +647,26 @@ class LocalConnection implements DeviceConnection {
 
   async mkdir(path: string): Promise<void> {
     const fs = await import("fs/promises");
-    await fs.mkdir(path, { recursive: false });
+    await fs.mkdir(await resolveLocalPath(path, { allowMissing: true }), { recursive: false });
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
     const fs = await import("fs/promises");
-    await fs.rename(oldPath, newPath);
+    const source = await resolveLocalPath(oldPath, { destructive: true });
+    const target = await resolveLocalPath(newPath, { allowMissing: true, destructive: true });
+    await fs.rename(source, target);
   }
 
   async remove(path: string): Promise<void> {
     const fs = await import("fs/promises");
-    await fs.rm(path, { recursive: true, force: true });
+    await fs.rm(await resolveLocalPath(path, { allowMissing: true, destructive: true }), { recursive: true, force: true });
   }
 
   async readFile(path: string, maxBytes?: number): Promise<Buffer> {
     const fs = await import("fs/promises");
+    const safePath = await resolveLocalPath(path);
     if (maxBytes !== undefined) {
-      const fh = await fs.open(path, "r");
+      const fh = await fs.open(safePath, "r");
       try {
         const buf = Buffer.alloc(maxBytes);
         const { bytesRead } = await fh.read(buf, 0, maxBytes, 0);
@@ -652,17 +675,17 @@ class LocalConnection implements DeviceConnection {
         await fh.close();
       }
     }
-    return fs.readFile(path);
+    return fs.readFile(safePath);
   }
 
   async writeFile(remotePath: string, data: Buffer): Promise<void> {
     const fs = await import("fs/promises");
-    await fs.writeFile(remotePath, data);
+    await fs.writeFile(await resolveLocalPath(remotePath, { allowMissing: true }), data);
   }
 
   async stat(path: string): Promise<FileStat> {
     const fs = await import("fs/promises");
-    const stats = await fs.stat(path);
+    const stats = await fs.stat(await resolveLocalPath(path));
     return {
       size: stats.size,
       modifiedAt: stats.mtime.toISOString(),
@@ -735,6 +758,7 @@ export async function createConnection(
     return connectFtp(config);
   }
   if (config.protocol === "local") {
+    await getLocalFilesRoots();
     return new LocalConnection();
   }
   throw new Error(`Unsupported protocol: ${String(config.protocol)}`);

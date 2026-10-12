@@ -3,102 +3,90 @@ import { prisma } from "@/lib/prisma";
 import { getDecryptedSettings } from "@/lib/encryption";
 import { requireAuth } from "@/lib/auth";
 import { getIgdbToken } from "@/lib/igdb";
+import { providerFetch } from "@/lib/provider-budget";
+import { acquireEnrichment, admissionResponse, createEnrichmentStream, AdmissionError, type EnrichmentJob } from "@/lib/job-admission";
+import { parseEnrichmentCursor, enrichmentBatchWhere, enrichmentNextCursor } from "@/lib/enrichment-batches";
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
-
-  const settings = await getDecryptedSettings();
-  if (!settings?.igdbClientId || !settings?.igdbClientSecret) {
-    return NextResponse.json({ error: "IGDB credentials not configured" }, { status: 400 });
-  }
-
-  // Find games with IGDB ID but no metacritic score
-  const games = await prisma.game.findMany({
-    where: { igdbId: { not: null }, metacriticScore: null },
-  });
-
-  if (games.length === 0) {
-    return NextResponse.json({ success: true, processed: 0, updated: 0, remaining: 0 });
-  }
-
-  // Get IGDB token (shared module-level cache, avoids a Twitch auth round-trip per call)
-  let access_token: string;
+  const afterId = parseEnrichmentCursor(request);
+  if (afterId === null) return NextResponse.json({ error: "Invalid afterId cursor" }, { status: 400 });
+  let job: EnrichmentJob | undefined;
   try {
-    access_token = await getIgdbToken(settings.igdbClientId, settings.igdbClientSecret);
-  } catch {
-    return NextResponse.json({ error: "IGDB auth failed" }, { status: 500 });
-  }
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (data: Record<string, unknown>) => {
-        try {
-          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch { /* stream closed */ }
-      };
-
-      send({ type: "start", total: games.length });
-
+    job = await acquireEnrichment(request);
+    const settings = await getDecryptedSettings();
+    if (!settings?.igdbClientId || !settings?.igdbClientSecret) {
+      await job.close();
+      return NextResponse.json({ error: "IGDB credentials not configured" }, { status: 400 });
+    }
+    const where = { igdbId: { not: null }, metacriticScore: null };
+    const batchWhere = enrichmentBatchWhere(where, afterId);
+    const [games, totalRemaining] = await Promise.all([
+      prisma.game.findMany({ where: batchWhere, orderBy: { id: "asc" }, take: 500 }),
+      prisma.game.count({ where: batchWhere }),
+    ]);
+    const nextCursor = enrichmentNextCursor(games, afterId);
+    if (!games.length) {
+      const remaining = await prisma.game.count({ where });
+      await job.close();
+      return NextResponse.json({ success: true, processed: 0, updated: 0, skipped: 0, remaining, pending: 0, nextCursor, hasMore: false });
+    }
+    const activeJob = job;
+    return createEnrichmentStream(activeJob, async (send) => {
+      send({ type: "start", total: games.length, totalRemaining });
       let updated = 0;
       let skipped = 0;
-
-      // Batch fetch: IGDB allows up to 500 IDs per query
-      for (let i = 0; i < games.length; i += 50) {
-        if (request.signal.aborted) break;
-
-        const batch = games.slice(i, i + 50);
-        const igdbIds = batch.map((g) => g.igdbId).filter(Boolean);
-
-        send({ type: "progress", current: i + 1, total: games.length, title: `Batch ${Math.floor(i / 50) + 1}` });
-
-        try {
-          const res = await fetch("https://api.igdb.com/v4/games", {
-            method: "POST",
-            headers: {
-              "Client-ID": settings.igdbClientId,
-              Authorization: `Bearer ${access_token}`,
-              "Content-Type": "text/plain",
-            },
-            body: `fields id,aggregated_rating; where id = (${igdbIds.join(",")}); limit 500;`,
-          });
-
-          if (!res.ok) throw new Error(`IGDB failed: ${res.status}`);
-
-          const results = (await res.json()) as Array<{ id: number; aggregated_rating?: number }>;
-          const scoreMap = new Map(results.map((r) => [r.id, r.aggregated_rating]));
-
-          for (const game of batch) {
-            const score = scoreMap.get(game.igdbId!);
-            if (score !== undefined && score !== null) {
-              await prisma.game.update({
-                where: { id: game.id },
-                data: { metacriticScore: Math.round(score) },
-              });
-              updated++;
-            } else {
-              skipped++;
+      let failed = 0;
+      let processed = 0;
+      let stopped = false;
+      try {
+        const token = await getIgdbToken(settings.igdbClientId, settings.igdbClientSecret);
+        for (let i = 0; i < games.length; i += 50) {
+          if (activeJob.signal.aborted) { stopped = true; break; }
+          const batch = games.slice(i, i + 50);
+          send({ type: "progress", current: processed + 1, total: games.length, title: `Batch ${Math.floor(i / 50) + 1}` });
+          try {
+            await activeJob.assertActive();
+            const response = await providerFetch("igdb", "https://api.igdb.com/v4/games", {
+              method: "POST", headers: { "Client-ID": settings.igdbClientId, Authorization: `Bearer ${token}`, "Content-Type": "text/plain" },
+              body: `fields id,aggregated_rating; where id = (${batch.map((game) => game.igdbId).join(",")}); limit 500;`,
+            });
+            if (!response.ok) throw new Error(`IGDB failed: ${response.status}`);
+            const results = await response.json() as Array<{ id: number; aggregated_rating?: number }>;
+            const scores = new Map(results.map((result) => [result.id, result.aggregated_rating]));
+            for (const game of batch) {
+              const score = scores.get(game.igdbId!);
+              if (score !== undefined && Number.isFinite(score)) {
+                await activeJob.assertActive();
+                await prisma.game.update({ where: { id: game.id }, data: { metacriticScore: Math.round(score) } });
+                updated++;
+              } else skipped++;
+              processed++;
             }
+          } catch (error) {
+            if (error instanceof AdmissionError || activeJob.signal.aborted) throw error;
+            // Only members not already completed are reported as failed.
+            const unprocessed = i + batch.length - processed;
+            failed += unprocessed;
+            processed += unprocessed;
+            console.warn("Metacritic batch fetch failed");
+            send({ type: "error", error: error instanceof Error ? error.message : "Unknown", current: processed });
           }
-
-          // Rate limit
-          await new Promise((r) => setTimeout(r, 300));
-        } catch (err) {
-          console.warn("Metacritic batch fetch failed:", err);
-          skipped += batch.length;
         }
+      } catch (error) {
+        stopped = true;
+        send({ type: "stopped", reason: error instanceof Error ? error.message : "Job cancelled", processed });
       }
-
-      send({ type: "done", processed: games.length, updated, skipped, remaining: 0 });
-      controller.close();
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+      const [remaining, pending] = await Promise.all([
+        prisma.game.count({ where }), prisma.game.count({ where: enrichmentBatchWhere(where, nextCursor) }),
+      ]);
+      send({ type: "done", processed, updated, skipped, failed, remaining, pending, nextCursor, hasMore: !stopped && pending > 0, stopped });
+    });
+  } catch (error) {
+    try { await job?.close(); } catch (closeError) { return admissionResponse(closeError); }
+    if (error instanceof AdmissionError) return admissionResponse(error);
+    console.warn("Could not start score refresh");
+    return NextResponse.json({ error: "Could not start score refresh" }, { status: 503 });
+  }
 }

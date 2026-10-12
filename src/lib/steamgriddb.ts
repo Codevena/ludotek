@@ -1,8 +1,12 @@
+import { isAdmissionError, providerFetch } from "@/lib/provider-budget";
+import { getJobContext } from "@/lib/job-admission";
+
 export async function searchSteamGridDb(title: string, apiKey: string): Promise<string | null> {
   if (!apiKey) return null;
 
   try {
-    const searchRes = await fetch(
+    const searchRes = await providerFetch(
+      "steamgrid",
       `https://www.steamgriddb.com/api/v2/search/autocomplete/${encodeURIComponent(title)}`,
       { headers: { Authorization: `Bearer ${apiKey}` } }
     );
@@ -13,7 +17,8 @@ export async function searchSteamGridDb(title: string, apiKey: string): Promise<
 
     const gameId = searchData.data[0].id;
 
-    const gridRes = await fetch(
+    const gridRes = await providerFetch(
+      "steamgrid",
       `https://www.steamgriddb.com/api/v2/grids/game/${gameId}?dimensions=600x900`,
       { headers: { Authorization: `Bearer ${apiKey}` } }
     );
@@ -24,7 +29,9 @@ export async function searchSteamGridDb(title: string, apiKey: string): Promise<
 
     return gridData.data[0].url;
   } catch (err) {
-    console.warn("SteamGridDB lookup failed:", err);
+    if (isAdmissionError(err)) throw err;
+    if (getJobContext()?.signal.aborted) throw getJobContext()!.signal.reason;
+    console.warn("SteamGridDB lookup failed");
     return null;
   }
 }

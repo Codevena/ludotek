@@ -13,6 +13,8 @@ export interface GameProgress {
   error?: string;
   dbId?: number;
   coverUrl?: string | null;
+  enrichmentStatus?: "skipped" | "error";
+  enrichmentWarning?: string;
 }
 
 interface UploadProgressProps {
@@ -66,7 +68,9 @@ function segmentColor(
   step: string,
   currentStep: string | undefined,
   status: GameProgress["status"],
+  enrichmentWarning?: string,
 ): string {
+  if (step === "enrich" && enrichmentWarning) return "bg-vault-amber";
   if (status === "done") return "bg-green-500";
   if (status !== "processing" || !currentStep) return "bg-vault-border";
 
@@ -131,7 +135,8 @@ export default function UploadProgress({
               {STEPS.map((s) => (
                 <div
                   key={s}
-                  className={`h-1.5 flex-1 rounded-full transition-colors ${segmentColor(s, game.step, game.status)}`}
+                  {...(s === "enrich" && game.enrichmentWarning ? { role: "img", "aria-label": "Metadata warning" } : {})}
+                  className={`h-1.5 flex-1 rounded-full transition-colors ${segmentColor(s, game.step, game.status, game.enrichmentWarning)}`}
                 />
               ))}
             </div>
@@ -167,6 +172,9 @@ export default function UploadProgress({
               )}
 
             {/* Error message */}
+            {game.enrichmentWarning && (
+              <p className="mt-2 text-sm text-vault-amber">Metadata {game.enrichmentStatus === "skipped" ? "skipped" : "unavailable"}: {game.enrichmentWarning}</p>
+            )}
             {game.error && (
               <p className="mt-2 text-sm text-red-400">{game.error}</p>
             )}

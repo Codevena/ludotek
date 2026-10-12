@@ -45,39 +45,48 @@ export default function UploadPage() {
   // Auth state
   const [authenticated, setAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+  const [authConfigured, setAuthConfigured] = useState(true);
   const [tokenInput, setTokenInput] = useState("");
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
-    fetch("/api/auth")
-      .then((r) => r.json())
+    const controller = new AbortController();
+    fetch("/api/auth", { cache: "no-store", signal: controller.signal })
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok || !data.configured) throw new Error(data.error || "Server access is not configured");
+        return data;
+      })
       .then((data) => {
         setAuthRequired(data.authRequired);
-        if (!data.authRequired) {
-          setAuthenticated(true);
-        } else {
-          fetch("/api/settings")
-            .then((r) => {
-              if (r.ok) {
-                setAuthenticated(true);
-              }
-            })
-            .catch(() => {});
-        }
+        setAuthenticated(data.authenticated === true);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setAuthRequired(true);
+        setAuthConfigured(false);
+        setAuthError(err instanceof Error ? err.message : "Unable to connect to server");
       });
+    return () => controller.abort();
   }, []);
 
   async function handleLogin() {
     setAuthError("");
-    const res = await fetch("/api/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: tokenInput }),
-    });
-    if (res.ok) {
-      setAuthenticated(true);
-    } else {
-      setAuthError("Invalid token");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: tokenInput }),
+      });
+      if (res.ok) {
+        setTokenInput("");
+        setAuthenticated(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setAuthError(data.error || "Login failed");
+      }
+    } catch {
+      setAuthError("Connection failed");
     }
   }
 
@@ -380,6 +389,12 @@ export default function UploadPage() {
                   : g,
               ),
             );
+          } else if (data.type === "enrich-skipped" || data.type === "enrich-error") {
+            setGameProgress((prev) => prev.map((g) => g.gameId === data.gameId ? {
+              ...g,
+              enrichmentStatus: data.type === "enrich-skipped" ? "skipped" : "error",
+              enrichmentWarning: data.reason || data.error || "Metadata unavailable",
+            } : g));
           } else if (data.type === "game-done") {
             setGameProgress((prev) =>
               prev.map((g) =>
@@ -424,6 +439,9 @@ export default function UploadPage() {
   }
 
   // Login gate
+  if (!authConfigured) {
+    return <div className="max-w-sm mx-auto py-20"><div className="card"><h1 className="font-heading text-xl mb-3">Server access unavailable</h1><p className="text-vault-muted text-sm">{authError}</p></div></div>;
+  }
   if (authRequired && !authenticated) {
     return (
       <div className="max-w-sm mx-auto py-20">

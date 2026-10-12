@@ -15,6 +15,7 @@ import { searchSteamGridDb } from "@/lib/steamgriddb";
 import { PLATFORM_CONFIG } from "@/lib/platforms";
 import { rm } from "fs/promises";
 import path from "path";
+import { acquireEnrichment, AdmissionError, type EnrichmentJob } from "@/lib/job-admission";
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
@@ -105,237 +106,276 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const pipelineAbort = new AbortController();
+  const abortFromRequest = () => pipelineAbort.abort(new AdmissionError(409, "Upload cancelled"));
+  request.signal.addEventListener("abort", abortFromRequest, { once: true });
+  if (request.signal.aborted) abortFromRequest();
+  const metadataRequest = new Request(request.url, { signal: pipelineAbort.signal });
+  let completion: Promise<void>;
+  let cancelled = false;
   const stream = new ReadableStream({
-    async start(controller) {
-      const send = (data: Record<string, unknown>) => {
-        try {
-          controller.enqueue(
-            new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`)
-          );
-        } catch {
-          /* Stream closed */
-        }
-      };
-
-      send({ type: "start", totalGames: selectedGames.length });
-
-      let succeeded = 0;
-      let failed = 0;
-
-      for (const game of selectedGames) {
-        try {
-          send({ type: "game-start", gameId: game.id, title: game.title, step: "convert" });
-
-          // ── STEP 1: CONVERT ──
-          const filesToTransfer: { name: string; localPath: string }[] = [];
-
-          const { conversions, outputExt, plannedNames } = plans.get(game.id)!;
-          if (plannedNames.length === 0) throw new Error("No files to transfer");
-          for (const name of plannedNames) assertUploadFilename(name);
-          if (collidingGames.has(game.id)) throw new Error("Colliding transfer filenames");
-          if (game.type === "multi-disc") assertUploadFilename(`${game.title}.m3u`);
-
-          // Convert first. Only successful conversions consume their actual inputs.
-          const consumed = new Set<string>();
-          for (const file of conversions) {
-            const ext = path.extname(file.name).toLowerCase();
-            const outputName = path.parse(file.name).name + outputExt;
-            const outputPath = path.join(path.dirname(file.path), outputName);
-            send({ type: "convert-progress", gameId: game.id, file: file.name, percent: 0 });
-            await convert({
-              inputPath: file.path,
-              outputPath,
-              format: game.conversion as "chd" | "rvz",
-              chdType: platform === "ps2" && ext === ".iso" ? "dvd" : "cd",
-              onProgress: (percent) => send({ type: "convert-progress", gameId: game.id, file: file.name, percent: Math.round(percent) }),
-            });
-            consumed.add(file.path);
-            for (const input of descriptorInputs.get(file.path) ?? []) consumed.add(input);
-            filesToTransfer.push({ name: outputName, localPath: outputPath });
-            send({ type: "convert-done", gameId: game.id, file: file.name });
+    start(controller) {
+      completion = (async () => {
+        const send = (data: Record<string, unknown>) => {
+          if (cancelled) return;
+          try {
+            controller.enqueue(
+              new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`)
+            );
+          } catch {
+            pipelineAbort.abort(new AdmissionError(409, "Upload stream closed"));
           }
-          filesToTransfer.push(...game.files.filter((file) => !consumed.has(file.path)).map((file) => ({ name: file.name, localPath: file.path })));
-          if (filesToTransfer.length === 0) throw new Error("No files to transfer");
+        };
 
-          // ── STEP 2: TRANSFER ──
-          send({ type: "game-step", gameId: game.id, step: "transfer" });
+        send({ type: "start", totalGames: selectedGames.length });
 
-          const isMultiDisc = game.type === "multi-disc";
-          const remoteDirPath = getTransferPath(platform, isMultiDisc);
+        let succeeded = 0;
+        let failed = 0;
 
-          const transferJobs = filesToTransfer.map((f) => ({
-            localPath: f.localPath,
-            remotePath: remoteDirPath + f.name,
-            onProgress: (bytes: number, total: number) => {
-              if (total > 0) {
-                send({
-                  type: "transfer-progress",
-                  gameId: game.id,
-                  percent: Math.round((bytes / total) * 100),
-                  bytes,
-                  total,
-                });
-              }
-            },
-          }));
+        for (const game of selectedGames) {
+          if (pipelineAbort.signal.aborted) break;
+          try {
+            send({ type: "game-start", gameId: game.id, title: game.title, step: "convert" });
 
-          await transferFiles(
-            targetDevice.host,
-            targetDevice.user,
-            targetDevice.password,
-            transferJobs,
-            targetDevice.port
-          );
+            // ── STEP 1: CONVERT ──
+            const filesToTransfer: { name: string; localPath: string }[] = [];
 
-          // Multi-disc: generate and transfer M3U
-          if (isMultiDisc) {
-            const discFilenames = filesToTransfer.map((f) => f.name);
-            const m3uContent = generateM3u(game.title, platform, discFilenames);
-            const m3uFilename = `${game.title}.m3u`;
-            await transferM3u(
+            const { conversions, outputExt, plannedNames } = plans.get(game.id)!;
+            if (plannedNames.length === 0) throw new Error("No files to transfer");
+            for (const name of plannedNames) assertUploadFilename(name);
+            if (collidingGames.has(game.id)) throw new Error("Colliding transfer filenames");
+            if (game.type === "multi-disc") assertUploadFilename(`${game.title}.m3u`);
+
+            // Convert first. Only successful conversions consume their actual inputs.
+            const consumed = new Set<string>();
+            for (const file of conversions) {
+              if (pipelineAbort.signal.aborted) throw new AdmissionError(409, "Upload cancelled");
+              const ext = path.extname(file.name).toLowerCase();
+              const outputName = path.parse(file.name).name + outputExt;
+              const outputPath = path.join(path.dirname(file.path), outputName);
+              send({ type: "convert-progress", gameId: game.id, file: file.name, percent: 0 });
+              await convert({
+                inputPath: file.path,
+                outputPath,
+                format: game.conversion as "chd" | "rvz",
+                chdType: platform === "ps2" && ext === ".iso" ? "dvd" : "cd",
+                onProgress: (percent) => send({ type: "convert-progress", gameId: game.id, file: file.name, percent: Math.round(percent) }),
+              });
+              consumed.add(file.path);
+              for (const input of descriptorInputs.get(file.path) ?? []) consumed.add(input);
+              filesToTransfer.push({ name: outputName, localPath: outputPath });
+              send({ type: "convert-done", gameId: game.id, file: file.name });
+            }
+            filesToTransfer.push(...game.files.filter((file) => !consumed.has(file.path)).map((file) => ({ name: file.name, localPath: file.path })));
+            if (filesToTransfer.length === 0) throw new Error("No files to transfer");
+
+            // ── STEP 2: TRANSFER ──
+            if (pipelineAbort.signal.aborted) break;
+            send({ type: "game-step", gameId: game.id, step: "transfer" });
+
+            const isMultiDisc = game.type === "multi-disc";
+            const remoteDirPath = getTransferPath(platform, isMultiDisc);
+
+            const transferJobs = filesToTransfer.map((f) => ({
+              localPath: f.localPath,
+              remotePath: remoteDirPath + f.name,
+              onProgress: (bytes: number, total: number) => {
+                if (total > 0) {
+                  send({
+                    type: "transfer-progress",
+                    gameId: game.id,
+                    percent: Math.round((bytes / total) * 100),
+                    bytes,
+                    total,
+                  });
+                }
+              },
+            }));
+
+            await transferFiles(
               targetDevice.host,
               targetDevice.user,
               targetDevice.password,
-              m3uFilename,
-              m3uContent,
-              platform,
+              transferJobs,
               targetDevice.port
             );
-          }
+            if (pipelineAbort.signal.aborted) break;
 
-          // ── STEP 3: SCAN (DB upsert) ──
-          send({ type: "game-step", gameId: game.id, step: "scan" });
-
-          // For DB tracking, use the first transferred file name (or M3U for multi-disc)
-          const transferredFileName = isMultiDisc
-            ? `${game.title}.m3u`
-            : filesToTransfer[0].name;
-
-          const dbGame = await prisma.game.upsert({
-            where: {
-              originalFile_platform: {
-                originalFile: transferredFileName,
+            // Multi-disc: generate and transfer M3U
+            if (isMultiDisc) {
+              const discFilenames = filesToTransfer.map((f) => f.name);
+              const m3uContent = generateM3u(game.title, platform, discFilenames);
+              const m3uFilename = `${game.title}.m3u`;
+              await transferM3u(
+                targetDevice.host,
+                targetDevice.user,
+                targetDevice.password,
+                m3uFilename,
+                m3uContent,
                 platform,
-              },
-            },
-            update: { title: game.title },
-            create: {
-              title: game.title,
-              originalFile: transferredFileName,
-              platform,
-              platformLabel,
-              source: "rom",
-            },
-          });
-
-          // Link game to target device, recording the transferred filename
-          await prisma.gameDevice.upsert({
-            where: { gameId_deviceId: { gameId: dbGame.id, deviceId: targetDevice.id } },
-            update: { originalFile: transferredFileName },
-            create: { gameId: dbGame.id, deviceId: targetDevice.id, originalFile: transferredFileName },
-          });
-
-          // Update platform counts
-          const count = await prisma.game.count({ where: { platform } });
-          await prisma.platform.upsert({
-            where: { id: platform },
-            update: { gameCount: count },
-            create: {
-              id: platform,
-              label: platformLabel,
-              icon: platDef?.icon || "🎮",
-              color: platDef?.color || "#6366f1",
-              gameCount: count,
-              sortOrder: platDef?.sortOrder || 99,
-            },
-          });
-
-          // ── STEP 4: ENRICH (non-fatal) ──
-          let coverUrl: string | null = null;
-
-          if (settings?.igdbClientId && settings?.igdbClientSecret) {
-            send({ type: "game-step", gameId: game.id, step: "enrich" });
-
-            try {
-              const igdbData = await searchIgdb(
-                game.title,
-                platform,
-                settings.igdbClientId,
-                settings.igdbClientSecret
-              );
-
-              if (igdbData) {
-                coverUrl = igdbData.coverUrl;
-                if (!coverUrl && settings.steamgriddbKey) {
-                  coverUrl = await searchSteamGridDb(game.title, settings.steamgriddbKey);
-                }
-
-                await prisma.game.update({
-                  where: { id: dbGame.id },
-                  data: {
-                    igdbId: igdbData.igdbId,
-                    coverUrl,
-                    igdbScore: igdbData.igdbScore,
-                    metacriticScore: igdbData.metacriticScore,
-                    genres: JSON.stringify(igdbData.genres),
-                    developer: igdbData.developer,
-                    publisher: igdbData.publisher,
-                    releaseDate: igdbData.releaseDate,
-                    summary: igdbData.summary,
-                    screenshotUrls: JSON.stringify(igdbData.screenshotUrls),
-                    videoIds: JSON.stringify(igdbData.videoIds),
-                    artworkUrls: JSON.stringify(igdbData.artworkUrls),
-                    franchise: igdbData.franchise,
-                    themes: JSON.stringify(igdbData.themes),
-                  },
-                });
-              }
-            } catch (enrichErr) {
-              console.warn(
-                `Enrichment failed for "${game.title}":`,
-                enrichErr instanceof Error ? enrichErr.message : enrichErr
+                targetDevice.port
               );
             }
+
+            // ── STEP 3: SCAN (DB upsert) ──
+            if (pipelineAbort.signal.aborted) break;
+            send({ type: "game-step", gameId: game.id, step: "scan" });
+
+            // For DB tracking, use the first transferred file name (or M3U for multi-disc)
+            const transferredFileName = isMultiDisc
+              ? `${game.title}.m3u`
+              : filesToTransfer[0].name;
+
+            const dbGame = await prisma.game.upsert({
+              where: {
+                originalFile_platform: {
+                  originalFile: transferredFileName,
+                  platform,
+                },
+              },
+              update: { title: game.title },
+              create: {
+                title: game.title,
+                originalFile: transferredFileName,
+                platform,
+                platformLabel,
+                source: "rom",
+              },
+            });
+
+            // Link game to target device, recording the transferred filename
+            if (pipelineAbort.signal.aborted) break;
+            await prisma.gameDevice.upsert({
+              where: { gameId_deviceId: { gameId: dbGame.id, deviceId: targetDevice.id } },
+              update: { originalFile: transferredFileName },
+              create: { gameId: dbGame.id, deviceId: targetDevice.id, originalFile: transferredFileName },
+            });
+
+            // Update platform counts
+            const count = await prisma.game.count({ where: { platform } });
+            if (pipelineAbort.signal.aborted) break;
+            await prisma.platform.upsert({
+              where: { id: platform },
+              update: { gameCount: count },
+              create: {
+                id: platform,
+                label: platformLabel,
+                icon: platDef?.icon || "🎮",
+                color: platDef?.color || "#6366f1",
+                gameCount: count,
+                sortOrder: platDef?.sortOrder || 99,
+              },
+            });
+
+            // ── STEP 4: ENRICH (non-fatal) ──
+            let coverUrl: string | null = null;
+
+            if (!pipelineAbort.signal.aborted && settings?.igdbClientId && settings?.igdbClientSecret) {
+              send({ type: "game-step", gameId: game.id, step: "enrich" });
+
+              let enrichmentJob: EnrichmentJob | undefined;
+              try {
+                enrichmentJob = await acquireEnrichment(metadataRequest);
+                const activeJob = enrichmentJob;
+                await activeJob.run(async () => {
+                  await activeJob.assertActive();
+                  const igdbData = await searchIgdb(
+                    game.title,
+                    platform,
+                    settings.igdbClientId,
+                    settings.igdbClientSecret
+                  );
+
+                  if (igdbData) {
+                    coverUrl = igdbData.coverUrl;
+                    if (!coverUrl && settings.steamgriddbKey) {
+                      coverUrl = await searchSteamGridDb(game.title, settings.steamgriddbKey);
+                    }
+
+                    await activeJob.assertActive();
+                    await prisma.game.update({
+                      where: { id: dbGame.id },
+                      data: {
+                        igdbId: igdbData.igdbId,
+                        coverUrl,
+                        igdbScore: igdbData.igdbScore,
+                        metacriticScore: igdbData.metacriticScore,
+                        genres: JSON.stringify(igdbData.genres),
+                        developer: igdbData.developer,
+                        publisher: igdbData.publisher,
+                        releaseDate: igdbData.releaseDate,
+                        summary: igdbData.summary,
+                        screenshotUrls: JSON.stringify(igdbData.screenshotUrls),
+                        videoIds: JSON.stringify(igdbData.videoIds),
+                        artworkUrls: JSON.stringify(igdbData.artworkUrls),
+                        franchise: igdbData.franchise,
+                        themes: JSON.stringify(igdbData.themes),
+                      },
+                    });
+                  }
+                });
+              } catch (enrichErr) {
+                send({ type: enrichErr instanceof AdmissionError ? "enrich-skipped" : "enrich-error",
+                  gameId: game.id, reason: enrichErr instanceof Error ? enrichErr.message : "Enrichment failed",
+                  ...(enrichErr instanceof AdmissionError ? { status: enrichErr.status } : {}) });
+                console.warn(`Optional enrichment unavailable for game ${dbGame.id}`);
+              } finally {
+                try { await enrichmentJob?.close(); } catch {
+                  send({ type: "enrich-error", gameId: game.id, reason: "Admission store unavailable", status: 503 });
+                }
+              }
+            }
+
+            send({
+              type: "game-done",
+              gameId: game.id,
+              dbId: dbGame.id,
+              title: game.title,
+              coverUrl: coverUrl || null,
+            });
+            succeeded++;
+          } catch (err) {
+            if (pipelineAbort.signal.aborted) break;
+            console.error(
+              `Pipeline failed for "${game.title}":`,
+              err instanceof Error ? err.message : err
+            );
+            send({
+              type: "game-error",
+              gameId: game.id,
+              title: game.title,
+              error: err instanceof Error ? err.message : "Unknown error",
+            });
+            failed++;
           }
-
-          send({
-            type: "game-done",
-            gameId: game.id,
-            dbId: dbGame.id,
-            title: game.title,
-            coverUrl: coverUrl || null,
-          });
-          succeeded++;
-        } catch (err) {
-          console.error(
-            `Pipeline failed for "${game.title}":`,
-            err instanceof Error ? err.message : err
-          );
-          send({
-            type: "game-error",
-            gameId: game.id,
-            title: game.title,
-            error: err instanceof Error ? err.message : "Unknown error",
-          });
-          failed++;
         }
-      }
 
-      // Cleanup session directory
-      try {
-        await rm(sessionDir, { recursive: true, force: true });
-      } catch (cleanupErr) {
-        console.warn("Failed to clean up session dir:", cleanupErr);
-      }
+        // Cleanup session directory
+        try {
+          await rm(sessionDir, { recursive: true, force: true });
+        } catch (cleanupErr) {
+          console.warn("Failed to clean up session dir:", cleanupErr);
+        }
 
-      send({
-        type: "done",
-        processed: selectedGames.length,
-        succeeded,
-        failed,
+        send({
+          type: "done",
+          processed: succeeded + failed,
+          succeeded,
+          failed,
+          stopped: pipelineAbort.signal.aborted,
+        });
+      })().catch((error) => {
+        pipelineAbort.abort(error);
+        if (!cancelled) controller.error(error);
+      }).finally(() => {
+        request.signal.removeEventListener("abort", abortFromRequest);
+        if (!cancelled) { try { controller.close(); } catch { /* Already errored */ } }
       });
-
-      controller.close();
+    },
+    async cancel() {
+      cancelled = true;
+      pipelineAbort.abort(new AdmissionError(409, "Upload cancelled"));
+      await completion;
     },
   });
 

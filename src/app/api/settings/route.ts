@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { encrypt } from "@/lib/encryption";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
 export async function GET(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
@@ -19,7 +22,7 @@ export async function GET(request: NextRequest) {
     openrouterKey: settings.openrouterKey ? "********" : "",
     steamApiKey: settings.steamApiKey ? "********" : "",
     steamgriddbKey: settings.steamgriddbKey ? "********" : "",
-  });
+  }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(request: NextRequest) {

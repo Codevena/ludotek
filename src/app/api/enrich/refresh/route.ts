@@ -4,169 +4,100 @@ import { getDecryptedSettings } from "@/lib/encryption";
 import { fetchIgdbById } from "@/lib/igdb";
 import { requireAuth } from "@/lib/auth";
 import { cacheGameImages } from "@/lib/image-cache";
+import { acquireEnrichment, admissionResponse, createEnrichmentStream, AdmissionError, type EnrichmentJob } from "@/lib/job-admission";
+import { parseEnrichmentCursor, enrichmentBatchWhere, enrichmentNextCursor } from "@/lib/enrichment-batches";
 
-const DELAY_MS = parseInt(process.env.ENRICH_DELAY_MS || "500", 10) || 500;
-
-function safeJsonParse(str: string | null): unknown[] {
-  if (!str) return [];
-  try {
-    const parsed = JSON.parse(str);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function safeJsonParse(value: string | null): unknown[] {
+  try { const parsed = JSON.parse(value || "[]"); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
 }
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
-
-  const settings = await getDecryptedSettings();
-  if (!settings?.igdbClientId || !settings?.igdbClientSecret) {
-    return NextResponse.json({ error: "IGDB credentials not configured" }, { status: 400 });
-  }
-
-  // Find all games that have an igdbId
-  const allGamesWithIgdb = await prisma.game.findMany({
-    where: { igdbId: { not: null } },
-  });
-
-  // Filter to games with at least one missing field
-  const games = allGamesWithIgdb.filter((game) => {
-    if (game.metacriticScore == null) return true;
-    if (safeJsonParse(game.videoIds).length === 0) return true;
-    if (safeJsonParse(game.artworkUrls).length === 0) return true;
-    if (safeJsonParse(game.themes).length === 0) return true;
-    if (safeJsonParse(game.screenshotUrls).length === 0) return true;
-    return false;
-  });
-
-  if (games.length === 0) {
-    return NextResponse.json({ success: true, processed: 0, enriched: 0, failed: 0, remaining: 0 });
-  }
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (data: Record<string, unknown>) => {
-        try {
-          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch {
-          // Stream closed
-        }
-      };
-
-      send({ type: "start", total: games.length, totalRemaining: games.length });
-
+  const afterId = parseEnrichmentCursor(request);
+  if (afterId === null) return NextResponse.json({ error: "Invalid afterId cursor" }, { status: 400 });
+  let job: EnrichmentJob | undefined;
+  try {
+    job = await acquireEnrichment(request);
+    const settings = await getDecryptedSettings();
+    if (!settings?.igdbClientId || !settings?.igdbClientSecret) {
+      await job.close();
+      return NextResponse.json({ error: "IGDB credentials not configured" }, { status: 400 });
+    }
+    const where = { igdbId: { not: null }, OR: [
+      { metacriticScore: null }, { franchise: null }, { franchise: "" },
+      { videoIds: null }, { videoIds: "[]" }, { videoIds: "" },
+      { artworkUrls: null }, { artworkUrls: "[]" }, { artworkUrls: "" },
+      { themes: null }, { themes: "[]" }, { themes: "" },
+      { screenshotUrls: null }, { screenshotUrls: "[]" }, { screenshotUrls: "" },
+    ] };
+    const batchWhere = enrichmentBatchWhere(where, afterId);
+    const [games, totalRemaining] = await Promise.all([
+      prisma.game.findMany({ where: batchWhere, orderBy: { id: "asc" }, take: 500 }),
+      prisma.game.count({ where: batchWhere }),
+    ]);
+    const nextCursor = enrichmentNextCursor(games, afterId);
+    if (!games.length) {
+      const remaining = await prisma.game.count({ where });
+      await job.close();
+      return NextResponse.json({ success: true, processed: 0, enriched: 0, failed: 0, remaining, pending: 0, nextCursor, hasMore: false });
+    }
+    const activeJob = job;
+    return createEnrichmentStream(activeJob, async (send) => {
+      send({ type: "start", total: games.length, totalRemaining });
       let enriched = 0;
       let failed = 0;
-
-      for (let i = 0; i < games.length; i++) {
-        if (request.signal.aborted) break;
-
-        const game = games[i];
-        send({
-          type: "progress",
-          current: i + 1,
-          total: games.length,
-          title: game.title,
-          platform: game.platformLabel,
-        });
-
+      let processed = 0;
+      let stopped = false;
+      for (const game of games) {
+        if (activeJob.signal.aborted) { stopped = true; break; }
+        send({ type: "progress", current: processed + 1, total: games.length, title: game.title, platform: game.platformLabel });
         try {
-          const igdbData = await fetchIgdbById(
-            game.igdbId!,
-            settings.igdbClientId,
-            settings.igdbClientSecret
-          );
-
-          if (igdbData) {
-            // Only update fields that are currently NULL or empty
-            const fieldsUpdated: string[] = [];
-            const updateData: Record<string, unknown> = {};
-
-            if (game.metacriticScore == null && igdbData.metacriticScore != null) {
-              updateData.metacriticScore = igdbData.metacriticScore;
-              fieldsUpdated.push("metacriticScore");
+          await activeJob.assertActive();
+          const data = await fetchIgdbById(game.igdbId!, settings.igdbClientId, settings.igdbClientSecret);
+          if (data) {
+            const update: Record<string, unknown> = {};
+            if (game.metacriticScore == null && data.metacriticScore != null) update.metacriticScore = data.metacriticScore;
+            if (!game.franchise && data.franchise) update.franchise = data.franchise;
+            for (const field of ["videoIds", "artworkUrls", "themes", "screenshotUrls"] as const) {
+              if (!safeJsonParse(game[field]).length && data[field].length) update[field] = JSON.stringify(data[field]);
             }
-            if (!game.franchise && igdbData.franchise) {
-              updateData.franchise = igdbData.franchise;
-              fieldsUpdated.push("franchise");
-            }
-            if (safeJsonParse(game.videoIds).length === 0 && igdbData.videoIds.length > 0) {
-              updateData.videoIds = JSON.stringify(igdbData.videoIds);
-              fieldsUpdated.push("videoIds");
-            }
-            if (safeJsonParse(game.artworkUrls).length === 0 && igdbData.artworkUrls.length > 0) {
-              updateData.artworkUrls = JSON.stringify(igdbData.artworkUrls);
-              fieldsUpdated.push("artworkUrls");
-            }
-            if (safeJsonParse(game.themes).length === 0 && igdbData.themes.length > 0) {
-              updateData.themes = JSON.stringify(igdbData.themes);
-              fieldsUpdated.push("themes");
-            }
-            if (safeJsonParse(game.screenshotUrls).length === 0 && igdbData.screenshotUrls.length > 0) {
-              updateData.screenshotUrls = JSON.stringify(igdbData.screenshotUrls);
-              fieldsUpdated.push("screenshotUrls");
-            }
-
-            if (fieldsUpdated.length > 0) {
-              await prisma.game.update({
-                where: { id: game.id },
-                data: updateData,
-              });
-              // Cache images locally
-              try {
-                await cacheGameImages(game.id);
-              } catch (cacheErr) {
-                console.warn(`Image caching failed for "${game.title}":`, cacheErr);
-              }
-
+            if (Object.keys(update).length) {
+              await activeJob.assertActive();
+              await prisma.game.update({ where: { id: game.id }, data: update });
               enriched++;
-              send({ type: "enriched", title: game.title, current: i + 1, fieldsUpdated });
-            } else {
-              send({ type: "skipped", title: game.title, current: i + 1 });
-            }
+              try { await cacheGameImages(game.id); } catch (error) {
+                if (error instanceof AdmissionError || activeJob.signal.aborted) throw error;
+                console.warn(`Image caching failed for game ${game.id}`);
+              }
+              send({ type: "enriched", title: game.title, current: processed + 1, fieldsUpdated: Object.keys(update) });
+            } else send({ type: "skipped", title: game.title, current: processed + 1 });
           } else {
             failed++;
-            send({ type: "missed", title: game.title, current: i + 1 });
+            send({ type: "missed", title: game.title, current: processed + 1 });
           }
-
-          await new Promise((r) => setTimeout(r, DELAY_MS));
-        } catch (err) {
-          console.warn(`Failed to re-enrich "${game.title}":`, err);
+          processed++;
+        } catch (error) {
+          processed++;
+          if (error instanceof AdmissionError || activeJob.signal.aborted) {
+            stopped = true;
+            send({ type: "stopped", reason: error instanceof Error ? error.message : "Job cancelled", processed });
+            break;
+          }
           failed++;
-          send({ type: "error", title: game.title, error: err instanceof Error ? err.message : "Unknown", current: i + 1 });
-          await new Promise((r) => setTimeout(r, 2000));
+          console.warn(`Failed to refresh game ${game.id}`);
+          send({ type: "error", title: game.title, error: error instanceof Error ? error.message : "Unknown", current: processed });
         }
       }
-
-      const remaining = await prisma.game.count({
-        where: {
-          igdbId: { not: null },
-          OR: [
-            { metacriticScore: null },
-            { videoIds: null },
-            { videoIds: "[]" },
-            { artworkUrls: null },
-            { artworkUrls: "[]" },
-            { themes: null },
-            { themes: "[]" },
-            { screenshotUrls: null },
-            { screenshotUrls: "[]" },
-          ],
-        },
-      });
-
-      send({ type: "done", processed: games.length, enriched, failed, remaining });
-      controller.close();
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+      const [remaining, pending] = await Promise.all([
+        prisma.game.count({ where }), prisma.game.count({ where: enrichmentBatchWhere(where, nextCursor) }),
+      ]);
+      send({ type: "done", processed, enriched, failed, remaining, pending, nextCursor, hasMore: !stopped && pending > 0, stopped });
+    });
+  } catch (error) {
+    try { await job?.close(); } catch (closeError) { return admissionResponse(closeError); }
+    if (error instanceof AdmissionError) return admissionResponse(error);
+    console.warn("Could not start metadata refresh");
+    return NextResponse.json({ error: "Could not start metadata refresh" }, { status: 503 });
+  }
 }

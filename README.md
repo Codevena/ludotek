@@ -94,7 +94,7 @@ System-aware theme with manual toggle (sun/moon icon in the header). Warm Stone 
 
 ### Security
 
-Device passwords and API keys are encrypted at rest with **AES-256-GCM**. Keys auto-generated on first run, configurable via `ENCRYPTION_KEY` env var. Optional admin token authentication.
+Device passwords and API keys are encrypted at rest with **AES-256-GCM**. Keys auto-generated on first run, configurable via `ENCRYPTION_KEY` env var. Production and LAN use require an admin token. Tokenless development is restricted to the explicit loopback launcher.
 
 ### Docker Ready
 
@@ -102,14 +102,24 @@ One-command deployment with persistent volumes for database and image cache.
 
 ## Quick Start
 
-### Docker (recommended)
+### Docker
+
+Ludotek is a private, locally hosted Open Source app. Build an image from this repository and use a private env file containing a random `ADMIN_TOKEN` and `APP_ORIGIN=http://localhost:3000`. Keep that file outside version control. For example:
 
 ```bash
-curl -O https://raw.githubusercontent.com/Codevena/ludotek/refs/heads/main/docker-compose.yml
-docker compose up -d
+docker build -t ludotek:local .
+docker run --rm --name ludotek --env-file ./ludotek.env \
+  -p 127.0.0.1:3000:3000 \
+  --mount type=volume,source=ludotek-db,target=/app/db \
+  --mount type=volume,source=ludotek-data,target=/app/data \
+  ludotek:local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — the setup wizard will guide you through configuration.
+Open [http://localhost:3000](http://localhost:3000) and sign in with the token before setup. The runner uses UID/GID 1000 rather than root. Existing bind mounts must be writable by that user; review and back up their contents before changing permissions. Persist both volumes, including `data/.encryption-key`, to retain the database and decrypt stored credentials. Container startup applies the additive database migrations.
+
+Existing installations must follow [the database and volume upgrade guide](docs/upgrading-local.md) before changing images. A populated database previously initialized with `db push` needs a verified baseline; migration errors stop startup and never trigger a database reset.
+
+For your own LAN, publish to a specific private host address, keep `ADMIN_TOKEN` set and configure `APP_ORIGIN` to the exact browser origin (scheme and port included). HTTPS origins set a Secure cookie; explicitly configured HTTP LAN origins use an HttpOnly, SameSite=Strict cookie without Secure. Do not expose this installation directly to the public Internet. A separate public hosting/proxy contract is required for that use.
 
 ### Manual
 
@@ -118,18 +128,42 @@ git clone https://github.com/Codevena/ludotek.git
 cd ludotek
 pnpm install
 cp .env.example .env
-npx prisma db push
+pnpm exec prisma migrate deploy
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). `pnpm dev` enforces a loopback bind when no token is configured, validates the browser authority, and sets the actual port's origin. For another local port, use `pnpm dev --port 3100`. Direct tokenless `next dev` calls fail closed. Production (`pnpm build` followed by `pnpm start`) requires `ADMIN_TOKEN`.
+
+To use your own LAN, set `ADMIN_TOKEN`, explicitly set `APP_ORIGIN` (for example `http://192.168.1.20:3000`) and start with `pnpm dev --hostname 192.168.1.20` or the corresponding `pnpm start` command. Bearer API clients may call protected mutations without an Origin; browser cookie mutations require the configured Origin. Forwarded headers never authorize a caller.
+
+Local filesystem devices also require an operator-configured `LOCAL_FILES_ROOT=/absolute/path/to/roms`, or `LOCAL_FILES_ROOTS='["/absolute/path/one","/absolute/path/two"]'`. The browser offers those roots as a virtual selection. The OS root, app internals, database and encryption key cannot be configured as device roots; file operations must stay within a configured root.
+
+### Metadata jobs and provider limits
+
+Bulk, individual, AI, refresh and upload metadata jobs share one SQLite lease. A competing enrichment returns `409` with `Retry-After`; optional upload enrichment is visibly skipped while a successful transfer is preserved. Each batch selects at most 500 games. The UI drains each batch and advances its cursor automatically (at most 100 batches per action), including past entries whose metadata is unavailable. API callers continue with `?afterId=<nextCursor>` only when `hasMore` is true; `pending` counts eligible later IDs and `remaining` counts globally unfinished metadata. Stops preserve actual progress and display their reason. `AI_CONCURRENCY` accepts 1–4 and runs at most two simultaneous AI calls.
+
+Every actual HTTP attempt, including a retry, reserves these persistent operator limits:
+
+| Provider | Rolling short rate | Per hour | Per day | Concurrent requests |
+|----------|--------------------|----------|---------|---------------------|
+| IGDB | 4/second | 5,000 | 30,000 | 4 |
+| Twitch token | 10/minute | 100 | 500 | 4 |
+| SteamGridDB | 4/second | 2,000 | 10,000 | 4 |
+| OpenRouter | 20/minute | 500 | 2,000 | 2 |
+| Image downloads | 20/second | 30,000 | 100,000 | 4 |
+
+Short pressure waits at most 65 seconds with eight waiting requests per provider. Exhausted hourly/daily budgets stop remaining work before dispatch. Requests, including their response bodies, time out after 60 seconds; responses are limited to 4 MiB, images to 20 MiB. These are request caps, not a guaranteed monetary ceiling. Configure spending limits with the provider as well.
+
+Coordination requires all local processes to use the **same SQLite file**. Separate database copies do not provide a distributed lock or shared quota. Store failures reject new work with `503`; no memory-only fallback starts provider calls. Leases expire after crashes, while reserved provider counts survive restarts.
 
 ## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_URL` | `file:./dev.db` | SQLite database path |
-| `ADMIN_TOKEN` | _(empty)_ | Optional auth token. Empty = no authentication. |
+| `ADMIN_TOKEN` | _(empty)_ | Required in production/LAN; tokenless use only through loopback `pnpm dev`. |
+| `APP_ORIGIN` | `http://localhost:3000` | Full trusted browser origin; the local launcher sets its actual port. Explicit value required for LAN. |
+| `LOCAL_FILES_ROOT` / `LOCAL_FILES_ROOTS` | _(empty)_ | One absolute local device root, or a JSON array of roots. Local filesystem access is disabled when unset. |
 | `ENCRYPTION_KEY` | _(auto-generated)_ | AES-256 key for encrypting secrets. Auto-generated to `data/.encryption-key` if not set. |
 | `OPENROUTER_MODEL` | `google/gemini-2.5-flash` | AI model for Discover, Fun Facts & Stories |
 

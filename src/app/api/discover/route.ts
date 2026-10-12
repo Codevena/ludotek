@@ -9,6 +9,8 @@ import {
 } from "@/lib/recommender";
 import { searchIgdb } from "@/lib/igdb";
 import { PLATFORM_CONFIG } from "@/lib/platforms";
+import { acquireScopedJob, admissionResponse, createEnrichmentStream, AdmissionError, type EnrichmentJob } from "@/lib/job-admission";
+import { providerFetch } from "@/lib/provider-budget";
 
 function safeJsonParse(str: string | null): unknown[] {
   if (!str) return [];
@@ -25,7 +27,7 @@ async function callOpenRouter(
   apiKey: string,
   model: string
 ): Promise<string> {
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const res = await providerFetch("openrouter", "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -33,7 +35,7 @@ async function callOpenRouter(
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: prompt.slice(0, 64000) }],
       max_tokens: 2000,
       temperature: 0.8,
     }),
@@ -53,192 +55,201 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const platforms = body.platforms as string[] | undefined;
-  const genres = body.genres as string[] | undefined;
-  const themes = body.themes as string[] | undefined;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const validStrings = (value: unknown, limit = 20): value is string[] => Array.isArray(value) && value.length <= limit && value.every((item) => typeof item === "string" && item.length > 0 && item.length <= 80);
+  if (!validStrings(body.platforms, PLATFORM_CONFIG.length) || body.platforms.some((id) => !PLATFORM_CONFIG.some((platform) => platform.id === id)) ||
+      (body.genres !== undefined && !validStrings(body.genres)) || (body.themes !== undefined && !validStrings(body.themes)) ||
+      (body.tab !== undefined && body.tab !== "library" && body.tab !== "wishlist")) {
+    return NextResponse.json({ error: "Invalid recommendation filters" }, { status: 400 });
+  }
+  const safePlatforms = Array.from(new Set(body.platforms));
+  const safeGenres = (body.genres ?? []) as string[];
+  const safeThemes = (body.themes ?? []) as string[];
   const tab = body.tab as "library" | "wishlist" | undefined;
 
-  // Load settings
-  const settings = await getDecryptedSettings();
-  if (!settings?.openrouterKey) {
-    return NextResponse.json(
-      { error: "OpenRouter API key not configured" },
-      { status: 400 }
-    );
-  }
-
-  const safePlatforms = platforms || [];
-  const safeGenres = genres || [];
-  const safeThemes = themes || [];
-
   if (!safePlatforms.length || (!safeGenres.length && !safeThemes.length)) {
-    return NextResponse.json(
-      { error: "Platforms and at least one genre or theme are required" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Platforms and at least one genre or theme are required" }, { status: 400 });
   }
 
-  const model =
-    process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
-  const language = settings.aiLanguage || "en";
+  // Load settings
+  let job: EnrichmentJob | undefined;
+  try {
+    job = await acquireScopedJob("discover", request);
+    const settings = await getDecryptedSettings();
+    if (!settings?.openrouterKey) {
+      await job.close();
+      return NextResponse.json(
+        { error: "OpenRouter API key not configured" },
+        { status: 400 }
+      );
+    }
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (data: Record<string, unknown>) => {
+    const model =
+      process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
+    const language = settings.aiLanguage || "en";
+
+    const activeJob = job;
+    return createEnrichmentStream(activeJob, async (send) => {
         try {
-          controller.enqueue(
-            new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`)
-          );
-        } catch {
-          // controller may already be closed
-        }
-      };
-
-      try {
-        // Step 1: Load games from DB for selected platforms.
-        // Cap the set so very large libraries don't overflow the LLM prompt
-        // (silent output truncation → empty/partial recommendations). Prefer
-        // higher-rated titles, which make the better recommendation candidates.
-        const games = await prisma.game.findMany({
-          where: { platform: { in: safePlatforms } },
-          orderBy: { igdbScore: "desc" },
-          take: 500,
-        });
-
-        if (games.length === 0) {
-          send({
-            type: "error",
-            message:
-              "No games found for the selected platforms — scan and enrich your library first.",
+          await activeJob.assertActive();
+          // Step 1: Load games from DB for selected platforms.
+          // Cap the set so very large libraries don't overflow the LLM prompt
+          // (silent output truncation → empty/partial recommendations). Prefer
+          // higher-rated titles, which make the better recommendation candidates.
+          const games = await prisma.game.findMany({
+            where: { platform: { in: safePlatforms } },
+            orderBy: { igdbScore: "desc" },
+            take: 500,
           });
-          return;
-        }
 
-        // --- LIBRARY TAB ---
-        send({
-          type: "generating",
-          tab: "library",
-          message: "Analysiere deine Library...",
-        });
-
-        const gameData = games.map((g) => ({
-          title: g.title,
-          platform: g.platform,
-          platformLabel: g.platformLabel,
-          genres: safeJsonParse(g.genres) as string[],
-          themes: safeJsonParse(g.themes) as string[],
-          igdbScore: g.igdbScore,
-        }));
-
-        const libraryPrompt = buildLibraryPrompt(gameData, safeGenres, safeThemes, language);
-        const aiResponse = await callOpenRouter(
-          libraryPrompt,
-          settings.openrouterKey,
-          model
-        );
-        const recommendations = parseRecommendations(aiResponse);
-
-        // Enrich library recommendations with DB data (fuzzy matching)
-        const enrichedLibrary = [];
-        for (const rec of recommendations) {
-          const recTitle = rec.title.toLowerCase();
-          // Try exact match first, then fuzzy (title contains or starts with)
-          const dbGame = games.find(
-            (g) => g.title.toLowerCase() === recTitle && g.platform === rec.platform
-          ) || games.find(
-            (g) => g.title.toLowerCase() === recTitle
-          ) || (recTitle.length >= 8 ? games.find(
-            (g) => {
-              const dbTitle = g.title.toLowerCase();
-              if (!(dbTitle.includes(recTitle) || recTitle.includes(dbTitle))) return false;
-              // Require substantial overlap so e.g. "Fighter" doesn't match
-              // "Street Fighter II" and pull in the wrong cover/score.
-              const ratio =
-                Math.min(recTitle.length, dbTitle.length) /
-                Math.max(recTitle.length, dbTitle.length);
-              return ratio >= 0.7;
-            }
-          ) : undefined);
-          if (dbGame) {
-            enrichedLibrary.push({
-              ...rec,
-              platformLabel: dbGame.platformLabel,
-              coverUrl: dbGame.coverUrl,
-              igdbScore: dbGame.igdbScore,
-              metacriticScore: dbGame.metacriticScore,
-              genres: safeJsonParse(dbGame.genres),
-              artworkUrl:
-                (safeJsonParse(dbGame.artworkUrls) as string[])[0] || null,
-              videoId:
-                (safeJsonParse(dbGame.videoIds) as string[])[0] || null,
-              summary: dbGame.summary,
-              dbId: dbGame.id,
+          if (games.length === 0) {
+            send({
+              type: "error",
+              message:
+                "No games found for the selected platforms — scan and enrich your library first.",
             });
+            return;
           }
-        }
 
-        send({
-          type: "recommendations",
-          tab: "library",
-          games: enrichedLibrary,
-        });
-
-        // --- WISHLIST TAB ---
-        if (tab === "wishlist") {
+          // --- LIBRARY TAB ---
           send({
             type: "generating",
-            tab: "wishlist",
-            message: "Suche fehlende Perlen via IGDB...",
+            tab: "library",
+            message: "Analysiere deine Library...",
           });
 
-          const existingTitles = games.map((g) => g.title);
-          const wishlistPrompt = buildWishlistPrompt(
-            existingTitles,
-            safePlatforms,
-            safeGenres,
-            safeThemes,
-            language
-          );
-          const wishlistAiResponse = await callOpenRouter(
-            wishlistPrompt,
+          const gameData = games.map((g) => ({
+            title: g.title.slice(0, 200),
+            platform: g.platform,
+            platformLabel: g.platformLabel,
+            genres: safeJsonParse(g.genres) as string[],
+            themes: safeJsonParse(g.themes) as string[],
+            igdbScore: g.igdbScore,
+          }));
+
+          const libraryPrompt = buildLibraryPrompt(gameData, safeGenres, safeThemes, language);
+          const aiResponse = await callOpenRouter(
+            libraryPrompt,
             settings.openrouterKey,
             model
           );
-          const wishlistRecs = parseRecommendations(wishlistAiResponse);
+          const recommendations = parseRecommendations(aiResponse).slice(0, 30);
 
-          const enrichedWishlist = [];
-          for (const rec of wishlistRecs) {
-            // Skip if user already has this game
-            if (
-              games.some(
-                (g) => g.title.toLowerCase() === rec.title.toLowerCase()
+          // Enrich library recommendations with DB data (fuzzy matching)
+          const enrichedLibrary = [];
+          for (const rec of recommendations) {
+            const recTitle = rec.title.toLowerCase();
+            // Try exact match first, then fuzzy (title contains or starts with)
+            const dbGame = games.find(
+              (g) => g.title.toLowerCase() === recTitle && g.platform === rec.platform
+            ) || games.find(
+              (g) => g.title.toLowerCase() === recTitle
+            ) || (recTitle.length >= 8 ? games.find(
+              (g) => {
+                const dbTitle = g.title.toLowerCase();
+                if (!(dbTitle.includes(recTitle) || recTitle.includes(dbTitle))) return false;
+                // Require substantial overlap so e.g. "Fighter" doesn't match
+                // "Street Fighter II" and pull in the wrong cover/score.
+                const ratio =
+                  Math.min(recTitle.length, dbTitle.length) /
+                  Math.max(recTitle.length, dbTitle.length);
+                return ratio >= 0.7;
+              }
+            ) : undefined);
+            if (dbGame) {
+              enrichedLibrary.push({
+                ...rec,
+                platformLabel: dbGame.platformLabel,
+                coverUrl: dbGame.coverUrl,
+                igdbScore: dbGame.igdbScore,
+                metacriticScore: dbGame.metacriticScore,
+                genres: safeJsonParse(dbGame.genres),
+                artworkUrl:
+                  (safeJsonParse(dbGame.artworkUrls) as string[])[0] || null,
+                videoId:
+                  (safeJsonParse(dbGame.videoIds) as string[])[0] || null,
+                summary: dbGame.summary,
+                dbId: dbGame.id,
+              });
+            }
+          }
+
+          send({
+            type: "recommendations",
+            tab: "library",
+            games: enrichedLibrary,
+          });
+
+          // --- WISHLIST TAB ---
+          if (tab === "wishlist") {
+            send({
+              type: "generating",
+              tab: "wishlist",
+              message: "Suche fehlende Perlen via IGDB...",
+            });
+
+            const existingTitles = games.map((g) => g.title.slice(0, 200));
+            const wishlistPrompt = buildWishlistPrompt(
+              existingTitles,
+              safePlatforms,
+              safeGenres,
+              safeThemes,
+              language
+            );
+            const wishlistAiResponse = await callOpenRouter(
+              wishlistPrompt,
+              settings.openrouterKey,
+              model
+            );
+            const wishlistRecs = parseRecommendations(wishlistAiResponse).slice(0, 30);
+
+            const enrichedWishlist = [];
+            for (const rec of wishlistRecs) {
+              await activeJob.assertActive();
+              // Skip if user already has this game
+              if (
+                games.some(
+                  (g) => g.title.toLowerCase() === rec.title.toLowerCase()
+                )
               )
-            )
-              continue;
+                continue;
 
-            try {
-              if (settings.igdbClientId && settings.igdbClientSecret) {
-                const igdbData = await searchIgdb(
-                  rec.title,
-                  rec.platform,
-                  settings.igdbClientId,
-                  settings.igdbClientSecret
-                );
-                enrichedWishlist.push({
-                  ...rec,
-                  platformLabel:
-                    PLATFORM_CONFIG.find((p) => p.id === rec.platform)?.label ||
+              try {
+                if (settings.igdbClientId && settings.igdbClientSecret) {
+                  const igdbData = await searchIgdb(
+                    rec.title.slice(0, 200),
                     rec.platform,
-                  coverUrl: igdbData?.coverUrl || null,
-                  igdbScore: igdbData?.igdbScore || null,
-                  metacriticScore: igdbData?.metacriticScore || null,
-                  genres: igdbData?.genres || [],
-                  summary: igdbData?.summary || null,
-                  artworkUrl: igdbData?.artworkUrls?.[0] || null,
-                  videoId: igdbData?.videoIds?.[0] || null,
-                  dbId: null,
-                });
-              } else {
+                    settings.igdbClientId,
+                    settings.igdbClientSecret
+                  );
+                  enrichedWishlist.push({
+                    ...rec,
+                    platformLabel:
+                      PLATFORM_CONFIG.find((p) => p.id === rec.platform)?.label ||
+                      rec.platform,
+                    coverUrl: igdbData?.coverUrl || null,
+                    igdbScore: igdbData?.igdbScore || null,
+                    metacriticScore: igdbData?.metacriticScore || null,
+                    genres: igdbData?.genres || [],
+                    summary: igdbData?.summary || null,
+                    artworkUrl: igdbData?.artworkUrls?.[0] || null,
+                    videoId: igdbData?.videoIds?.[0] || null,
+                    dbId: null,
+                  });
+                } else {
+                  enrichedWishlist.push({
+                    ...rec,
+                    platformLabel:
+                      PLATFORM_CONFIG.find((p) => p.id === rec.platform)?.label ||
+                      rec.platform,
+                    dbId: null,
+                  });
+                }
+              } catch (err) {
+                if (err instanceof AdmissionError || activeJob.signal.aborted) throw err;
+                console.warn(`IGDB lookup failed for "${rec.title}":`, err);
                 enrichedWishlist.push({
                   ...rec,
                   platformLabel:
@@ -247,46 +258,29 @@ export async function POST(request: NextRequest) {
                   dbId: null,
                 });
               }
-              // IGDB rate limit
-              await new Promise((r) => setTimeout(r, 500));
-            } catch (err) {
-              console.warn(`IGDB lookup failed for "${rec.title}":`, err);
-              enrichedWishlist.push({
-                ...rec,
-                platformLabel:
-                  PLATFORM_CONFIG.find((p) => p.id === rec.platform)?.label ||
-                  rec.platform,
-                dbId: null,
-              });
             }
+
+            send({
+              type: "recommendations",
+              tab: "wishlist",
+              games: enrichedWishlist,
+            });
           }
 
+          send({ type: "done" });
+        } catch (err) {
+          console.warn("Discover stream failed");
           send({
-            type: "recommendations",
-            tab: "wishlist",
-            games: enrichedWishlist,
+            type: err instanceof AdmissionError || activeJob.signal.aborted ? "stopped" : "error",
+            stopped: true,
+            message:
+              err instanceof Error ? err.message : "Unknown error occurred",
           });
         }
-
-        send({ type: "done" });
-      } catch (err) {
-        console.error("Discover stream error:", err);
-        send({
-          type: "error",
-          message:
-            err instanceof Error ? err.message : "Unknown error occurred",
-        });
-      } finally {
-        controller.close();
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+    });
+  } catch (error) {
+    try { await job?.close(); } catch (closeError) { return admissionResponse(closeError); }
+    if (error instanceof AdmissionError) return admissionResponse(error);
+    return NextResponse.json({ error: "Could not start recommendations" }, { status: 503 });
+  }
 }

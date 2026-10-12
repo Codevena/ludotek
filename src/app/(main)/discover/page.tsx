@@ -67,6 +67,7 @@ function DiscoverPageContent() {
     setWishlistGames([]);
     setError(null);
     setLoadingMessage("Analysiere deine Library...");
+    let receivedRecommendations = false;
 
     try {
       const res = await fetch("/api/discover", {
@@ -110,25 +111,33 @@ function DiscoverPageContent() {
               data.tab === "library"
             ) {
               setLibraryGames(data.games);
+              receivedRecommendations = true;
               setPhase("results");
             } else if (
               data.type === "recommendations" &&
               data.tab === "wishlist"
             ) {
               setWishlistGames(data.games);
+              receivedRecommendations = true;
             } else if (data.type === "done") {
               setLoadingMessage("");
-            } else if (data.type === "error") {
-              setError(data.message || data.error || "Generation failed");
+            } else if (data.type === "error" || data.type === "stopped") {
+              setError(data.reason || data.message || data.error || "Generation stopped");
+              setLoadingMessage("");
+              setPhase("results");
             }
           } catch {
             // skip malformed SSE chunks
           }
         }
       }
+      reader.releaseLock();
+      setLoadingMessage("");
+      setPhase("results");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
-      setPhase("wizard");
+      setLoadingMessage("");
+      setPhase(receivedRecommendations ? "results" : "wizard");
     }
   }
 

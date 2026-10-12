@@ -1,0 +1,158 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x", "linux-arm64-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Game {
+  id              Int       @id @default(autoincrement())
+  title           String
+  originalFile    String
+  platform        String
+  platformLabel   String
+  source          String    @default("rom") // "rom" or "steam"
+  coverUrl        String?
+  screenshotUrls  String? // JSON array stored as string
+  igdbId          Int?
+  igdbScore       Float?
+  metacriticScore Int?
+  releaseDate     DateTime?
+  genres          String? // JSON array stored as string
+  developer       String?
+  publisher       String?
+  summary         String?
+  videoIds        String?   // JSON array of YouTube video IDs
+  artworkUrls     String?   // JSON array of artwork image URLs
+  franchise       String?   // Franchise/series name (e.g., "Zelda")
+  themes          String?   // JSON array of theme strings (e.g., "Horror", "Fantasy")
+  aiFunFacts      String?
+  aiStory         String?
+  aiEnrichedAt    DateTime?
+  isFavorite      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  devices         GameDevice[]
+  localCoverPath       String?
+  localScreenshotPaths String?  // JSON array: ["screenshots/123/0.jpg", ...]
+  localArtworkPaths    String?  // JSON array: ["artwork/123/0.jpg", ...]
+  syncQueue       SyncQueue[]
+  cacheEntries    CacheEntry[]
+
+  @@unique([originalFile, platform])
+  @@index([platform])
+  @@index([title])
+}
+
+model WishlistItem {
+  id            Int      @id @default(autoincrement())
+  title         String
+  platform      String
+  platformLabel String
+  coverUrl      String?
+  igdbScore     Float?
+  summary       String?
+  genres        String?  // JSON array
+  screenshots   String?  // JSON array of URLs
+  videoIds      String?  // JSON array of YouTube IDs
+  developer     String?
+  year          Int?
+  createdAt     DateTime @default(now())
+
+  @@unique([title, platform])
+}
+
+model Platform {
+  id        String @id
+  label     String
+  icon      String @default("")
+  color     String @default("#f59e0b")
+  gameCount Int    @default(0)
+  sortOrder Int    @default(0)
+}
+
+model Settings {
+  id               Int    @id @default(1)
+  igdbClientId     String @default("")
+  igdbClientSecret String @default("")
+  steamgriddbKey   String @default("")
+  openrouterKey    String @default("")
+  steamApiKey      String @default("")
+  aiLanguage       String @default("en") // "en" or "de"
+  romSearchUrl     String @default("https://romsfun.com/roms/{platformLabel}/?q={title}")
+  activeDeviceId   Int?
+}
+
+model Device {
+  id        Int      @id @default(autoincrement())
+  name      String
+  type      String   @default("custom")
+  protocol  String   @default("ssh")
+  host      String
+  port      Int      @default(22)
+  ftps      Boolean  @default(false) // explicit FTPS (AUTH TLS) for the ftp protocol
+  user      String
+  password  String
+  scanPaths String   @default("[]")
+  blacklist String   @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  games     GameDevice[]
+  syncQueue SyncQueue[]
+}
+
+model GameDevice {
+  id           Int     @id @default(autoincrement())
+  gameId       Int
+  deviceId     Int
+  // The filename this game actually has ON THIS device. Game.originalFile is the
+  // shared "representative" name (and the unique key); this column is what sync
+  // /rename must use so multi-device games and .m3u-vs-disc don't cross paths.
+  originalFile String?
+  game         Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  device       Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, deviceId])
+}
+
+model SyncQueue {
+  id        Int      @id @default(autoincrement())
+  type      String   // "rename" | "delete"
+  deviceId  Int
+  gameId    Int
+  filePath  String   // full current path on device
+  newPath   String?  // full new path (rename only)
+  status    String   @default("pending") // "pending" | "applied" | "failed"
+  error     String?  // error message if failed
+  createdAt DateTime @default(now())
+
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+}
+
+model CacheEntry {
+  id        Int      @id @default(autoincrement())
+  type      String   // "cover" | "screenshot" | "artwork"
+  sourceUrl String
+  localPath String   // relative path: "covers/123.jpg"
+  fileSize  Int      // bytes
+  gameId    Int
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([gameId, sourceUrl])
+  @@index([sourceUrl])
+}
+
+model ApiCache {
+  id        Int      @id @default(autoincrement())
+  cacheKey  String   @unique
+  response  String   // JSON-encoded API response
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

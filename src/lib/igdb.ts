@@ -1,26 +1,47 @@
 import { getCachedOrFetch, type ApiCacheOptions } from "@/lib/api-cache";
+import { createHash } from "node:crypto";
+import { abortableDelay, providerFetch } from "@/lib/provider-budget";
+import { getJobContext } from "@/lib/job-admission";
 
-let cachedToken: { token: string; expiresAt: number } | null = null;
+const cachedTokens = new Map<string, { token: string; expiresAt: number }>();
 
 export async function getIgdbToken(clientId: string, clientSecret: string): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt) {
-    return cachedToken.token;
+  await getJobContext()?.assertActive();
+  // Never reuse one operator's token after the configured credentials change.
+  const identity = createHash("sha256").update(JSON.stringify([clientId, clientSecret])).digest("hex");
+  const cached = cachedTokens.get(identity);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.token;
   }
 
-  const res = await fetch(
-    `https://id.twitch.tv/oauth2/token?client_id=${clientId}&client_secret=${clientSecret}&grant_type=client_credentials`,
-    { method: "POST" }
+  const res = await providerFetch(
+    "twitch",
+    "https://id.twitch.tv/oauth2/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: "client_credentials" }),
+    }
   );
 
   if (!res.ok) throw new Error(`IGDB auth failed: ${res.status}`);
 
   const data = await res.json();
-  cachedToken = {
+  if (typeof data.access_token !== "string" || !data.access_token || data.access_token.length > 4096 ||
+      !Number.isFinite(data.expires_in) || data.expires_in <= 0 || data.expires_in > 31536000) {
+    throw new Error("IGDB auth returned an invalid token");
+  }
+  const token = {
     token: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000 - 60000,
   };
+  for (const [key, value] of Array.from(cachedTokens)) {
+    if (Date.now() >= value.expiresAt) cachedTokens.delete(key);
+  }
+  if (cachedTokens.size >= 32) cachedTokens.delete(cachedTokens.keys().next().value!);
+  cachedTokens.set(identity, token);
 
-  return cachedToken.token;
+  return token.token;
 }
 
 export const IGDB_PLATFORM_MAP: Record<string, number> = {
@@ -87,7 +108,7 @@ async function igdbQuery(
   body: string,
   retries = 0,
 ): Promise<unknown[]> {
-  const res = await fetch(`https://api.igdb.com/v4/${endpoint}`, {
+  const res = await providerFetch("igdb", `https://api.igdb.com/v4/${endpoint}`, {
     method: "POST",
     headers: {
       "Client-ID": clientId,
@@ -101,14 +122,16 @@ async function igdbQuery(
     // A 401 means the cached token was revoked/expired early — drop it so the
     // next call re-acquires a fresh one instead of reusing the dead token.
     if (res.status === 401) {
-      cachedToken = null;
+      for (const [identity, cached] of Array.from(cachedTokens)) {
+        if (cached.token === token) cachedTokens.delete(identity);
+      }
     }
     // Retry on rate limit (429) or server errors (5xx) with exponential backoff.
     // Applies to every IGDB call — the initial search AND the sub-queries
     // (covers, genres, companies, screenshots, …) in resolveIgdbGame().
     if (retries < IGDB_MAX_RETRIES && (res.status === 429 || res.status >= 500)) {
       const backoff = (retries + 1) * 2000; // 2s, 4s
-      await new Promise((r) => setTimeout(r, backoff));
+      await abortableDelay(backoff, getJobContext()?.signal);
       return igdbQuery(clientId, token, endpoint, body, retries + 1);
     }
     throw new Error(`IGDB ${endpoint} failed: ${res.status}`);

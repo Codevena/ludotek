@@ -45,6 +45,7 @@ export default function AdminPage() {
   const [showPlatformPicker, setShowPlatformPicker] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState<boolean | null>(null);
+  const [authConfigured, setAuthConfigured] = useState(true);
   const [tokenInput, setTokenInput] = useState("");
   const [devices, setDevices] = useState<Array<{ id: number; name: string; type: string; host: string; port: number; user: string; protocol: string; ftps?: boolean }>>([]);
   const [showDeviceForm, setShowDeviceForm] = useState(false);
@@ -57,34 +58,27 @@ export default function AdminPage() {
   useEffect(() => {
     const controller = new AbortController();
     // Check if auth is required
-    fetch("/api/auth", { signal: controller.signal })
-      .then((r) => r.json())
+    fetch("/api/auth", { signal: controller.signal, cache: "no-store" })
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok || !data.configured) throw new Error(data.error || "Server access is not configured");
+        return data;
+      })
       .then((data) => {
         setAuthRequired(data.authRequired);
-        if (!data.authRequired) {
+        if (data.authenticated) {
           setAuthenticated(true);
           loadSettings();
           loadDevices();
           loadPlatforms();
-        } else {
-          // Try loading settings (cookie might already be set)
-          fetch("/api/settings", { signal: controller.signal })
-            .then((r) => {
-              if (r.ok) {
-                setAuthenticated(true);
-                loadDevices();
-                loadPlatforms();
-                return r.json().then(setSettings);
-              }
-            })
-            .catch(() => {});
         }
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
         console.error("Failed to check auth:", err);
         setAuthRequired(true);
-        setAuthError("Unable to connect to server");
+        setAuthConfigured(false);
+        setAuthError(err instanceof Error ? err.message : "Unable to connect to server");
       });
     return () => controller.abort();
   }, []);
@@ -125,12 +119,14 @@ export default function AdminPage() {
         body: JSON.stringify({ token: tokenInput }),
       });
       if (res.ok) {
+        setTokenInput("");
         setAuthenticated(true);
         loadSettings();
         loadDevices();
         loadPlatforms();
       } else {
-        setAuthError("Invalid token");
+        const data = await res.json().catch(() => ({}));
+        setAuthError(data.error || "Login failed");
       }
     } catch {
       setAuthError("Connection failed");
@@ -199,6 +195,9 @@ export default function AdminPage() {
   }
 
   // Login gate
+  if (!authConfigured) {
+    return <div className="max-w-sm mx-auto py-20"><div className="card"><h1 className="font-heading text-xl mb-3">Server access unavailable</h1><p className="text-vault-muted text-sm">{authError}</p></div></div>;
+  }
   if (authRequired && !authenticated) {
     return (
       <div className="max-w-sm mx-auto py-20">

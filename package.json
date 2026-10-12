@@ -3,9 +3,9 @@
   "version": "1.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/local-server.mjs dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/local-server.mjs start",
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest"

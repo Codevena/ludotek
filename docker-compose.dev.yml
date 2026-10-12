@@ -2,14 +2,15 @@ services:
   ludotek:
     build: .
     ports:
-      - "3000:3000"
+      - "${LUDOTEK_BIND_IP:-127.0.0.1}:3000:3000"
     volumes:
-      - ludotek-data:/app/prisma
+      - ludotek-data:/app/db
       - ludotek-cache:/app/data
       - ludotek-uploads:/tmp/ludotek-uploads
     environment:
-      - DATABASE_URL=file:/app/prisma/games.db
-      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - DATABASE_URL=file:/app/db/games.db
+      - ADMIN_TOKEN=${ADMIN_TOKEN:?Set ADMIN_TOKEN before starting}
+      - APP_ORIGIN=${APP_ORIGIN:?Set the exact browser origin, e.g. http://localhost:3000}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-3.1-flash-lite-preview}
     restart: unless-stopped
 

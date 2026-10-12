@@ -4,6 +4,7 @@ import { getDecryptedDevice } from "@/lib/encryption";
 import { createConnection, buildBrowseResult } from "@/lib/connection";
 import type { ConnectionConfig } from "@/lib/connection";
 import { validateRemotePath } from "@/lib/path-validation";
+import { getLocalBrowseLocation, LocalPathError } from "@/lib/local-paths";
 
 export async function GET(
   request: NextRequest,
@@ -41,9 +42,13 @@ export async function GET(
       ftps: device.ftps,
     } as ConnectionConfig);
 
-    const entries = await conn.listDirDetailed(path);
-    return NextResponse.json(buildBrowseResult(path, entries));
+    const location = device.protocol === "local" ? await getLocalBrowseLocation(path) : null;
+    const entries = await conn.listDirDetailed(location?.path ?? path);
+    return NextResponse.json(location ? { ...location, entries } : buildBrowseResult(path, entries));
   } catch (error) {
+    if (error instanceof LocalPathError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Browse failed:", error);
     const message =
       error instanceof Error ? error.message : "Connection failed";

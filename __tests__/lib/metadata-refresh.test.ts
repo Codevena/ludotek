@@ -24,6 +24,10 @@ vi.mock("@/lib/igdb", () => ({ fetchIgdbById: dependencies.fetchIgdbById, search
 vi.mock("@/lib/steamgriddb", () => ({ searchSteamGridDb: vi.fn() }));
 vi.mock("@/lib/openrouter", () => ({ generateGameAiContent: dependencies.generateAi }));
 vi.mock("@/lib/image-cache", () => ({ cacheGameImages: vi.fn() }));
+vi.mock("@/lib/job-admission", async (original) => ({
+  ...await original<typeof import("@/lib/job-admission")>(),
+  acquireEnrichment: async () => ({ signal: new AbortController().signal, assertActive: async () => {}, close: async () => {}, run: (work: () => Promise<unknown>) => work() }),
+}));
 
 import { POST } from "@/app/api/games/[id]/enrich/route";
 import { RefreshMetadataButton } from "@/components/refresh-metadata-button";

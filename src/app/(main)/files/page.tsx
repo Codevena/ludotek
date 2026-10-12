@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { FilePanel } from "@/components/file-panel";
+import type { FilePanelBrowseState } from "@/components/file-panel";
 import { FilePreviewModal } from "@/components/file-preview-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
@@ -16,6 +17,8 @@ export default function FilesPage() {
   const [rightDeviceId, setRightDeviceId] = useState<number | null>(null);
   const [leftPath, setLeftPath] = useState("/");
   const [rightPath, setRightPath] = useState("/");
+  const [leftBrowse, setLeftBrowse] = useState<FilePanelBrowseState>({ virtualRoot: false, ready: false });
+  const [rightBrowse, setRightBrowse] = useState<FilePanelBrowseState>({ virtualRoot: false, ready: false });
   const [leftSelection, setLeftSelection] = useState<string[]>([]);
   const [rightSelection, setRightSelection] = useState<string[]>([]);
   const [leftSelectionDeviceId, setLeftSelectionDeviceId] = useState<
@@ -104,7 +107,8 @@ export default function FilesPage() {
       const targetPath =
         direction === "left-to-right" ? rightPath : leftPath;
 
-      if (!sourceDeviceId || !targetDeviceId || files.length === 0) return;
+      const targetBrowse = direction === "left-to-right" ? rightBrowse : leftBrowse;
+      if (!sourceDeviceId || !targetDeviceId || files.length === 0 || !targetBrowse.ready || targetBrowse.virtualRoot) return;
 
       setTransferring(true);
       try {
@@ -168,6 +172,8 @@ export default function FilesPage() {
       rightSelection,
       leftPath,
       rightPath,
+      leftBrowse,
+      rightBrowse,
     ],
   );
 
@@ -194,11 +200,13 @@ export default function FilesPage() {
     leftSelection.length > 0 &&
     leftDeviceId !== null &&
     rightDeviceId !== null;
+  const targetRightReady = rightBrowse.ready && !rightBrowse.virtualRoot;
   const canTransferLeft =
     !transferring &&
     rightSelection.length > 0 &&
     leftDeviceId !== null &&
     rightDeviceId !== null;
+  const targetLeftReady = leftBrowse.ready && !leftBrowse.virtualRoot;
 
   const btnClass =
     "px-4 py-2 text-sm font-medium rounded-lg bg-vault-amber/20 text-vault-amber border border-vault-amber/30 hover:bg-vault-amber/30 disabled:opacity-30 disabled:cursor-not-allowed";
@@ -211,28 +219,28 @@ export default function FilesPage() {
       <div className="flex items-center justify-center gap-2 flex-wrap">
         <button
           className={btnClass}
-          disabled={!canTransferRight}
+          disabled={!canTransferRight || !targetRightReady}
           onClick={() => startTransfer("left-to-right", "copy")}
         >
           Copy &rarr;
         </button>
         <button
           className={btnClass}
-          disabled={!canTransferRight}
+          disabled={!canTransferRight || !targetRightReady}
           onClick={() => startTransfer("left-to-right", "move")}
         >
           Move &rarr;
         </button>
         <button
           className={btnClass}
-          disabled={!canTransferLeft}
+          disabled={!canTransferLeft || !targetLeftReady}
           onClick={() => startTransfer("right-to-left", "copy")}
         >
           &larr; Copy
         </button>
         <button
           className={btnClass}
-          disabled={!canTransferLeft}
+          disabled={!canTransferLeft || !targetLeftReady}
           onClick={() => startTransfer("right-to-left", "move")}
         >
           &larr; Move
@@ -249,6 +257,7 @@ export default function FilesPage() {
           onSelectionChange={handleLeftSelection}
           currentPath={leftPath}
           onPathChange={setLeftPath}
+          onBrowseStateChange={setLeftBrowse}
           onPreview={handlePreview}
           refreshKey={refreshLeft}
         />
@@ -260,6 +269,7 @@ export default function FilesPage() {
           onSelectionChange={handleRightSelection}
           currentPath={rightPath}
           onPathChange={setRightPath}
+          onBrowseStateChange={setRightBrowse}
           onPreview={handlePreview}
           refreshKey={refreshRight}
         />

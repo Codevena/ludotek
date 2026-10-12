@@ -2,13 +2,14 @@ import path from "path";
 import fs from "fs";
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { abortableDelay, isAdmissionError, providerFetch } from "@/lib/provider-budget";
+import { getJobContext } from "@/lib/job-admission";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const COVERS_DIR = path.join(DATA_DIR, "covers");
 const SCREENSHOTS_DIR = path.join(DATA_DIR, "screenshots");
 const ARTWORK_DIR = path.join(DATA_DIR, "artwork");
 
-const DOWNLOAD_TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 1;
 const DELAY_BETWEEN_GAMES_MS = 100;
 
@@ -19,34 +20,28 @@ async function downloadImage(
 ): Promise<Buffer | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
-
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
+      const response = await providerFetch("image", url);
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status} for ${url}`);
+        throw new Error(`Image provider returned HTTP ${response.status}`);
       }
 
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
+      await getJobContext()?.assertActive();
       const dir = path.dirname(destPath);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(destPath, buffer);
 
       return buffer;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      if (isAdmissionError(err)) throw err;
+      if (getJobContext()?.signal.aborted) throw getJobContext()!.signal.reason;
       if (attempt < retries) {
-        console.warn(
-          `Download attempt ${attempt + 1} failed for ${url}: ${message}. Retrying...`
-        );
+        console.warn(`Image download attempt ${attempt + 1} failed; retrying`);
       } else {
-        console.warn(
-          `Download failed for ${url} after ${retries + 1} attempts: ${message}`
-        );
+        console.warn(`Image download failed after ${retries + 1} attempts`);
       }
     }
   }
@@ -86,6 +81,7 @@ async function upsertCacheEntry(
   localPath: string,
   fileSize: number,
 ): Promise<void> {
+  await getJobContext()?.assertActive();
   await prisma.cacheEntry.upsert({
     where: { gameId_sourceUrl: { gameId, sourceUrl } },
     create: { type, sourceUrl, localPath, fileSize, gameId },
@@ -104,6 +100,7 @@ async function findCacheEntry(
 }
 
 export async function cacheGameImages(gameId: number): Promise<void> {
+  await getJobContext()?.assertActive();
   const game = await prisma.game.findUnique({ where: { id: gameId } });
   if (!game) {
     console.warn(`cacheGameImages: game ${gameId} not found`);
@@ -206,6 +203,7 @@ export async function cacheGameImages(gameId: number): Promise<void> {
   // --- Update Game record ---
   // Null slots preserve source indexes after partial failure. Never retain
   // paths from a previous source list; all failures stay eligible for retry.
+  await getJobContext()?.assertActive();
   await prisma.game.update({
     where: { id: gameId },
     data: {
@@ -242,14 +240,15 @@ export async function cacheAllImages(
     try {
       await cacheGameImages(games[i].id);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(`cacheAllImages: failed for game ${games[i].id}: ${message}`);
+      if (isAdmissionError(err)) throw err;
+      if (getJobContext()?.signal.aborted) throw getJobContext()!.signal.reason;
+      console.error(`cacheAllImages: failed for game ${games[i].id}`);
     }
 
     onProgress?.(i + 1, total);
 
     if (i < games.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, DELAY_BETWEEN_GAMES_MS));
+      await abortableDelay(DELAY_BETWEEN_GAMES_MS, getJobContext()?.signal);
     }
   }
 }

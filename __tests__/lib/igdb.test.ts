@@ -19,6 +19,12 @@ vi.mock("@/lib/prisma", () => ({
     },
   },
 }));
+// Cache behavior is independent of persisted admission, exercised by provider-dispatch.test.ts.
+vi.mock("@/lib/provider-budget", () => ({
+  providerFetch: (_provider: string, url: string, init?: RequestInit) => fetch(url, init),
+  abortableDelay: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+}));
+vi.mock("@/lib/job-admission", () => ({ getJobContext: () => undefined }));
 
 import { fetchIgdbById, searchIgdb, type IgdbGameData } from "@/lib/igdb";
 

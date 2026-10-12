@@ -156,3 +156,25 @@ model ApiCache {
 
   @@index([expiresAt])
 }
+
+// Local processes coordinate using the same SQLite file. Owners are opaque UUIDs.
+model JobLease {
+  resource  String @id
+  owner     String
+  expiresAt BigInt
+
+  @@index([expiresAt])
+}
+
+model ProviderWindow {
+  key       String @id
+  used      Int
+  expiresAt BigInt
+
+  @@index([expiresAt])
+}
+
+model AdmissionClock {
+  id    Int    @id
+  value BigInt
+}

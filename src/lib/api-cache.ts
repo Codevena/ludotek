@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { AdmissionError, getJobContext } from "@/lib/job-admission";
 
 const DEFAULT_TTL_HOURS = 24;
 const CLEANUP_STALE_DAYS = 7;
@@ -34,13 +35,14 @@ export async function getCachedOrFetch<T>(
 
   const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
 
+  await getJobContext()?.assertActive();
   await prisma.apiCache.upsert({
     where: { cacheKey: key },
     update: { response: JSON.stringify(result), expiresAt },
     create: { cacheKey: key, response: JSON.stringify(result), expiresAt },
   });
 
-  // Lazy cleanup: remove entries expired more than 7 days ago (fire-and-forget)
+  // Bounded cleanup drains before the owning job releases its lease.
   const staleThreshold = new Date(
     now.getTime() - CLEANUP_STALE_DAYS * 24 * 60 * 60 * 1000,
   );
@@ -52,13 +54,13 @@ export async function getCachedOrFetch<T>(
   });
 
   if (staleEntries.length > 0) {
-    prisma.apiCache
-      .deleteMany({
-        where: { id: { in: staleEntries.map((e) => e.id) } },
-      })
-      .catch((err: unknown) => {
-        console.warn("api-cache: lazy cleanup failed", err);
-      });
+    await getJobContext()?.assertActive();
+    try {
+      await prisma.apiCache.deleteMany({ where: { id: { in: staleEntries.map((entry) => entry.id) } } });
+    } catch (error) {
+      if (error instanceof AdmissionError) throw error;
+      console.warn("api-cache: lazy cleanup failed");
+    }
   }
 
   return result;

@@ -35,6 +35,7 @@ beforeEach(() => {
 afterEach(async () => {
   for (const path of temporaryPaths.splice(0)) await rm(path, { recursive: true, force: true });
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 function listings(paths: Record<string, DirEntry[] | Error>) {
@@ -128,6 +129,8 @@ describe("scan completeness", () => {
   it("discovers all 501 valid local ROMs instead of using the browser's first 500", async () => {
     const root = await mkdtemp(join(tmpdir(), "ludotek-scan-"));
     temporaryPaths.push(root);
+    vi.stubEnv("LOCAL_FILES_ROOT", root);
+    vi.stubEnv("LOCAL_FILES_ROOTS", "");
     const platform = join(root, "nes");
     await mkdir(platform);
     for (let index = 0; index < 501; index++) await writeFile(join(platform, `Game ${index}.nes`), "");

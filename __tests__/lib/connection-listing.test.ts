@@ -64,6 +64,7 @@ beforeEach(() => {
 afterEach(async () => {
   for (const path of temporaryPaths.splice(0)) await rm(path, { recursive: true, force: true });
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("complete directory listings", () => {
@@ -79,6 +80,8 @@ describe("complete directory listings", () => {
   it("reads all 501 local files for a scan while keeping the browser limit", async () => {
     const root = await mkdtemp(join(tmpdir(), "ludotek-listing-"));
     temporaryPaths.push(root);
+    vi.stubEnv("LOCAL_FILES_ROOT", root);
+    vi.stubEnv("LOCAL_FILES_ROOTS", "");
     for (let index = 0; index < 501; index++) await writeFile(join(root, `Game ${index}.nes`), "");
     const connection = await createConnection({ ...config, protocol: "local" });
     expect(await connection.listDir(root)).toHaveLength(500);
@@ -89,12 +92,16 @@ describe("complete directory listings", () => {
     dependencies.sftp.readdir.mockImplementation((_path, callback) => callback(null, sftpEntries(100_001)));
     dependencies.ftp.list.mockResolvedValue(ftpEntries(100_001));
     if (protocol === "local") {
+      const root = await mkdtemp(join(tmpdir(), "ludotek-listing-"));
+      temporaryPaths.push(root);
+      vi.stubEnv("LOCAL_FILES_ROOT", root);
+      vi.stubEnv("LOCAL_FILES_ROOTS", "");
       dependencies.localReaddir.mockResolvedValueOnce(Array.from({ length: 100_001 }, (_, index) => ({
         name: `${index}.nes`, isSymbolicLink: () => false, isDirectory: () => false,
       })));
     }
     const connection = await createConnection({ ...config, protocol });
-    await expect(connection.listDir("/roms", complete)).rejects.toThrow(/limit|100000|100,000/i);
+    await expect(connection.listDir(protocol === "local" ? process.env.LOCAL_FILES_ROOT! : "/roms", complete)).rejects.toThrow(/limit|100000|100,000/i);
     if (protocol === "ssh") expect((dependencies.ssh as SshFixture).exec).not.toHaveBeenCalled();
     connection.disconnect();
   });

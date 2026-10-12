@@ -1,7 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getDecryptedSettings } from "@/lib/encryption";
 import { getIgdbToken, IGDB_PLATFORM_MAP } from "@/lib/igdb";
+import { requireAuth } from "@/lib/auth";
+import { PLATFORM_CONFIG } from "@/lib/platforms";
+import { providerFetch } from "@/lib/provider-budget";
+import { acquireScopedJob, admissionResponse, AdmissionError, type EnrichmentJob } from "@/lib/job-admission";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 interface IgdbMissingGame {
   name: string;
@@ -19,31 +26,41 @@ interface IgdbMissingGame {
 }
 
 export async function GET(
-  _req: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = requireAuth(request);
+  if (authError) return authError;
+  const { id } = await params;
+  if (!PLATFORM_CONFIG.some((platform) => platform.id === id)) {
+    return NextResponse.json({ error: "Invalid platform" }, { status: 400 });
+  }
+  const igdbPlatformId = IGDB_PLATFORM_MAP[id];
+  if (!igdbPlatformId) return NextResponse.json({ missing: [] }, { headers: { "Cache-Control": "no-store" } });
+  let job: EnrichmentJob | undefined;
+  let response: Response;
   try {
-    const { id } = await params;
-
-    const settings = await getDecryptedSettings();
-    if (!settings?.igdbClientId || !settings?.igdbClientSecret) {
-      return NextResponse.json(
-        { error: "IGDB not configured" },
-        { status: 400 }
-      );
-    }
-
-    const igdbPlatformId = IGDB_PLATFORM_MAP[id];
-    if (!igdbPlatformId) {
-      return NextResponse.json({ missing: [] });
-    }
-
-    const token = await getIgdbToken(
-      settings.igdbClientId,
-      settings.igdbClientSecret
-    );
-
-    const res = await fetch("https://api.igdb.com/v4/games", {
+    const cacheKey = `missing:candidates:v1:${id}`;
+    const readCandidates = async (): Promise<IgdbMissingGame[] | null> => {
+      const cached = await prisma.apiCache.findFirst({ where: { cacheKey, expiresAt: { gt: new Date() } } });
+      if (!cached) return null;
+      try {
+        const parsed: unknown = JSON.parse(cached.response);
+        return Array.isArray(parsed) && parsed.every((game) => game && typeof game.name === "string") ? parsed : null;
+      } catch { return null; }
+    };
+    let igdbGames = await readCandidates();
+    if (!igdbGames) {
+      job = await acquireScopedJob(`missing:${id}`, request);
+      const activeJob = job;
+      igdbGames = await activeJob.run(async () => {
+        // Another process may have completed the cache between the first read and acquisition.
+        const cached = await readCandidates();
+        if (cached) return cached;
+        const settings = await getDecryptedSettings();
+        if (!settings?.igdbClientId || !settings?.igdbClientSecret) throw new AdmissionError(503, "IGDB not configured");
+        const token = await getIgdbToken(settings.igdbClientId, settings.igdbClientSecret);
+        const res = await providerFetch("igdb", "https://api.igdb.com/v4/games", {
       method: "POST",
       headers: {
         "Client-ID": settings.igdbClientId,
@@ -54,17 +71,19 @@ export async function GET(
 where platforms = (${igdbPlatformId}) & total_rating > 75 & total_rating_count > 50;
 sort total_rating desc;
 limit 30;`,
-    });
-
-    if (!res.ok) {
-      console.error("IGDB query failed:", res.status);
-      return NextResponse.json(
-        { error: "IGDB query failed" },
-        { status: 502 }
-      );
+        });
+        if (!res.ok) throw new Error(`IGDB query failed: ${res.status}`);
+        const candidates: unknown = await res.json();
+        if (!Array.isArray(candidates) || candidates.length > 30 || candidates.some((game) => !game || typeof game.name !== "string")) {
+          throw new Error("Invalid IGDB candidates");
+        }
+        await activeJob.assertActive();
+        const response = JSON.stringify(candidates);
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await prisma.apiCache.upsert({ where: { cacheKey }, update: { response, expiresAt }, create: { cacheKey, response, expiresAt } });
+        return candidates as IgdbMissingGame[];
+      });
     }
-
-    const igdbGames = (await res.json()) as IgdbMissingGame[];
 
     // Get owned game titles for this platform
     const ownedGames = await prisma.game.findMany({
@@ -87,7 +106,7 @@ limit 30;`,
       const norm = normalize(g.name);
       return !ownedNormalized.some((owned) =>
         owned === norm ||
-        (norm.length >= 5 && (owned.includes(norm) || norm.includes(owned)))
+        (norm.length >= 5 && owned.length >= 5 && (owned.includes(norm) || norm.includes(owned)))
       );
     });
 
@@ -131,12 +150,14 @@ limit 30;`,
       };
     });
 
-    return NextResponse.json({ missing: result });
+    response = NextResponse.json({ missing: result }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error("Missing games API error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch missing games" },
-      { status: 500 }
-    );
+    if (error instanceof AdmissionError) response = admissionResponse(error);
+    else {
+      console.warn("Missing games provider request failed");
+      response = NextResponse.json({ error: "Failed to fetch missing games" }, { status: 502, headers: { "Cache-Control": "no-store" } });
+    }
   }
+  try { await job?.close(); } catch (error) { return admissionResponse(error); }
+  return response;
 }

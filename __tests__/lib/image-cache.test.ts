@@ -11,6 +11,13 @@ const prismaMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+// Preserve byte/source-identity assertions; actual admission uses isolated SQLite elsewhere.
+vi.mock("@/lib/provider-budget", () => ({
+  providerFetch: (_provider: string, url: string, init?: RequestInit) => fetch(url, init),
+  isAdmissionError: () => false,
+  abortableDelay: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+}));
+vi.mock("@/lib/job-admission", () => ({ getJobContext: () => undefined }));
 
 interface CacheRow {
   gameId: number;

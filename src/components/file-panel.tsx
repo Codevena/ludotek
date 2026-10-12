@@ -9,6 +9,12 @@ interface DetailedEntry {
   size: number;
   modifiedAt?: string;
   symlinkTarget?: string;
+  absolutePath?: string;
+}
+
+export interface FilePanelBrowseState {
+  virtualRoot: boolean;
+  ready: boolean;
 }
 
 interface DeviceOption {
@@ -26,6 +32,7 @@ interface FilePanelProps {
   onPathChange: (path: string) => void;
   onPreview: (deviceId: number, filePath: string) => void;
   refreshKey?: number;
+  onBrowseStateChange?: (state: FilePanelBrowseState) => void;
 }
 
 function formatSize(bytes: number): string {
@@ -47,10 +54,13 @@ export function FilePanel({
   onPathChange,
   onPreview,
   refreshKey,
+  onBrowseStateChange,
 }: FilePanelProps) {
   const [entries, setEntries] = useState<DetailedEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [parentPath, setParentPath] = useState<string | null>(null);
+  const [virtualRoot, setVirtualRoot] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mkdirMode, setMkdirMode] = useState(false);
   const [mkdirName, setMkdirName] = useState("");
@@ -66,6 +76,9 @@ export function FilePanel({
       setLoading(true);
       setError(null);
       setSelected(new Set());
+      setMkdirMode(false);
+      setRenameTarget(null);
+      onBrowseStateChange?.({ virtualRoot: false, ready: false });
       try {
         const res = await fetch(
           `/api/devices/${selectedDeviceId}/browse?path=${encodeURIComponent(path)}`,
@@ -76,7 +89,10 @@ export function FilePanel({
         }
         const data = await res.json();
         setEntries(data.entries ?? []);
-        onPathChange(path);
+        onPathChange(data.path ?? path);
+        setParentPath(data.parent ?? null);
+        setVirtualRoot(data.virtualRoot === true);
+        onBrowseStateChange?.({ virtualRoot: data.virtualRoot === true, ready: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to browse");
         setEntries([]);
@@ -84,7 +100,7 @@ export function FilePanel({
         setLoading(false);
       }
     },
-    [selectedDeviceId, onPathChange],
+    [selectedDeviceId, onPathChange, onBrowseStateChange],
   );
 
   useEffect(() => {
@@ -92,6 +108,8 @@ export function FilePanel({
       browse(currentPath);
     } else {
       setEntries([]);
+      setSelected(new Set());
+      onBrowseStateChange?.({ virtualRoot: false, ready: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDeviceId, refreshKey]);
@@ -99,19 +117,20 @@ export function FilePanel({
   useEffect(() => {
     if (selectedDeviceId) {
       onSelectionChange(
-        Array.from(selected).map((name) => {
-          return currentPath === "/" ? `/${name}` : `${currentPath}/${name}`;
+        virtualRoot ? [] : Array.from(selected).map((name) => {
+          return entries.find((entry) => entry.name === name)?.absolutePath ?? (currentPath === "/" ? `/${name}` : `${currentPath}/${name}`);
         }),
         selectedDeviceId,
       );
     }
-  }, [selected, currentPath, selectedDeviceId, onSelectionChange]);
+  }, [selected, entries, virtualRoot, currentPath, selectedDeviceId, onSelectionChange]);
 
   const visibleEntries = showHidden
     ? entries
     : entries.filter((e) => !e.name.startsWith("."));
 
   function toggleSelect(name: string) {
+    if (virtualRoot || loading || error) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(name)) {
@@ -124,6 +143,7 @@ export function FilePanel({
   }
 
   function toggleSelectAll() {
+    if (virtualRoot || loading || error) return;
     if (selected.size === visibleEntries.length) {
       setSelected(new Set());
     } else {
@@ -132,14 +152,11 @@ export function FilePanel({
   }
 
   function navigateToParent() {
-    if (currentPath === "/") return;
-    const parts = currentPath.split("/").filter(Boolean);
-    parts.pop();
-    browse(parts.length === 0 ? "/" : `/${parts.join("/")}`);
+    if (parentPath !== null) browse(parentPath);
   }
 
   async function handleMkdir() {
-    if (!selectedDeviceId || !mkdirName.trim()) return;
+    if (!selectedDeviceId || virtualRoot || !mkdirName.trim()) return;
     const newPath =
       currentPath === "/"
         ? `/${mkdirName.trim()}`
@@ -166,11 +183,11 @@ export function FilePanel({
   }
 
   async function handleRename() {
-    if (!selectedDeviceId || !renameTarget || !renameName.trim()) return;
+    if (!selectedDeviceId || virtualRoot || !renameTarget || !renameName.trim()) return;
     const oldPath =
-      currentPath === "/"
+      entries.find((entry) => entry.name === renameTarget)?.absolutePath ?? (currentPath === "/"
         ? `/${renameTarget}`
-        : `${currentPath}/${renameTarget}`;
+        : `${currentPath}/${renameTarget}`);
     const newPath =
       currentPath === "/"
         ? `/${renameName.trim()}`
@@ -197,15 +214,15 @@ export function FilePanel({
   }
 
   function handleDelete() {
-    if (!selectedDeviceId || selected.size === 0) return;
+    if (!selectedDeviceId || virtualRoot || selected.size === 0) return;
     setDeleteConfirm(true);
   }
 
   async function doDelete() {
-    if (!selectedDeviceId || selected.size === 0) return;
+    if (!selectedDeviceId || virtualRoot || selected.size === 0) return;
     const names = Array.from(selected);
     const paths = names.map((name) =>
-      currentPath === "/" ? `/${name}` : `${currentPath}/${name}`,
+      entries.find((entry) => entry.name === name)?.absolutePath ?? (currentPath === "/" ? `/${name}` : `${currentPath}/${name}`),
     );
     try {
       const res = await fetch(`/api/devices/${selectedDeviceId}/files`, {
@@ -258,7 +275,7 @@ export function FilePanel({
         <button
           type="button"
           onClick={navigateToParent}
-          disabled={currentPath === "/" || !selectedDeviceId}
+          disabled={parentPath === null || !selectedDeviceId || loading}
           className="px-2 py-1 text-sm rounded border border-vault-border text-vault-muted hover:border-vault-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           title="Go to parent"
         >
@@ -294,7 +311,7 @@ export function FilePanel({
       </div>
 
       {/* Select All header */}
-      {selectedDeviceId && visibleEntries.length > 0 && (
+      {selectedDeviceId && !virtualRoot && visibleEntries.length > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-vault-border/50 bg-vault-bg/50">
           <input
             type="checkbox"
@@ -368,6 +385,7 @@ export function FilePanel({
                 type="checkbox"
                 checked={selected.has(entry.name)}
                 onChange={() => toggleSelect(entry.name)}
+                disabled={virtualRoot || loading}
                 className="accent-vault-amber"
               />
               <span>{entry.type === "dir" ? "\uD83D\uDCC1" : entry.type === "symlink" ? "\uD83D\uDD17" : "\uD83D\uDCC4"}</span>
@@ -395,15 +413,15 @@ export function FilePanel({
                   onClick={() => {
                     if (entry.type === "dir" || entry.type === "symlink") {
                       const nextPath =
-                        currentPath === "/"
+                        entry.absolutePath ?? (currentPath === "/"
                           ? `/${entry.name}`
-                          : `${currentPath}/${entry.name}`;
+                          : `${currentPath}/${entry.name}`);
                       browse(nextPath);
                     } else if (selectedDeviceId) {
                       const filePath =
-                        currentPath === "/"
+                        entry.absolutePath ?? (currentPath === "/"
                           ? `/${entry.name}`
-                          : `${currentPath}/${entry.name}`;
+                          : `${currentPath}/${entry.name}`);
                       onPreview(selectedDeviceId, filePath);
                     }
                   }}
@@ -432,7 +450,7 @@ export function FilePanel({
             setMkdirMode(true);
             setMkdirName("");
           }}
-          disabled={!selectedDeviceId}
+          disabled={!selectedDeviceId || virtualRoot || loading || !!error}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-vault-surface border border-vault-border text-vault-muted hover:text-vault-text hover:border-vault-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           New Folder
@@ -446,7 +464,7 @@ export function FilePanel({
               setRenameName(name);
             }
           }}
-          disabled={selectedCount !== 1}
+          disabled={virtualRoot || selectedCount !== 1}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-vault-surface border border-vault-border text-vault-muted hover:text-vault-text hover:border-vault-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           Rename
@@ -454,7 +472,7 @@ export function FilePanel({
         <button
           type="button"
           onClick={handleDelete}
-          disabled={selectedCount === 0}
+          disabled={virtualRoot || selectedCount === 0}
           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           Delete

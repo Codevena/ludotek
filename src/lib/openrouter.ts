@@ -1,3 +1,5 @@
+import { providerFetch } from "@/lib/provider-budget";
+
 interface AiContent {
   funFacts: string;
   story: string;
@@ -15,12 +17,12 @@ export async function generateGameAiContent(
   language: string = "en"
 ): Promise<AiContent> {
   const context = [
-    `Game: ${title}`,
-    `Platform: ${platform}`,
-    developer ? `Developer: ${developer}` : null,
-    releaseYear ? `Release Year: ${releaseYear}` : null,
-    genres.length > 0 ? `Genres: ${genres.join(", ")}` : null,
-    summary ? `Summary: ${summary}` : null,
+    `Game: ${title.slice(0, 300)}`,
+    `Platform: ${platform.slice(0, 100)}`,
+    developer ? `Developer: ${developer.slice(0, 300)}` : null,
+    releaseYear && Number.isSafeInteger(releaseYear) ? `Release Year: ${releaseYear}` : null,
+    genres.length > 0 ? `Genres: ${genres.slice(0, 20).map((genre) => genre.slice(0, 100)).join(", ")}` : null,
+    summary ? `Summary: ${summary.slice(0, 8000)}` : null,
   ].filter(Boolean).join("\n");
 
   const isGerman = language === "de";
@@ -46,7 +48,7 @@ Format your response as:
 ---STORY---
 (markdown content)`;
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const res = await providerFetch("openrouter", "https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

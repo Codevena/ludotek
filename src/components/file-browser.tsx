@@ -11,11 +11,14 @@ interface FileBrowserProps {
 interface BrowseEntry {
   name: string;
   type: "dir" | "file" | "symlink";
+  absolutePath?: string;
 }
 
 export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState("/");
   const [entries, setEntries] = useState<BrowseEntry[]>([]);
+  const [parentPath, setParentPath] = useState<string | null>(null);
+  const [virtualRoot, setVirtualRoot] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +36,9 @@ export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserP
         }
         const data = await res.json();
         setEntries(data.entries ?? []);
-        setCurrentPath(path);
+        setCurrentPath(data.path ?? path);
+        setParentPath(data.parent ?? null);
+        setVirtualRoot(data.virtualRoot === true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to browse");
         setEntries([]);
@@ -48,18 +53,14 @@ export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserP
     browse("/");
   }, [browse]);
 
-  function navigateToFolder(folderName: string) {
+  function navigateToFolder(entry: BrowseEntry) {
     const nextPath =
-      currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
+      entry.absolutePath ?? (currentPath === "/" ? `/${entry.name}` : `${currentPath}/${entry.name}`);
     browse(nextPath);
   }
 
   function navigateToParent() {
-    if (currentPath === "/") return;
-    const parts = currentPath.split("/").filter(Boolean);
-    parts.pop();
-    const parentPath = parts.length === 0 ? "/" : `/${parts.join("/")}`;
-    browse(parentPath);
+    if (parentPath !== null) browse(parentPath);
   }
 
   const alreadyAdded = existingPaths.includes(currentPath);
@@ -71,7 +72,7 @@ export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserP
         <button
           type="button"
           onClick={navigateToParent}
-          disabled={currentPath === "/"}
+          disabled={parentPath === null || loading}
           className="px-2 py-1 text-sm rounded border border-vault-border text-vault-muted hover:border-vault-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           title="Go to parent"
         >
@@ -113,7 +114,7 @@ export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserP
           !error &&
           entries.map((entry) => (
             <div
-              key={entry.name}
+              key={entry.absolutePath ?? entry.name}
               className={`flex items-center gap-2 px-3 py-2 text-sm border-b border-vault-border/50 last:border-b-0 ${
                 entry.type === "dir" || entry.type === "symlink"
                   ? "cursor-pointer hover:bg-vault-amber/5 text-vault-text"
@@ -121,7 +122,7 @@ export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserP
               }`}
               onClick={
                 entry.type === "dir" || entry.type === "symlink"
-                  ? () => navigateToFolder(entry.name)
+                  ? () => navigateToFolder(entry)
                   : undefined
               }
             >
@@ -140,14 +141,16 @@ export function FileBrowser({ deviceId, onAddPath, existingPaths }: FileBrowserP
             <button
               type="button"
               onClick={() => onAddPath(currentPath, "rom")}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 transition-colors"
+              disabled={virtualRoot || loading || !!error}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               + ROM Path
             </button>
             <button
               type="button"
               onClick={() => onAddPath(currentPath, "steam")}
-              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-vault-amber/20 text-vault-amber border border-vault-amber/30 hover:bg-vault-amber/30 transition-colors"
+              disabled={virtualRoot || loading || !!error}
+              className="px-3 py-1.5 text-sm font-medium rounded-lg bg-vault-amber/20 text-vault-amber border border-vault-amber/30 hover:bg-vault-amber/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               + Steam Path
             </button>
