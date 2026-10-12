@@ -45,6 +45,7 @@ export class SaveContext {
     if (parts.length > 16) throw new DeviceProfileError("Der Save-Pfad überschreitet die begrenzte Verzeichnistiefe.", 422);
     if (device.protocol !== "local") {
       const io = await this.io(id); let parent = roots[0].path;
+      await io.checkPath?.(canonical, [roots[0].path], true);
       for (let index = 0; index < parts.length; index++) {
         await this.jobs.assertActive();
         if ((await io.lstat(parent)).type !== "directory") throw new DeviceProfileError("Die Save-Wurzel oder ein Elternpfad ist kein bestätigtes reguläres Verzeichnis.", 422);
@@ -101,6 +102,7 @@ export async function readSaveInventory(context: SaveContext, deviceId: number):
   for (const root of roots) {
     const device = await context.device(deviceId);
     if (device.protocol === "local" && await resolveLocalPath(root.path) !== root.path) throw new DeviceProfileError("Save-Wurzeln müssen kanonische erlaubte LOCAL-Pfade sein.", 422);
+    await io.checkPath?.(root.path, [root.path]);
     await walk(root.path, 0);
   }
   return { files: [...files.values()].sort((left, right) => left.path.localeCompare(right.path)), complete, ...(!complete ? { reason: "Der Save-Bestand ist unvollständig; unlesbare, unsichere oder zu große Dateien wurden nicht bestätigt." } : {}) };
@@ -118,8 +120,8 @@ export async function backupSaveInContext(context: SaveContext, deviceId: number
     await io.readTo(safe.path, sink, { signal, maxBytes: before.size, expectedBytes: before.size, timeoutMs: 120000, onProgress: (bytes) => onProgress?.(bytes, before.size) });
   }, { ...context.options, expectedBytes: before.size, signal: context.jobs.signal });
   const after = await io.lstat(safe.path);
-  if (after.type !== "file" || after.size !== before.size || after.modifiedAt !== before.modifiedAt || (before.identity && after.identity !== before.identity)) throw new DeviceProfileError("Der Save wurde während der Sicherung verändert; es wurde keine gültige Version eingetragen.", 409);
-  const current = await readProfileFingerprint(io, safe.path, context.jobs);
+  if (after.type !== "file" || after.size !== before.size || after.modifiedAt !== before.modifiedAt || (before.identity && after.identity !== before.identity) || (before.uniqueId !== undefined && after.uniqueId !== before.uniqueId)) throw new DeviceProfileError("Der Save wurde während der Sicherung verändert; es wurde keine gültige Version eingetragen.", 409);
+  const current = await readProfileFingerprint(io, safe.path, context.jobs, undefined, [safe.root.path]);
   if (current.sha256 !== object.sha256 || current.size !== object.size) throw new DeviceProfileError("Der Save-Inhalt wurde während der Sicherung verändert; die Version wurde nicht freigegeben.", 409);
   await context.jobs.assertActive();
   const stored = await context.db.$transaction(async (tx) => {

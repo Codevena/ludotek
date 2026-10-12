@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { createConnection, requireFileIo, type DeviceConnection, type FileIo } from "@/lib/connection";
 import { decrypt } from "@/lib/encryption";
 import { acquireDeviceFiles, assertDeviceJobsOwned, type DeviceJobs } from "@/lib/device-jobs";
-import { createFilePlan, applyFilePlan, getFilePlan, type FilePlanOptions } from "@/lib/file-plans";
+import { createFilePlan, applyFilePlan, getFilePlan, assertFilePlanSpace, FilePlanError, type FilePlanOptions } from "@/lib/file-plans";
 import { DeviceProfileError, deviceProfileAcquire, getDeviceProfile, profileContains, profileFingerprint, validDeviceNumber, type DeviceProfileData } from "@/lib/device-profiles";
 
 export interface SyncFingerprint { sha256: string; size: string }
@@ -45,6 +45,10 @@ interface SyncSummary {
 export interface DeviceSyncView { id: string; masterDeviceId: number; deviceId: number; direction: string; status: string; plans: string[]; conflicts: { fileKey: string; reason: string }[]; summary: SyncSummary; createdAt: string }
 export type DeviceSyncOptions = FilePlanOptions & { journal?: { create: typeof createFilePlan; apply: typeof applyFilePlan; get: typeof getFilePlan } };
 const logicalKey = (file: Pick<DeviceFile, "platform" | "relativePath">) => `${file.platform}|${file.relativePath}`;
+async function profileSpace(...args: Parameters<typeof assertFilePlanSpace>) {
+  try { return await assertFilePlanSpace(...args); }
+  catch (failure) { if (failure instanceof FilePlanError) throw new DeviceProfileError(failure.message, failure.status === 413 ? 422 : failure.status); throw failure; }
+}
 function parseInput(input: unknown): DeviceSyncInput {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new DeviceProfileError("Ungültiger Synchronisierungsauftrag.");
   const data = input as Record<string, unknown>;
@@ -65,15 +69,17 @@ function destination(profile: DeviceProfileData, file: DeviceFile): string {
   return path.posix.join(roots[0].path, ...(roots[0].platform ? [] : [file.platform]), file.relativePath);
 }
 async function connection(device: Device): Promise<DeviceConnection> { return createConnection({ ...device, password: decrypt(device.password), protocol: device.protocol as "ssh" | "ftp" | "local" }); }
-export async function readProfileFingerprint(io: FileIo, filename: string, jobs: DeviceJobs, expected?: DeviceFile): Promise<SyncFingerprint> {
+export async function readProfileFingerprint(io: FileIo, filename: string, jobs: DeviceJobs, expected?: DeviceFile, roots?: readonly string[]): Promise<SyncFingerprint> {
   await jobs.assertActive();
+  if (roots) await io.checkPath?.(filename, roots);
+  else if (expected) await io.checkPath?.(filename, [expected.scanRoot]);
   const before = await io.lstat(filename);
   if (before.type !== "file" || !Number.isSafeInteger(before.size) || before.size < 0 || before.size > 16 * 1024 ** 3 || (expected && (BigInt(before.size) !== expected.size || (before.modifiedAt ?? null) !== expected.modifiedAt))) throw new DeviceProfileError("Eine Datei ist nicht mehr durch das aktuelle Manifest bestätigt. Bitte zuerst neu scannen.", 409);
   const hash = createHash("sha256");
   const sink = new Writable({ write(chunk, _encoding, callback) { hash.update(chunk); callback(); } });
   await io.readTo(filename, sink, { signal: jobs.signal, maxBytes: before.size, expectedBytes: before.size, timeoutMs: 120000 });
   const after = await io.lstat(filename);
-  if (after.type !== "file" || after.size !== before.size || after.modifiedAt !== before.modifiedAt || (before.identity && after.identity !== before.identity)) throw new DeviceProfileError("Die Datei wurde während der Inhaltsprüfung geändert.", 409);
+  if (after.type !== "file" || after.size !== before.size || after.modifiedAt !== before.modifiedAt || (before.identity && after.identity !== before.identity) || (before.uniqueId !== undefined && after.uniqueId !== before.uniqueId)) throw new DeviceProfileError("Die Datei wurde während der Inhaltsprüfung geändert.", 409);
   await jobs.assertActive();
   return { sha256: hash.digest("hex"), size: String(before.size) };
 }
@@ -95,11 +101,13 @@ export async function createDeviceSyncPlan(input: unknown, request: Request, opt
   const ids = [data.masterDeviceId, data.deviceId];
   const jobs = await acquireDeviceFiles(ids, request, deviceProfileAcquire(options));
   const connections = new Map<number, DeviceConnection>();
+  const protocols = new Map<number, string>();
   const getIo = async (id: number) => {
     if (!connections.has(id)) {
       await jobs.assertActive();
       const device = await db.device.findUnique({ where: { id } });
       if (!device) throw new DeviceProfileError("Gerät nicht gefunden.", 404);
+      protocols.set(id, device.protocol);
       connections.set(id, await (options.connect ?? connection)(device));
     }
     return requireFileIo(connections.get(id)!);
@@ -138,8 +146,8 @@ export async function createDeviceSyncPlan(input: unknown, request: Request, opt
       const master = pair[0][0]; const device = pair[1][0];
       const masterPath = master?.path ?? destination(profiles[0], device);
       const devicePath = device?.path ?? destination(profiles[1], master);
-      const masterFingerprint = master ? await readProfileFingerprint(await getIo(ids[0]), masterPath, jobs, master) : null;
-      const deviceFingerprint = device ? await readProfileFingerprint(await getIo(ids[1]), devicePath, jobs, device) : null;
+      const masterFingerprint = master ? await readProfileFingerprint(await getIo(ids[0]), masterPath, jobs, master, profiles[0].romRoots.map((root) => root.path)) : null;
+      const deviceFingerprint = device ? await readProfileFingerprint(await getIo(ids[1]), devicePath, jobs, device, profiles[1].romRoots.map((root) => root.path)) : null;
       const baseline = baselines.find((baseline) => baseline.fileKey === key && baseline.masterPath === masterPath && baseline.devicePath === devicePath);
       const decision = chooseSyncAction(masterFingerprint, deviceFingerprint, baseline ? JSON.parse(baseline.fingerprint) as SyncBaseline : null, data.direction, data.resolutions?.[key]);
       const row = { fileKey: key, masterPath, devicePath, master: masterFingerprint, device: deviceFingerprint, ...decision };
@@ -165,8 +173,8 @@ export async function createDeviceSyncPlan(input: unknown, request: Request, opt
         const targetProfile = profiles[ids.indexOf(targetId)];
         const required = selected.reduce((total, copy) => total + copy.source.size, BigInt(0));
         for (const parent of new Set(selected.map((copy) => path.posix.dirname(copy.targetPath)))) {
-          const free = await (await getIo(targetId)).freeBytes(parent);
-          if (free.state !== "known" || free.bytes < required + BigInt(targetProfile.reserveBytes)) throw new DeviceProfileError("Zielplatz unbekannt oder zu klein einschließlich der Speicherreserve.", 422);
+          const io = await getIo(targetId);
+          await profileSpace(io, parent, required, BigInt(targetProfile.reserveBytes), protocols.get(targetId)!);
         }
         const journalOptions = { ...options, heldJobs: { deviceIds: ids, jobs }, replaceTargets: selected.filter((copy) => copy.replace).map((copy) => ({ deviceId: targetId, path: copy.targetPath })) };
         const plan = await (options.journal?.create ?? createFilePlan)({ kind: "copy", operations: selected.map((copy) => ({ deviceId: copy.sourceId, filePath: copy.source.path, ...(copy.source.gameId ? { gameId: copy.source.gameId } : {}), targetDeviceId: copy.targetId, newPath: copy.targetPath })) }, request, journalOptions);
@@ -189,8 +197,8 @@ export async function createDeviceSyncPlan(input: unknown, request: Request, opt
         }
         if (checks.length > 100) throw new DeviceProfileError("Descriptorabhängigkeiten überschreiten die 100-Dateien-Grenze. Kleinere Dateiseite wählen.", 422);
         for (const parent of new Set(plan.operations.flatMap((operation) => operation.targetPath ? [path.posix.dirname(operation.targetPath)] : []))) {
-          const free = await (await getIo(targetId)).freeBytes(parent);
-          if (free.state !== "known" || free.bytes < BigInt(plan.totalBytes) + BigInt(targetProfile.reserveBytes)) throw new DeviceProfileError("Der vollständige Descriptorplan überschreitet den Zielplatz einschließlich Reserve.", 422);
+          const io = await getIo(targetId);
+          await profileSpace(io, parent, BigInt(plan.totalBytes), BigInt(targetProfile.reserveBytes), protocols.get(targetId)!);
         }
       }
     }
@@ -212,6 +220,7 @@ export async function applyDeviceSyncPlan(id: string, request: Request, options:
   const ids = [plan.masterDeviceId, plan.deviceId];
   const jobs = await acquireDeviceFiles(ids, request, deviceProfileAcquire(options));
   const connections = new Map<number, DeviceConnection>();
+  const protocols = new Map<number, string>();
   try {
     const current = await getDeviceSyncPlan(id, { db });
     if (current.status === "applied") return current;
@@ -227,6 +236,7 @@ export async function applyDeviceSyncPlan(id: string, request: Request, options:
       if (!connections.has(deviceId)) {
         const device = await db.device.findUnique({ where: { id: deviceId } });
         if (!device) throw new DeviceProfileError("Gerät nicht gefunden.", 404);
+        protocols.set(deviceId, device.protocol);
         connections.set(deviceId, await (options.connect ?? connection)(device));
       }
       return requireFileIo(connections.get(deviceId)!);
@@ -242,8 +252,8 @@ export async function applyDeviceSyncPlan(id: string, request: Request, options:
           const operations = child.operations.filter((operation) => operation.targetDeviceId === targetId && operation.targetPath);
           if (!operations.length) continue;
           for (const parent of new Set(operations.map((operation) => path.posix.dirname(operation.targetPath!)))) {
-            const free = await (await getIo(targetId)).freeBytes(parent);
-            if (free.state !== "known" || free.bytes < BigInt(child.totalBytes) + BigInt(profiles[ids.indexOf(targetId)].profile.reserveBytes)) throw new DeviceProfileError("Zielplatz reicht vor Anwendung einschließlich Reserve nicht mehr aus.", 409);
+            const io = await getIo(targetId);
+            await profileSpace(io, parent, BigInt(child.totalBytes), BigInt(profiles[ids.indexOf(targetId)].profile.reserveBytes), protocols.get(targetId)!);
           }
         }
       }
@@ -253,8 +263,8 @@ export async function applyDeviceSyncPlan(id: string, request: Request, options:
         if (result.status !== "applied") throw new DeviceProfileError("Ein Dateiplan benötigt Recovery; keine Baseline wurde fortgeschrieben.", 409);
       }
       for (const check of current.summary.checks) {
-        const actualMaster = await readProfileFingerprint(await getIo(ids[0]), check.masterPath, jobs);
-        const actualDevice = await readProfileFingerprint(await getIo(ids[1]), check.devicePath, jobs);
+        const actualMaster = await readProfileFingerprint(await getIo(ids[0]), check.masterPath, jobs, undefined, profiles[0].profile.romRoots.map((root) => root.path));
+        const actualDevice = await readProfileFingerprint(await getIo(ids[1]), check.devicePath, jobs, undefined, profiles[1].profile.romRoots.map((root) => root.path));
         if (!same(actualMaster, check.expected.master) || !same(actualDevice, check.expected.device)) throw new DeviceProfileError("Eine Datei wurde nach der verifizierten Anwendung geändert. Baseline bleibt unverändert.", 409);
       }
       await jobs.assertActive();

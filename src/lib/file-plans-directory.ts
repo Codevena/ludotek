@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import { Writable } from "node:stream";
 import type { Device, FilePlan, FilePlanOperation, PrismaClient } from "@prisma/client";
 import { createConnection, requireFileIo, type DeviceConnection, type FileEntryStat } from "@/lib/connection";
 import { acquireDeviceFiles, assertDeviceJobsOwned, type DeviceJobs } from "@/lib/device-jobs";
@@ -7,16 +8,18 @@ import { AdmissionStore, EnrichmentJob } from "@/lib/job-admission";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { getLocalFilesRoots, resolveLocalPath } from "@/lib/local-paths";
-import { FilePlanError, parseFilePlanScanRoots, type FilePlanInput, type FilePlanOptions, type FilePlanView } from "@/lib/file-plans";
+import { FilePlanError, parseFilePlanScanRoots, filePlanMutationPolicy, assertFilePlanSpace, CHECKED_FTP_LIMITATIONS, type FilePlanTransportPolicy, type FilePlanInput, type FilePlanOptions, type FilePlanView } from "@/lib/file-plans";
 
 type Plan = FilePlan & { operations: FilePlanOperation[] };
-interface DirectorySpec { version: 2; deviceId: number; path: string; scanRoot: string; parent: string; parentIdentity: string; createdIdentity?: string }
+interface DirectorySpec { version: 2; deviceId: number; path: string; scanRoot: string; parent: string; policy?: FilePlanTransportPolicy; parentIdentity?: string; parentUniqueId?: string; createdIdentity?: string; createdUniqueId?: string; receipt?: string; createdAck?: boolean; removedAck?: boolean }
 interface Snapshot { id: number; configHash: string; roots: string[]; generation: string }
 const error = (message: string, code = "DIRECTORY_CONFLICT", status: FilePlanError["status"] = 409): never => { throw new FilePlanError(status, code, message); };
 function spec(row: FilePlanOperation): DirectorySpec {
   try {
     const value = JSON.parse(row.specification) as DirectorySpec;
-    if (value.version !== 2 || !Number.isSafeInteger(value.deviceId) || !value.path || !value.parentIdentity) throw new Error();
+    if (value.version !== 2 || !Number.isSafeInteger(value.deviceId) || !value.path ||
+      (value.policy === "ftp_checked" ? !value.receipt || !/^[a-f0-9-]{36}$/.test(value.receipt) : !value.parentIdentity) ||
+      (value.policy !== undefined && !["strict_native", "ftp_checked"].includes(value.policy))) throw new Error();
     return value;
   } catch { return error("Directory journal specification is invalid", "INVALID_JOURNAL", 503); }
 }
@@ -25,6 +28,7 @@ function valid(filename: unknown): filename is string { return typeof filename =
 export function directoryPlanView(plan: Plan): FilePlanView {
   return { id: plan.id, kind: "mkdir", status: plan.status, totalBytes: "0", revision: plan.revision, error: plan.error,
     createdAt: plan.createdAt.toISOString(), appliedAt: plan.appliedAt?.toISOString() ?? null,
+    ...(plan.operations.some((row) => spec(row).policy === "ftp_checked") ? { warningLevel: "checked_ftp" as const, limitations: CHECKED_FTP_LIMITATIONS } : {}),
     operations: plan.operations.map((row) => { const value = spec(row); return { id: row.id, ordinal: row.ordinal, kind: "mkdir", phase: row.phase, error: row.error,
       deviceId: value.deviceId, filePath: value.path, newPath: value.path, sourceDeviceId: value.deviceId, sourcePath: value.path,
       targetDeviceId: value.deviceId, targetPath: value.path, bytes: 0, generated: false, rewritesDescriptor: false, sourceFingerprint: { sha256: "", size: 0 } }; }) };
@@ -78,13 +82,48 @@ class Runtime {
     if (Date.now() >= this.deadline) return error("Directory-plan total deadline exceeded", "PLAN_TIMEOUT");
     for (const state of states) if ((await snapshot(this.db, state.id)).state.configHash !== state.configHash) return error("Directory-plan device configuration or permitted roots changed");
   }
-  async capabilities(id: number, parent: string) {
+  async capabilities(id: number, parent: string, receiptBytes?: number) {
     const io = await this.io(id); const caps = await io.capabilities(parent);
+    const { device } = await snapshot(this.db, id);
+    if (filePlanMutationPolicy(io, device.protocol) === "ftp_checked") {
+      if (receiptBytes !== undefined) {
+        const profile = await this.db.deviceProfile.findUnique({ where: { deviceId: id } });
+        await assertFilePlanSpace(io, parent, BigInt(receiptBytes), profile?.reserveBytes ?? BigInt(0), device.protocol);
+      }
+      return io;
+    }
     if (caps.directoryCreate?.state !== "supported" || caps.directoryRemoveEmpty?.state !== "supported" || caps.directoryFlush.state !== "supported" || !io.createDirectoryNoReplace || !io.removeEmptyDirectory) return error("Device has no evidenced durable no-replace directory capability", "UNSUPPORTED_CAPABILITY", 422);
     return io;
   }
+  async guard(value: Pick<DirectorySpec, "deviceId" | "path" | "parent">) {
+    const { state } = await snapshot(this.db, value.deviceId); const io = await this.io(value.deviceId);
+    await io.checkPath?.(value.parent, state.roots);
+    await io.checkPath?.(value.path, state.roots, true);
+  }
+  async owned(value: DirectorySpec, current: FileEntryStat) {
+    if (current.type !== "directory") return false;
+    if (value.policy !== "ftp_checked") return !!value.createdIdentity && current.identity === value.createdIdentity;
+    if (!value.createdAck || value.removedAck || (value.createdUniqueId !== undefined && current.uniqueId !== value.createdUniqueId)) return false;
+    const marker = path.posix.join(value.path, `.ludotek-directory-receipt-${value.receipt}`);
+    const chunks: Buffer[] = [];
+    try {
+      await (await this.io(value.deviceId)).readTo(marker, new Writable({ write(chunk: Buffer, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback(); } }),
+        { maxBytes: value.receipt!.length, expectedBytes: value.receipt!.length, timeoutMs: this.options.ioTimeoutMs ?? 120000, signal: this.jobs.signal });
+      return Buffer.concat(chunks).toString("utf8") === value.receipt;
+    } catch { return false; }
+  }
+  async empty(value: DirectorySpec) {
+    const entries = await this.connections.get(value.deviceId)!.listDir(value.path, { requireComplete: true });
+    return value.policy === "ftp_checked" ? entries.length === 1 && entries[0].name === `.ludotek-directory-receipt-${value.receipt}` : entries.length === 0;
+  }
+  async remove(value: DirectorySpec) {
+    const io = await this.io(value.deviceId);
+    await this.guard(value);
+    if (value.policy === "ftp_checked") await io.checked!.removeEmptyDirectory(value.path, value.receipt!);
+    else await io.removeEmptyDirectory!(value.path, value.createdIdentity!);
+  }
   async exists(id: number, filename: string) {
-    try { return await (await this.io(id)).lstat(filename); } catch (failure) { if ((failure as NodeJS.ErrnoException).code === "ENOENT") return null; throw failure; }
+    try { return await (await this.io(id)).lstat(filename); } catch (failure) { if ((failure as NodeJS.ErrnoException).code === "ENOENT" || (failure as { code?: number }).code === 2) return null; throw failure; }
   }
   async journal(plan: Plan, row: FilePlanOperation, value: DirectorySpec, phase: string) {
     await this.assert(JSON.parse(plan.deviceState));
@@ -115,18 +154,19 @@ class Runtime {
     for (const entry of rows) {
       const current = await this.exists(entry.value.deviceId, entry.value.path);
       if (!current) continue;
-      if (!entry.value.createdIdentity) {
+      if (entry.value.policy === "ftp_checked" ? !entry.value.createdAck : !entry.value.createdIdentity) {
         // EEXIST proves that this particular mkdir created nothing; preserve that foreign entry.
         if (entry.row.id === attemptedId && (failure as NodeJS.ErrnoException).code === "EEXIST") continue;
         return error("Directory creation ownership was not recorded; explicit recovery is required", "OWNERSHIP_CONFLICT");
       }
-      if (current.identity !== entry.value.createdIdentity || current.type !== "directory" || (await this.connections.get(entry.value.deviceId)!.listDir(entry.value.path, { requireComplete: true })).length) return error("Created directory changed or is no longer empty; preserve it for recovery", "OWNERSHIP_CONFLICT");
+      if (!await this.owned(entry.value, current) || !await this.empty(entry.value)) return error("Created directory changed or is no longer empty; preserve it for recovery", "OWNERSHIP_CONFLICT");
       owned.push(entry);
     }
     for (const { row, value } of owned.reverse()) {
       await this.journal(plan, row, value, "compensate_empty_directory_intent");
-      await (await this.io(value.deviceId)).removeEmptyDirectory!(value.path, value.createdIdentity!);
+      await this.remove(value);
       value.createdIdentity = undefined;
+      value.createdAck = undefined; value.removedAck = undefined; value.createdUniqueId = undefined;
       await this.journal(plan, row, value, "directory_compensated");
     }
     await this.db.$transaction(async (tx) => {
@@ -150,10 +190,12 @@ export async function createDirectoryPlan(input: FilePlanInput, request: Request
       const scanRoot = state.roots.find((root) => contains(root, filename));
       if (!scanRoot) return error("Directory target is outside this device's scan roots", "OUTSIDE_SCAN_ROOT");
       const key = `${operation.deviceId}:${filename}`; if (paths.has(key)) return error("Directory target occurs more than once", "INVALID_INPUT", 400); paths.add(key);
-      const parent = path.posix.dirname(filename); const io = await runtime.capabilities(operation.deviceId, parent); const parentInfo = await io.lstat(parent);
-      if (parentInfo.type !== "directory" || !parentInfo.identity) return error("Directory parent identity is unavailable", "UNSAFE_PARENT");
+      const parent = path.posix.dirname(filename); const io = await runtime.capabilities(operation.deviceId, parent, 36); const parentInfo = await io.lstat(parent);
+      await runtime.guard({ deviceId: operation.deviceId, path: filename, parent });
+      const policy = filePlanMutationPolicy(io, device.protocol);
+      if (parentInfo.type !== "directory" || (policy === "strict_native" && !parentInfo.identity)) return error("Directory parent identity is unavailable", "UNSAFE_PARENT");
       if (await runtime.exists(operation.deviceId, filename)) return error("Directory target already exists", "TARGET_COLLISION");
-      rows.push({ id: randomUUID(), ordinal, value: { version: 2, deviceId: operation.deviceId, path: filename, scanRoot, parent, parentIdentity: parentInfo.identity } });
+      rows.push({ id: randomUUID(), ordinal, value: { version: 2, deviceId: operation.deviceId, path: filename, scanRoot, parent, policy, parentIdentity: parentInfo.identity, parentUniqueId: parentInfo.uniqueId, ...(policy === "ftp_checked" ? { receipt: randomUUID() } : {}) } });
     }
     const plan = await runtime.db.$transaction(async (tx) => {
       await assertDeviceJobsOwned(runtime.jobs, tx);
@@ -168,11 +210,15 @@ export async function executeDirectoryPlan(id: string, request: Request, options
   return withRuntime(rows.map(({ value }) => value.deviceId), request, options, async (runtime) => {
     const states: Snapshot[] = JSON.parse(plan.deviceState); await runtime.assert(states);
     for (const { value } of rows) {
-      await runtime.capabilities(value.deviceId, value.parent);
-      if ((await (await runtime.io(value.deviceId)).lstat(value.parent)).identity !== value.parentIdentity) return error("Directory parent identity changed", "OWNERSHIP_CONFLICT");
+      const io = await runtime.capabilities(value.deviceId, value.parent, mode === "apply" ? value.receipt?.length ?? 36 : undefined);
+      const { device } = await snapshot(runtime.db, value.deviceId);
+      if ((value.policy ?? "strict_native") !== filePlanMutationPolicy(io, device.protocol)) return error("Directory transport strength changed since preview", "OWNERSHIP_CONFLICT");
+      await runtime.guard(value);
+      const parent = await io.lstat(value.parent);
+      if (parent.type !== "directory" || (value.policy === "ftp_checked" ? value.parentUniqueId !== undefined && parent.uniqueId !== value.parentUniqueId : parent.identity !== value.parentIdentity)) return error("Directory parent identity changed", "OWNERSHIP_CONFLICT");
     }
     if ((mode === "apply" && plan.status === "applied") || (mode === "reconcile" && plan.status === "applied")) {
-      for (const { value } of rows) if (!value.createdIdentity || (await runtime.exists(value.deviceId, value.path))?.identity !== value.createdIdentity) return error("Applied directory ownership changed", "OWNERSHIP_CONFLICT");
+      for (const { value } of rows) { const current = await runtime.exists(value.deviceId, value.path); if (!current || !await runtime.owned(value, current)) return error("Applied directory ownership changed", "OWNERSHIP_CONFLICT"); }
       return directoryPlanView(plan);
     }
     if (mode === "undo" && plan.status === "undone") return directoryPlanView(plan);
@@ -182,8 +228,10 @@ export async function executeDirectoryPlan(id: string, request: Request, options
       const entry = await runtime.exists(value.deviceId, value.path);
       if (mode === "apply") { if (entry) return error("Directory target collision appeared since preview", "TARGET_COLLISION"); }
       else if (entry) {
-        if (!value.createdIdentity || entry.identity !== value.createdIdentity || entry.type !== "directory") return error("Directory ownership is unknown or changed; preserve it", "OWNERSHIP_CONFLICT");
-        if ((await runtime.connections.get(value.deviceId)!.listDir(value.path, { requireComplete: true })).length) return error("Undo requires the owned directory to remain empty", "DIRECTORY_NOT_EMPTY");
+        if (!await runtime.owned(value, entry)) return error("Directory ownership is unknown or changed; preserve it", "OWNERSHIP_CONFLICT");
+        if (!await runtime.empty(value)) return error("Undo requires the owned directory to remain empty", "DIRECTORY_NOT_EMPTY");
+      } else if (value.policy === "ftp_checked" && value.createdAck && !value.removedAck) {
+        return error("FTP directory removal has no recorded acknowledgement; explicit review is required", "OWNERSHIP_CONFLICT");
       }
     }
     await runtime.claim(plan, mode === "apply" ? "applying" : mode === "undo" ? "undoing" : "reconciling", mode === "apply" ? ["ready"] : mode === "undo" ? ["applied"] : ["ready", "applying", "undoing", "reconciling", "recovery_needed"]);
@@ -194,18 +242,22 @@ export async function executeDirectoryPlan(id: string, request: Request, options
           await runtime.journal(plan, row, value, "create_directory_intent");
           attemptedId = row.id;
           let created;
-          try { created = await (await runtime.io(value.deviceId)).createDirectoryNoReplace!(value.path); }
+          try { const io = await runtime.io(value.deviceId); created = value.policy === "ftp_checked" ? await io.checked!.createDirectory(value.path, value.receipt!) : await io.createDirectoryNoReplace!(value.path); }
           catch (failure) {
             const identity = (failure as { createdIdentity?: string }).createdIdentity;
             if (identity) { value.createdIdentity = identity; await runtime.journal(plan, row, value, "directory_created_needs_flush"); }
             throw failure;
           }
-          if (!created.identity || created.type !== "directory") return error("Created directory identity is unavailable", "OWNERSHIP_CONFLICT");
-          value.createdIdentity = created.identity; await runtime.journal(plan, row, value, "directory_created");
+          if ((value.policy !== "ftp_checked" && !created.identity) || created.type !== "directory") return error("Created directory identity is unavailable", "OWNERSHIP_CONFLICT");
+          value.createdIdentity = created.identity; value.createdUniqueId = created.uniqueId;
+          if (value.policy === "ftp_checked") { value.createdAck = true; value.removedAck = false; }
+          await runtime.journal(plan, row, value, "directory_created");
         } else {
           await runtime.journal(plan, row, value, "remove_empty_directory_intent");
-          if (await runtime.exists(value.deviceId, value.path)) await (await runtime.io(value.deviceId)).removeEmptyDirectory!(value.path, value.createdIdentity!);
+          if (await runtime.exists(value.deviceId, value.path)) await runtime.remove(value);
+          else if (value.policy === "ftp_checked") await (await runtime.io(value.deviceId)).checked!.acknowledgeDirectory(value.parent);
           else await (await runtime.io(value.deviceId)).flushDirectory(value.parent);
+          if (value.policy === "ftp_checked") value.removedAck = true;
           await runtime.journal(plan, row, value, "directory_removed");
         }
       }
@@ -214,7 +266,7 @@ export async function executeDirectoryPlan(id: string, request: Request, options
       const currentDirectories = new Map<string, FileEntryStat>();
       if (status === "applied") for (const { value } of rows) {
         const info = await (await runtime.io(value.deviceId)).lstat(value.path);
-        if (info.identity !== value.createdIdentity || info.type !== "directory") return error("Created directory identity changed before completion", "OWNERSHIP_CONFLICT");
+        if (!await runtime.owned(value, info)) return error("Created directory identity changed before completion", "OWNERSHIP_CONFLICT");
         currentDirectories.set(value.path, info);
       }
       await runtime.db.$transaction(async (tx) => {
@@ -234,7 +286,10 @@ export async function executeDirectoryPlan(id: string, request: Request, options
       return directoryPlanView(await load(id, db));
     } catch (failure) {
       let compensated = false;
-      if (mode === "apply") try { await runtime.compensate(plan, rows, failure, attemptedId); compensated = true; } catch { /* Recovery retains all entries whose safe ownership/emptiness is not provable. */ }
+      if (mode === "apply") try {
+        const durable = await load(id, db);
+        await runtime.compensate(plan, durable.operations.map((row) => ({ row, value: spec(row) })), failure, attemptedId); compensated = true;
+      } catch { /* Recovery retains all entries whose safe ownership/emptiness is not provable. */ }
       if (!compensated) await runtime.recovery(plan, failure);
       if (failure instanceof FilePlanError) throw failure; throw new FilePlanError(503, "DIRECTORY_IO_FAILED", "Directory I/O or journal storage failed; recover the saved plan", id);
     }

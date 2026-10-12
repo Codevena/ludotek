@@ -13,6 +13,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
 ENV DATABASE_URL="file:/app/prisma/build.db"
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma migrate deploy
 RUN pnpm build
 RUN rm -f /app/prisma/build.db
@@ -30,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # The converter gracefully skips RVZ conversion if DolphinTool is absent.
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/prisma ./prisma
 # Copy full node_modules from builder (includes generated Prisma Client + CLI)
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules

@@ -3,11 +3,11 @@ import { parseRomListing, deduplicateGames } from "@/lib/scanner";
 
 describe("parseRomListing", () => {
   it("extracts game files from ls output", () => {
-    const lsOutput = "Silent Hill 2.chd\nmetadata.txt\nSonic.rvz\nmedia\n.sbi";
+    const lsOutput = "Silent Hill 2.chd\nmetadata.txt\nSonic.iso\nUnsupported.rvz\nmedia\n.sbi";
     const games = parseRomListing(lsOutput, "ps2");
     expect(games).toEqual([
       { originalFile: "Silent Hill 2.chd", title: "Silent Hill 2", platform: "ps2", platformLabel: "PlayStation 2", source: "rom" },
-      { originalFile: "Sonic.rvz", title: "Sonic", platform: "ps2", platformLabel: "PlayStation 2", source: "rom" },
+      { originalFile: "Sonic.iso", title: "Sonic", platform: "ps2", platformLabel: "PlayStation 2", source: "rom" },
     ]);
   });
 

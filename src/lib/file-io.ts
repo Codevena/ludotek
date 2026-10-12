@@ -3,8 +3,6 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { Client as FtpClient } from "basic-ftp";
-import type { SFTPWrapper } from "ssh2";
 import { getLocalFilesRoots, resolveLocalPath } from "@/lib/local-paths";
 
 export interface IoLimits {
@@ -18,6 +16,8 @@ export interface IoResult { bytes: number }
 export interface FileEntryStat {
   /** Transport-evidenced identity; absent when ownership cannot be proven. */
   readonly identity?: string;
+  /** FTP MLSD fact: observed server value, not a durable cross-session identity. */
+  readonly uniqueId?: string;
   size: number;
   modifiedAt?: string;
   isDirectory: boolean;
@@ -39,7 +39,23 @@ export interface FileIoCapabilities {
   directoryRemoveEmpty?: FileIoCapability;
 }
 export type FreeBytesResult = { state: "known"; bytes: bigint } | { state: "unknown"; reason: string };
+export interface CheckedFtpMutations {
+  readonly policy: "ftp_checked";
+  readonly durability: "server_ack";
+  writeTempFrom(filename: string, source: Readable, limits: IoLimits): Promise<IoResult>;
+  publish(temp: string, target: string): Promise<void>;
+  rename(source: string, target: string): Promise<void>;
+  acknowledgeFile(filename: string): Promise<void>;
+  acknowledgeDirectory(dirname: string): Promise<void>;
+  createDirectory(filename: string, receipt: string): Promise<FileEntryStat>;
+  removeEmptyDirectory(filename: string, receipt: string): Promise<void>;
+}
+
 export interface FileIo {
+  /** Explicit weaker private-LAN policy; never promotes FTP to atomic/native fsync. */
+  readonly checked?: CheckedFtpMutations;
+  /** Read-only path validation against the plan's authoritative configured roots. */
+  checkPath?(filename: string, roots: readonly string[], allowMissing?: boolean): Promise<void>;
   capabilities(parentPath: string): Promise<FileIoCapabilities>;
   lstat(filename: string): Promise<FileEntryStat>;
   readTo(filename: string, destination: Writable, limits: IoLimits): Promise<IoResult>;
@@ -73,11 +89,11 @@ export class FileIoError extends Error {
   }
 }
 
-function capability(state: FileIoCapability["state"], reason: string): FileIoCapability { return { state, reason }; }
+export function capability(state: FileIoCapability["state"], reason: string): FileIoCapability { return { state, reason }; }
 function unsupported(operation: string): never {
   throw new FileIoError(`Safe ${operation} is not supported by the evidenced device capabilities`, { code: "UNSUPPORTED_CAPABILITY" });
 }
-function validLimits(limits: IoLimits) {
+export function validLimits(limits: IoLimits) {
   if (!Number.isSafeInteger(limits.maxBytes) || limits.maxBytes < 0 || !Number.isSafeInteger(limits.timeoutMs) || limits.timeoutMs < 1 || limits.timeoutMs > 3_600_000
     || (limits.expectedBytes !== undefined && (!Number.isSafeInteger(limits.expectedBytes) || limits.expectedBytes < 0 || limits.expectedBytes > limits.maxBytes))) {
     throw new FileIoError("Invalid bounded stream byte/deadline limits", { code: "INVALID_LIMITS" });
@@ -85,7 +101,7 @@ function validLimits(limits: IoLimits) {
 }
 
 /** Abort requests cleanup immediately, but completion waits for pipeline/driver drain. */
-class IoScope {
+export class IoScope {
   readonly controller = new AbortController();
   readonly signal = this.controller.signal;
   private readonly timer: ReturnType<typeof setTimeout>;
@@ -137,7 +153,7 @@ class IoScope {
   }
 }
 
-function byteMeter(limits: IoLimits): { stream: Transform; result: () => IoResult } {
+export function byteMeter(limits: IoLimits): { stream: Transform; result: () => IoResult } {
   let bytes = 0;
   const stream = new Transform({
     transform(chunk: Buffer | string, encoding, callback) {
@@ -177,7 +193,7 @@ async function localMetadataPath(filename: string): Promise<string> {
   const parent = await resolveLocalPath(path.dirname(normalized));
   return path.join(parent, path.basename(normalized));
 }
-function statType(stats: { isSymbolicLink(): boolean; isDirectory(): boolean; isFile(): boolean }): FileEntryStat["type"] {
+export function statType(stats: { isSymbolicLink(): boolean; isDirectory(): boolean; isFile(): boolean }): FileEntryStat["type"] {
   return stats.isSymbolicLink() ? "symlink" : stats.isDirectory() ? "directory" : stats.isFile() ? "file" : "other";
 }
 
@@ -350,156 +366,6 @@ export class LocalFileIo implements FileIo {
   }
 }
 
-/** Server extensions are not inferred from the ssh2 API or an SSH banner. */
-export class SftpFileIo implements FileIo {
-  private closed = false;
-  constructor(private readonly getSftp: () => Promise<SFTPWrapper>, private readonly abortConnection: () => void) {}
-  private stop = () => {
-    if (!this.closed) { this.closed = true; this.abortConnection(); }
-  };
-  private async channel(scope: IoScope): Promise<SFTPWrapper> {
-    if (this.closed) throw new FileIoError("SFTP connection was closed", { code: "CONNECTION_CLOSED" });
-    scope.check();
-    return scope.wait(this.getSftp(), (late) => late.end());
-  }
-  async capabilities(parentPath: string): Promise<FileIoCapabilities> {
-    void parentPath; // No server-specific guarantee has been evidenced for any path.
-    return {
-      readStream: capability("supported", "SFTP v3 read stream with bounded pipeline and channel shutdown on abort"),
-      exclusiveTemp: capability("supported", "SFTP v3 SSH_FXF_CREAT | SSH_FXF_EXCL flags exist; durable writes additionally need evidenced flush"),
-      publishNoReplace: capability("unknown", "Server hardlink/no-replace extension support has not been safely evidenced"),
-      renameNoReplace: capability("unknown", "Ordinary SFTP rename does not evidence a no-replacement contract"),
-      fileFlush: capability("unknown", "Server fsync extension support has not been evidenced"),
-      directoryFlush: capability("unknown", "A file fsync extension does not prove a durable directory flush"),
-      freeBytes: capability("unknown", "Server statvfs extension support is determined only by an actual successful read-only request"),
-    };
-  }
-  async lstat(filename: string): Promise<FileEntryStat> {
-    const scope = new IoScope({ maxBytes: 0, timeoutMs: 10_000 }, this.stop);
-    try {
-      const sftp = await this.channel(scope);
-      return await scope.wait(new Promise((resolve, reject) => sftp.lstat(filename, (error, stats) => {
-        if (error) return reject(error);
-        resolve({ size: stats.size, modifiedAt: stats.mtime ? new Date(stats.mtime * 1000).toISOString() : undefined, isDirectory: stats.isDirectory(), type: statType(stats) });
-      })));
-    } finally { scope.dispose(); }
-  }
-  async readTo(filename: string, destination: Writable, limits: IoLimits): Promise<IoResult> {
-    const scope = new IoScope(limits, this.stop);
-    try {
-      const sftp = await this.channel(scope);
-      const meter = byteMeter(limits);
-      await scope.run(() => pipeline(sftp.createReadStream(filename), meter.stream, destination, { signal: scope.signal }));
-      return meter.result();
-    } finally { scope.dispose(); }
-  }
-  async writeExclusiveTempFrom(_filename: string, _source: Readable, limits: IoLimits): Promise<IoResult> {
-    validLimits(limits);
-    // Do not create a remote temp before discovering that durable publish is unavailable.
-    return unsupported("durable SFTP temporary write");
-  }
-  async publishFileNoReplace(temp: string, target: string): Promise<void> { void temp; void target; unsupported("SFTP no-replace publication"); }
-  async renameNoReplace(source: string, target: string): Promise<void> { void source; void target; unsupported("SFTP no-replace rename"); }
-  async flushDirectory(dirname: string): Promise<void> { void dirname; unsupported("SFTP directory flush"); }
-  async freeBytes(filename: string): Promise<FreeBytesResult> {
-    const scope = new IoScope({ maxBytes: 0, timeoutMs: 10_000 }, this.stop);
-    try {
-      const sftp = await this.channel(scope);
-      const info = await scope.wait(new Promise<{ f_bavail: unknown; f_frsize: unknown }>((resolve, reject) => sftp.ext_openssh_statvfs(filename, (error, stats) => error ? reject(error) : resolve(stats))));
-      const integer = (value: unknown) => typeof value === "bigint" ? value : typeof value === "number" && Number.isSafeInteger(value) ? BigInt(value) : undefined;
-      const available = integer(info.f_bavail);
-      const size = integer(info.f_frsize);
-      if (available === undefined || available < BigInt(0) || size === undefined || size < BigInt(1)) throw new Error("Invalid statvfs response");
-      return { state: "known", bytes: available * size };
-    } catch {
-      return { state: "unknown", reason: "SFTP statvfs was unavailable or did not return exact available-space integers" };
-    } finally { scope.dispose(); }
-  }
-}
 
-export class FtpFileIo implements FileIo {
-  private busy = false;
-  private closed = false;
-  constructor(private readonly client: FtpClient) {}
-  private stop = () => {
-    if (!this.closed) { this.closed = true; this.client.close(); }
-  };
-  async runCommand<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.closed) throw new FileIoError("FTP connection was closed", { code: "CONNECTION_CLOSED" });
-    if (this.busy) throw new FileIoError("This FTP client already has an active operation", { code: "FTP_BUSY" });
-    this.busy = true;
-    try { return await operation(); } finally { this.busy = false; }
-  }
-  async capabilities(parentPath: string): Promise<FileIoCapabilities> {
-    void parentPath; // FTP has no evidenced durable mutation contract at any path.
-    return {
-      readStream: capability("supported", "basic-ftp downloadTo(Writable), one command at a time, with a total stream deadline"),
-      exclusiveTemp: capability("unsupported", "FTP STOR overwrites and basic-ftp has no exclusive-create primitive"),
-      publishNoReplace: capability("unknown", "FTP RNTO collision semantics depend on the server and have not been evidenced"),
-      renameNoReplace: capability("unknown", "FTP RNTO is not a verified no-replacement rename"),
-      fileFlush: capability("unsupported", "FTP has no evidenced durable file flush command"),
-      directoryFlush: capability("unsupported", "FTP has no evidenced durable directory flush command"),
-      freeBytes: capability("unknown", "FTP supplies no portable available-space query"),
-    };
-  }
-  async lstat(filename: string): Promise<FileEntryStat> {
-    return this.runCommand(async () => {
-      const scope = new IoScope({ maxBytes: 0, timeoutMs: 10_000 }, this.stop);
-      try {
-        const items = await scope.wait(this.client.list(path.posix.dirname(filename)));
-        const name = path.posix.basename(filename);
-        const entry = items.find((item) => item.name === name);
-        if (!entry) throw new FileIoError("FTP directory entry does not exist", { code: "ENOENT" });
-        return {
-          size: entry.size, modifiedAt: entry.modifiedAt?.toISOString(), isDirectory: entry.isDirectory,
-          type: entry.isSymbolicLink ? "symlink" : entry.isDirectory ? "directory" : entry.isFile ? "file" : "other",
-        };
-      } finally { scope.dispose(); }
-    });
-  }
-  async readTo(filename: string, destination: Writable, limits: IoLimits): Promise<IoResult> {
-    return this.runCommand(async () => {
-      const scope = new IoScope(limits, this.stop);
-      const meter = byteMeter(limits);
-      // Start the pipe before asking FTP for data; both promises are drained on every exit.
-      const drain = pipeline(meter.stream, destination, { signal: scope.signal });
-      const onError = this.stop;
-      meter.stream.once("error", onError);
-      destination.once("error", onError);
-      let transfer: Promise<unknown> | undefined;
-      try {
-        scope.check();
-        transfer = this.client.downloadTo(meter.stream, filename).catch((error) => {
-          meter.stream.destroy(error);
-          destination.destroy(error);
-          this.stop();
-          throw error;
-        });
-        await scope.run(async () => {
-          const [download, piped] = await Promise.allSettled([transfer!, drain]);
-          if (download.status === "rejected") throw download.reason;
-          if (piped.status === "rejected") throw piped.reason;
-        });
-        return meter.result();
-      } catch (error) {
-        meter.stream.destroy(error instanceof Error ? error : new Error("FTP read failed"));
-        destination.destroy(error instanceof Error ? error : new Error("FTP read failed"));
-        this.stop();
-        await Promise.allSettled([transfer, drain]);
-        throw error;
-      } finally {
-        scope.dispose();
-        meter.stream.removeListener("error", onError);
-        destination.removeListener("error", onError);
-      }
-    });
-  }
-  async writeExclusiveTempFrom(_filename: string, _source: Readable, limits: IoLimits): Promise<IoResult> {
-    validLimits(limits);
-    return unsupported("exclusive FTP temporary write");
-  }
-  async publishFileNoReplace(temp: string, target: string): Promise<void> { void temp; void target; unsupported("FTP no-replace publication"); }
-  async renameNoReplace(source: string, target: string): Promise<void> { void source; void target; unsupported("FTP no-replace rename"); }
-  async flushDirectory(dirname: string): Promise<void> { void dirname; unsupported("FTP directory flush"); }
-  async freeBytes(filename: string): Promise<FreeBytesResult> { void filename; return { state: "unknown", reason: "FTP has no evidenced available-space query" }; }
-}
+export { SftpFileIo } from "@/lib/sftp-file-io";
+export { FtpFileIo } from "@/lib/ftp-file-io";

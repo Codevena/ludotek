@@ -1,11 +1,34 @@
-node_modules
-.next
-*.db
-.env
-.git
-# pnpm 11 writes settings here (no `packages:` field); pnpm 9 in the image would
-# misread it as a workspace root ("packages field missing or empty"). Not needed
-# for the build — keep it out of the context.
-pnpm-workspace.yaml
-audit.md
-.review
+# Only build inputs enter the image context. Local databases, environment files,
+# journal objects, review artifacts and workstation configuration stay outside.
+**
+!Dockerfile
+!package.json
+!pnpm-lock.yaml
+!.pnpmfile.cjs
+!next.config.mjs
+!next-env.d.ts
+!tsconfig.json
+!postcss.config.mjs
+!tailwind.config.ts
+!.eslintrc.json
+!docker-entrypoint.sh
+!src/
+!src/**
+!public/
+!public/**
+!scripts/
+!scripts/local-server.mjs
+!prisma/
+!prisma/schema.prisma
+!prisma/legacy-db-push.schema.prisma
+!prisma/migrations/
+!prisma/migrations/**
+# Defense in depth for accidental local files inside otherwise allowed trees.
+**/.env*
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.db
+**/*.db-wal
+**/*.db-shm

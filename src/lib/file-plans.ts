@@ -47,25 +47,37 @@ export interface FilePlanOperationView {
 export interface FilePlanView {
   id: string; kind: string; status: string; totalBytes: string; revision: number;
   error: string | null; createdAt: string; appliedAt: string | null; operations: FilePlanOperationView[];
+  warningLevel?: "checked_ftp";
+  limitations?: string[];
 }
 export class FilePlanError extends Error {
   constructor(public readonly status: 400 | 404 | 409 | 413 | 422 | 503, public readonly code: string, message: string, public readonly planId?: string) { super(message); this.name = "FilePlanError"; }
 }
-interface Fingerprint { size: number; sha256: string; modifiedAt: string | null; identity: string }
+export type FilePlanTransportPolicy = "strict_native" | "ftp_checked";
+type Evidence = "native" | "content";
+interface Fingerprint { size: number; sha256: string; modifiedAt: string | null; evidence?: Evidence; identity?: string; uniqueId?: string }
+export const CHECKED_FTP_LIMITATIONS = [
+  "FTP/FTPS prüft Inhalte und Serverbestätigungen; Veröffentlichung ist nicht atomar gegen gleichzeitige externe Schreibzugriffe.",
+  "Rücknahme setzt voraus, dass kein anderer Client gleichzeitig schreibt. Fremde Ersetzungen mit identischen Inhalten lassen sich nicht sicher erkennen.",
+  "Serverbestätigungen garantieren keine Beständigkeit bei Stromausfall. Unklare Antworten bleiben zur manuellen Wiederherstellung erhalten.",
+  "Freier Zielplatz kann unbekannt sein; Transfers sind dann nur ohne konfigurierte Speicherreserve zulässig.",
+];
 interface StoredManifest {
   gameId: number | null; scanRoot: string; platformAlias: string; relativePath: string; platform: string | null;
   source: string; kind: string; size: string; modifiedAt: string | null; sha256: string | null; generation: string; seenAt: string;
 }
 interface Specification {
   version: 1; action: PlanSelection["action"]; generated: boolean;
-  source: { deviceId: number; path: string; manifestPath: string; fingerprint: Fingerprint; record: StoredManifest; manifestTracked?: boolean; noSourceManifest?: boolean; saveVersionId?: string; backupVersionId?: string; uploadSourceId?: string };
-  target?: { deviceId: number; path: string; scanRoot: string };
+  source: { deviceId: number; path: string; manifestPath: string; fingerprint: Fingerprint; record: StoredManifest; policy?: FilePlanTransportPolicy | "read_content"; manifestTracked?: boolean; noSourceManifest?: boolean; saveVersionId?: string; backupVersionId?: string; uploadSourceId?: string };
+  target?: { deviceId: number; path: string; scanRoot: string; policy?: FilePlanTransportPolicy };
   payload?: string; tempPath?: string; quarantinePath: string; undoPath?: string; staged?: Fingerprint;
   artifacts: { deviceId: number; path: string; fingerprint: Fingerprint }[];
+  /** A receipt exists only in the durably committed phase following successful I/O and readback. */
+  receipts?: Partial<Record<"stage" | "quarantine" | "publish" | "undoTarget" | "restoreSource", true>>;
 }
 interface DescriptorSnapshotFile { path: string; fingerprint: Fingerprint }
 interface DescriptorSnapshot { version: 1; files: DescriptorSnapshotFile[] }
-interface DeviceSnapshot { id: number; configHash: string; roots: string[]; generation: string; descriptorGraph?: DescriptorSnapshot }
+interface DeviceSnapshot { id: number; configHash: string; roots: string[]; generation: string; evidence?: Evidence; descriptorGraph?: DescriptorSnapshot }
 type PlanWithOperations = FilePlan & { operations: FilePlanOperation[] };
 interface RuntimeOperation { row: FilePlanOperation; spec: Specification }
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
@@ -103,9 +115,20 @@ function parseSaveRoots(saveRoots: string): { path: string; platform?: string }[
 function parseSpec(row: FilePlanOperation): Specification {
   try {
     const result = JSON.parse(row.specification) as Specification;
-    if (result.version !== 1 || !result.source?.fingerprint?.identity || !Array.isArray(result.artifacts)) throw new Error();
+    if (result.version !== 1 || !validFingerprint(result.source?.fingerprint) || !Array.isArray(result.artifacts)) throw new Error();
+    if (result.source.policy && !["strict_native", "read_content", "ftp_checked"].includes(result.source.policy)) throw new Error();
+    if (result.target?.policy && !["strict_native", "ftp_checked"].includes(result.target.policy)) throw new Error();
+    if (result.source.policy === "strict_native" && !result.source.fingerprint.identity) throw new Error();
+    if (result.staged && !validFingerprint(result.staged)) throw new Error();
+    if (result.target && result.target.policy !== "ftp_checked" && result.staged && !result.staged.identity) throw new Error();
+    if (result.artifacts.some((entry) => !validFingerprint(entry.fingerprint))) throw new Error();
     return result;
   } catch { return fail("INVALID_JOURNAL", "Stored file-plan specification is invalid", 503); }
+}
+function validFingerprint(value: Fingerprint | undefined): boolean {
+  return !!value && Number.isSafeInteger(value.size) && value.size >= 0 && value.size <= MAX_FILE_BYTES && /^[a-f0-9]{64}$/.test(value.sha256) &&
+    (value.evidence === "content" || !!value.identity) && (value.evidence === undefined || value.evidence === "native" || value.evidence === "content") &&
+    (value.identity === undefined || (typeof value.identity === "string" && value.identity.length > 0 && value.identity.length <= 128 && !/[\x00-\x1f\x7f-\x9f]/.test(value.identity)));
 }
 function parseSnapshots(plan: FilePlan): DeviceSnapshot[] {
   try {
@@ -129,7 +152,7 @@ function validateDescriptorSnapshots(states: DeviceSnapshot[]) {
       const value = entry?.fingerprint;
       if (!entry || !validPath(entry.path) || reserved(entry.path) || !descriptorKind(entry.path) || !state.roots.some((root) => contains(root, entry.path)) || seen.has(entry.path) || !value ||
           !Number.isSafeInteger(value.size) || value.size < 0 || value.size > MAX_DESCRIPTOR_BYTES || typeof value.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.sha256) ||
-          typeof value.identity !== "string" || value.identity.length < 1 || value.identity.length > 128 || /[\x00-\x1f\x7f-\x9f]/.test(value.identity) ||
+          !validFingerprint(value) || (state.evidence !== "content" && !value.identity) ||
           (value.modifiedAt !== null && (typeof value.modifiedAt !== "string" || value.modifiedAt.length > 64 || !Number.isFinite(Date.parse(value.modifiedAt))))) return fail("INVALID_DESCRIPTOR_SNAPSHOT", "Descriptor graph entry is invalid", 503);
       seen.add(entry.path); capturedBytes += value.size;
       if (capturedBytes > MAX_DESCRIPTOR_TOTAL) return fail("DESCRIPTOR_SNAPSHOT_LIMIT", "Captured descriptor bytes exceed the 16 MiB graph bound", 413);
@@ -140,6 +163,7 @@ function view(plan: PlanWithOperations): FilePlanView {
   if (plan.kind === "mkdir") return directoryPlanView(plan);
   return { id: plan.id, kind: plan.kind, status: plan.status, totalBytes: plan.totalBytes.toString(), revision: plan.revision,
     error: plan.error, createdAt: plan.createdAt.toISOString(), appliedAt: plan.appliedAt?.toISOString() ?? null,
+    ...(plan.operations.some((operation) => { const spec = parseSpec(operation); return spec.source.policy === "ftp_checked" || spec.target?.policy === "ftp_checked"; }) ? { warningLevel: "checked_ftp" as const, limitations: CHECKED_FTP_LIMITATIONS } : {}),
     operations: plan.operations.map((operation) => {
       const spec = parseSpec(operation);
       return { id: operation.id, ordinal: operation.ordinal, kind: operation.kind, phase: operation.phase, error: operation.error,
@@ -167,6 +191,7 @@ class Context {
   readonly devices = new Map<number, Device>();
   readonly snapshots = new Map<number, DeviceSnapshot>();
   readonly connections = new Map<number, DeviceConnection>();
+  readonly readConnections = new Map<number, DeviceConnection>();
   readonly saveSources = new Map<string, string>();
   readonly uploadSources = new Map<string, string>();
   readonly controller = new AbortController();
@@ -210,11 +235,24 @@ class Context {
     }
     return requireFileIo(this.connections.get(id)!);
   }
+  /** FTP has one data transfer per control connection; a same-device copy
+   * streams its source over a separate connection under the same held leases. */
+  async readIo(id: number): Promise<FileIo> {
+    await this.assert(); await this.loadDevice(id);
+    if (!this.readConnections.has(id)) {
+      const device = this.devices.get(id)!;
+      const connection = this.options.connect ? await this.options.connect(device) : await createConnection({
+        protocol: device.protocol as "local" | "ssh" | "ftp", host: device.host, port: device.port, user: device.user, password: decrypt(device.password), ftps: device.ftps });
+      this.readConnections.set(id, connection);
+    }
+    return requireFileIo(this.readConnections.get(id)!);
+  }
   async safePath(id: number, filename: string, missing = false, internal = false): Promise<string> {
     if (!validPath(filename) || (!internal && reserved(filename))) return fail("INVALID_PATH", "Invalid or protected file-plan path", 400);
     const state = await this.loadDevice(id);
     const safe = this.devices.get(id)!.protocol === "local" ? await resolveLocalPath(filename, { allowMissing: missing, destructive: true }) : filename;
     if (!state.roots.some((root) => contains(root, safe))) return fail("OUTSIDE_SCAN_ROOT", "File-plan path is outside this device's scan roots");
+    await (await this.io(id)).checkPath?.(safe, state.roots, missing);
     return safe;
   }
   async assert(configs?: DeviceSnapshot[], recovery = false) {
@@ -223,6 +261,7 @@ class Context {
     if (configs) for (const expected of configs) {
       this.snapshots.delete(expected.id);
       const actual = await this.loadDevice(expected.id);
+      actual.evidence = expected.evidence;
       if (actual.configHash !== expected.configHash) return fail("DEVICE_CHANGED", "Device configuration or permitted roots changed since preview");
       if (!recovery && this.scope === "rom") {
         const inventory = await this.db.deviceInventory.findUnique({ where: { deviceId: expected.id } });
@@ -233,7 +272,7 @@ class Context {
   limits(size: number, recovery = false) { return { maxBytes: size, expectedBytes: size, timeoutMs: this.ioTimeoutMs, signal: recovery ? this.jobs.signal : this.signal }; }
   async close() {
     clearTimeout(this.timer); this.jobs.signal.removeEventListener("abort", this.jobAbort);
-    try { for (const connection of this.connections.values()) connection.disconnect(); }
+    try { for (const connection of [...this.connections.values(), ...this.readConnections.values()]) connection.disconnect(); }
     finally { await this.jobs.close(); }
   }
 }
@@ -300,14 +339,14 @@ export async function createSaveRestorePlan(input: SaveRestoreInput, request: Re
       if (!options.targetBackupVersionId) return fail("SAVE_BACKUP_REQUIRED", "Back up the existing save to an immutable version before preparing restore", 422);
       const original = await fingerprint(ctx, input.targetDeviceId, targetPath);
       const spec: Specification = { version: 1, action: "delete", generated: true,
-        source: { deviceId: input.targetDeviceId, path: targetPath, manifestPath: targetPath, fingerprint: original, record: { ...manifest, size: String(original.size), modifiedAt: original.modifiedAt, sha256: original.sha256 }, manifestTracked: false, backupVersionId: options.targetBackupVersionId },
+        source: { deviceId: input.targetDeviceId, path: targetPath, manifestPath: targetPath, fingerprint: original, policy: mutationPolicy(ctx, input.targetDeviceId), record: { ...manifest, size: String(original.size), modifiedAt: original.modifiedAt, sha256: original.sha256 }, manifestTracked: false, backupVersionId: options.targetBackupVersionId },
         quarantinePath: path.posix.join(path.posix.dirname(targetPath), `.ludotek-${planId}-${randomUUID()}-backup`), artifacts: [] };
       await verifyTargetBackup(ctx, spec.source); operations.push(operation(spec, "delete"));
     }
     const opId = randomUUID();
     const spec: Specification = { version: 1, action: "copy", generated: false,
       source: { deviceId: input.targetDeviceId, path: source.verified.path, manifestPath: source.verified.path, fingerprint: source.fingerprint, record: manifest, manifestTracked: false, saveVersionId: input.versionId },
-      target: { deviceId: input.targetDeviceId, path: targetPath, scanRoot: manifest.scanRoot },
+      target: { deviceId: input.targetDeviceId, path: targetPath, scanRoot: manifest.scanRoot, policy: mutationPolicy(ctx, input.targetDeviceId) },
       quarantinePath: path.posix.join(path.posix.dirname(targetPath), `.ludotek-${planId}-${opId}-unused-source-backup`),
       tempPath: path.posix.join(path.posix.dirname(targetPath), `.ludotek-${planId}-${opId}-temp`),
       undoPath: path.posix.join(path.posix.dirname(targetPath), `.ludotek-${planId}-${opId}-undo`), artifacts: [] };
@@ -386,7 +425,7 @@ export async function createUploadFilePlan(input: UploadFilePlanInput, request: 
         size: String(source.fingerprint.size), modifiedAt: source.fingerprint.modifiedAt, sha256: source.fingerprint.sha256, generation: state.generation || `upload:${planId}`, seenAt: new Date().toISOString() };
       const spec: Specification = { version: 1, action: "copy", generated: false,
         source: { deviceId: input.targetDeviceId, path: source.path, manifestPath: source.path, fingerprint: source.fingerprint, record: metadata, uploadSourceId: source.row.id, noSourceManifest: true },
-        target: { deviceId: input.targetDeviceId, path: targetPath, scanRoot }, payload: selection.rewritten?.toString("base64"),
+        target: { deviceId: input.targetDeviceId, path: targetPath, scanRoot, policy: mutationPolicy(ctx, input.targetDeviceId) }, payload: selection.rewritten?.toString("base64"),
         quarantinePath: path.posix.join(path.posix.dirname(targetPath), `.ludotek-${planId}-${operationId}-unused-source-backup`),
         tempPath: path.posix.join(path.posix.dirname(targetPath), `.ludotek-${planId}-${operationId}-temp`), undoPath: path.posix.join(path.posix.dirname(targetPath), `.ludotek-${planId}-${operationId}-undo`), artifacts: [] };
       totalBytes += selection.rewritten?.length ?? source.fingerprint.size;
@@ -402,11 +441,55 @@ export async function createUploadFilePlan(input: UploadFilePlanInput, request: 
     return view(plan);
   } finally { await ctx.close(); }
 }
-async function requireCapabilities(ctx: Context, id: number, parent: string) {
-  const io = await ctx.io(id); const caps = await io.capabilities(parent);
-  for (const key of ["readStream", "exclusiveTemp", "publishNoReplace", "renameNoReplace", "fileFlush", "directoryFlush"] as const) if (caps[key].state !== "supported") return fail("UNSUPPORTED_CAPABILITY", `Device cannot safely execute this plan: ${caps[key].reason}`, 422);
+export function filePlanMutationPolicy(io: FileIo, protocol: string): FilePlanTransportPolicy {
+  return protocol === "ftp" && io.checked?.policy === "ftp_checked" && io.checked.durability === "server_ack" ? "ftp_checked" : "strict_native";
+}
+export async function assertFilePlanMutationCapabilities(io: FileIo, parent: string, protocol: string): Promise<FilePlanTransportPolicy> {
+  const caps = await io.capabilities(parent);
+  const policy = filePlanMutationPolicy(io, protocol);
+  if (policy === "ftp_checked") {
+    if (caps.readStream.state !== "supported") return fail("UNSUPPORTED_CAPABILITY", "Checked FTP requires bounded readback", 422);
+    return policy;
+  }
+  for (const key of ["readStream", "exclusiveTemp", "publishNoReplace", "renameNoReplace", "fileFlush", "directoryFlush"] as const) if (caps[key].state !== "supported") return fail("UNSUPPORTED_CAPABILITY", `Device cannot safely execute this plan: ${key}: ${caps[key].reason}`, 422);
   if (!io.flushFile) return fail("UNSUPPORTED_CAPABILITY", "Device cannot flush existing file data before quarantine", 422);
+  return policy;
+}
+export async function assertFilePlanSpace(io: FileIo, parent: string, bytes: bigint, reserve: bigint, protocol: string) {
+  if (bytes < BigInt(0) || reserve < BigInt(0)) return fail("INVALID_SPACE", "Invalid target space requirement", 422);
+  const space = await io.freeBytes(parent);
+  if (space.state !== "known") {
+    if (filePlanMutationPolicy(io, protocol) === "ftp_checked" && reserve === BigInt(0)) return space;
+    return fail("SPACE_UNKNOWN", "Target space is unknown; a nonzero reserve cannot be proven", 422);
+  }
+  if (space.bytes < bytes + reserve) return fail("INSUFFICIENT_SPACE", "Target device has insufficient verified free space including reserve", 422);
+  return space;
+}
+async function requireCapabilities(ctx: Context, id: number, parent: string) {
+  const io = await ctx.io(id);
+  const policy = await assertFilePlanMutationCapabilities(io, parent, ctx.devices.get(id)!.protocol);
+  ctx.snapshots.get(id)!.evidence = policy === "ftp_checked" ? "content" : "native";
   return io;
+}
+async function requireReadCapabilities(ctx: Context, id: number, parent: string) {
+  const io = await ctx.io(id);
+  // Mutation capability probes can fsync a directory. Read-only copies prove
+  // their bounded read by hashing all selected bytes before any target effect.
+  if (typeof io.readTo !== "function" || typeof io.lstat !== "function") return fail("UNSUPPORTED_CAPABILITY", "Copy source requires bounded streaming reads", 422);
+  await io.checkPath?.(parent, ctx.snapshots.get(id)!.roots);
+  if (ctx.devices.get(id)!.protocol === "local") ctx.snapshots.get(id)!.evidence = "native";
+  else ctx.snapshots.get(id)!.evidence ??= "content";
+  return io;
+}
+function mutationPolicy(ctx: Context, id: number): FilePlanTransportPolicy {
+  return filePlanMutationPolicy(requireFileIo(ctx.connections.get(id)!), ctx.devices.get(id)!.protocol);
+}
+function sameMetadata(left: Awaited<ReturnType<FileIo["lstat"]>>, right: Awaited<ReturnType<FileIo["lstat"]>>) {
+  return left.identity === right.identity && left.uniqueId === right.uniqueId && left.size === right.size && left.modifiedAt === right.modifiedAt && right.type === "file";
+}
+function matchesFingerprint(actual: Fingerprint, expected: Fingerprint) {
+  return (expected.identity === undefined || actual.identity === expected.identity) && (expected.uniqueId === undefined || actual.uniqueId === expected.uniqueId) &&
+    actual.size === expected.size && actual.sha256 === expected.sha256 && actual.modifiedAt === expected.modifiedAt;
 }
 async function fingerprint(ctx: Context, id: number, filename: string, expected?: Fingerprint, recovery = false): Promise<Fingerprint> {
   const uploadId = ctx.uploadSources.get(fileKey(id, filename));
@@ -426,14 +509,17 @@ async function fingerprint(ctx: Context, id: number, filename: string, expected?
     if (source.verified.path !== filename || (expected && (actual.identity !== expected.identity || actual.sha256 !== expected.sha256 || actual.size !== expected.size || actual.modifiedAt !== expected.modifiedAt))) return fail("SAVE_SOURCE_CHANGED", "Protected save identity changed since this bound restore preview");
     return actual;
   }
-  const io = await ctx.io(id); const before = await io.lstat(filename);
-  if (before.type !== "file" || !before.identity || !Number.isSafeInteger(before.size) || before.size < 0 || before.size > MAX_FILE_BYTES) return fail("UNSAFE_ENTRY", "Plan requires a bounded regular file with evidenced identity");
+  const io = await ctx.io(id);
+  await ctx.safePath(id, filename, false, true);
+  const before = await io.lstat(filename);
+  const nativeRequired = ctx.devices.get(id)!.protocol === "local" || (expected ? expected.evidence !== "content" : ctx.snapshots.get(id)!.evidence !== "content");
+  if (before.type !== "file" || (nativeRequired && !before.identity) || !Number.isSafeInteger(before.size) || before.size < 0 || before.size > MAX_FILE_BYTES) return fail("UNSAFE_ENTRY", "Plan requires a bounded regular file with the saved evidence strength");
   const hash = createHash("sha256");
   await io.readTo(filename, new Writable({ write(chunk: Buffer, _encoding, callback) { hash.update(chunk); callback(); } }), ctx.limits(before.size, recovery));
   const after = await io.lstat(filename);
-  if (after.identity !== before.identity || after.size !== before.size || after.modifiedAt !== before.modifiedAt || after.type !== "file") return fail("FILE_CHANGED", "File identity or metadata changed while hashing");
-  const result = { size: before.size, sha256: hash.digest("hex"), modifiedAt: before.modifiedAt ?? null, identity: before.identity };
-  if (expected && (result.identity !== expected.identity || result.size !== expected.size || result.sha256 !== expected.sha256 || result.modifiedAt !== expected.modifiedAt)) return fail("OWNERSHIP_CONFLICT", "File content or identity changed; this plan does not own the current entry");
+  if (!sameMetadata(before, after)) return fail("FILE_CHANGED", "File identity or metadata changed while hashing");
+  const result: Fingerprint = { size: before.size, sha256: hash.digest("hex"), modifiedAt: before.modifiedAt ?? null, evidence: before.identity ? "native" : "content", ...(before.identity ? { identity: before.identity } : {}), ...(before.uniqueId ? { uniqueId: before.uniqueId } : {}) };
+  if (expected && !matchesFingerprint(result, expected)) return fail("OWNERSHIP_CONFLICT", "File content or identity changed; this plan does not own the current entry");
   return result;
 }
 async function exists(ctx: Context, id: number, filename: string) {
@@ -445,17 +531,18 @@ async function exists(ctx: Context, id: number, filename: string) {
     if (source.verified.path !== filename) return fail("SAVE_SOURCE_CHANGED", "Protected save store location changed since preview");
     return { type: "file" as const, isDirectory: false, size: source.fingerprint.size, modifiedAt: source.fingerprint.modifiedAt ?? undefined, identity: source.fingerprint.identity };
   }
+  await ctx.safePath(id, filename, true, true);
   try { return await (await ctx.io(id)).lstat(filename); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT" || (error as { code?: number }).code === 2) return null; throw error; }
 }
 async function boundedDescriptor(ctx: Context, id: number, filename: string, remainingBytes: number): Promise<{ contents: string; fingerprint: Fingerprint }> {
   const io = await ctx.io(id); const info = await io.lstat(filename);
-  if (info.type !== "file" || !info.identity || !Number.isSafeInteger(info.size) || info.size < 0 || info.size > MAX_DESCRIPTOR_BYTES || info.size > remainingBytes) return fail("DESCRIPTOR_LIMIT", "Descriptor must be a regular file within the bounded graph budget", 413);
+  if (info.type !== "file" || (ctx.snapshots.get(id)!.evidence !== "content" && !info.identity) || !Number.isSafeInteger(info.size) || info.size < 0 || info.size > MAX_DESCRIPTOR_BYTES || info.size > remainingBytes) return fail("DESCRIPTOR_LIMIT", "Descriptor must be a regular file within the bounded graph budget", 413);
   const chunks: Buffer[] = [];
   await io.readTo(filename, new Writable({ write(chunk: Buffer, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback(); } }), ctx.limits(info.size));
   const raw = Buffer.concat(chunks); const after = await io.lstat(filename);
-  if (raw.length !== info.size || after.type !== "file" || after.identity !== info.identity || after.size !== info.size || after.modifiedAt !== info.modifiedAt) return fail("DESCRIPTOR_CHANGED", "Descriptor identity or metadata changed during capture");
-  const captured = { size: raw.length, sha256: digest(raw), identity: info.identity, modifiedAt: info.modifiedAt ?? null };
+  if (raw.length !== info.size || !sameMetadata(info, after)) return fail("DESCRIPTOR_CHANGED", "Descriptor identity or metadata changed during capture");
+  const captured: Fingerprint = { size: raw.length, sha256: digest(raw), evidence: info.identity ? "native" : "content", identity: info.identity, uniqueId: info.uniqueId, modifiedAt: info.modifiedAt ?? null };
   try { return { contents: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(raw), fingerprint: captured }; } catch { return fail("DESCRIPTOR_ENCODING", "Descriptor encoding is unsupported", 422); }
 }
 /** The original graph belongs only to preview/initial Apply, never effect-based Undo/Reconcile. */
@@ -480,9 +567,8 @@ async function checkSpace(ctx: Context, operations: RuntimeOperation[]) {
   const required = new Map<number, number>();
   for (const { spec } of operations) if (spec.target) required.set(spec.target.deviceId, (required.get(spec.target.deviceId) ?? 0) + (spec.payload ? Buffer.byteLength(spec.payload, "base64") : spec.source.fingerprint.size));
   for (const [id, bytes] of required) for (const parent of new Set(operations.filter((operation) => operation.spec.target?.deviceId === id).map((operation) => path.posix.dirname(operation.spec.target!.path)))) {
-    const space = await (await ctx.io(id)).freeBytes(parent);
-    if (space.state !== "known") return fail("SPACE_UNKNOWN", "Target available space is unknown; the plan cannot start", 422);
-    if (space.bytes < BigInt(bytes)) return fail("INSUFFICIENT_SPACE", "Target device has insufficient verified free space", 422);
+    const profile = await ctx.db.deviceProfile.findUnique({ where: { deviceId: id } });
+    await assertFilePlanSpace(await ctx.io(id), parent, BigInt(bytes), profile?.reserveBytes ?? BigInt(0), ctx.devices.get(id)!.protocol);
   }
 }
 
@@ -535,7 +621,11 @@ export async function createFilePlan(input: FilePlanInput, request: Request, opt
       if (targetDeviceId === operation.deviceId && targetPath === sourcePath) return fail("SAME_PATH", "Source and target must differ", 400);
       seeds.push({ sourceDeviceId: operation.deviceId, sourcePath, action: input.kind === "rename" ? "move" : input.kind, targetDeviceId, targetPath, generated: false });
     }
-    for (const id of new Set(ids)) for (const root of ctx.snapshots.get(id)!.roots) await requireCapabilities(ctx, id, root);
+    const mutatingIds = new Set(seeds.flatMap((seed) => [...(seed.action !== "copy" ? [seed.sourceDeviceId] : []), ...(seed.targetDeviceId ? [seed.targetDeviceId] : [])]));
+    for (const id of new Set(ids)) for (const root of ctx.snapshots.get(id)!.roots) {
+      if (mutatingIds.has(id)) await requireCapabilities(ctx, id, root);
+      else await requireReadCapabilities(ctx, id, root);
+    }
     const descriptors = new Map<string, PlanDescriptor>(); const capturedDescriptors = new Map<string, DescriptorSnapshotFile>(); let descriptorBytes = 0;
     const sourceIds = new Set(seeds.map((seed) => seed.sourceDeviceId));
     const capturedDeviceIds = replacementKeys.size ? new Set(ids) : sourceIds;
@@ -579,9 +669,9 @@ export async function createFilePlan(input: FilePlanInput, request: Request, opt
       const source = files.get(fileKey(selection.sourceDeviceId, selection.sourcePath));
       if (!source || source.kind !== "file") return fail("UNCONFIRMED_DEPENDENCY", "Expanded dependency is not a confirmed regular file");
       await ctx.safePath(selection.sourceDeviceId, selection.sourcePath);
-      const io = await requireCapabilities(ctx, selection.sourceDeviceId, path.posix.dirname(selection.sourcePath));
+      const io = await (selection.action === "copy" ? requireReadCapabilities : requireCapabilities)(ctx, selection.sourceDeviceId, path.posix.dirname(selection.sourcePath));
       const metadata = await io.lstat(selection.sourcePath);
-      if (metadata.type !== "file" || metadata.size !== Number(source.size) || (source.modifiedAt !== null && metadata.modifiedAt !== source.modifiedAt) || !metadata.identity) return fail("INVENTORY_CHANGED", "Physical file changed since the confirmed inventory; scan again");
+      if (metadata.type !== "file" || metadata.size !== Number(source.size) || (source.modifiedAt !== null && metadata.modifiedAt !== source.modifiedAt) || (ctx.snapshots.get(selection.sourceDeviceId)!.evidence !== "content" && !metadata.identity)) return fail("INVENTORY_CHANGED", "Physical file changed since the confirmed inventory; scan again");
       const operationId = randomUUID(); let target: Specification["target"];
       if (selection.targetDeviceId && selection.targetPath) {
         const targetPath = await ctx.safePath(selection.targetDeviceId, selection.targetPath, true); const targetKey = fileKey(selection.targetDeviceId, targetPath);
@@ -589,11 +679,12 @@ export async function createFilePlan(input: FilePlanInput, request: Request, opt
         const targetIo = await requireCapabilities(ctx, selection.targetDeviceId, path.posix.dirname(targetPath));
         if ((await targetIo.lstat(path.posix.dirname(targetPath))).type !== "directory") return fail("TARGET_PARENT", "Target parent must be an existing directory", 422);
         if (await exists(ctx, selection.targetDeviceId, targetPath)) if (!(selection.action === "rewrite" && selection.targetDeviceId === selection.sourceDeviceId && targetPath === selection.sourcePath) && !replacementKeys.has(targetKey)) return fail("TARGET_COLLISION", "Target already exists; the plan never overwrites a foreign entry");
-        target = { deviceId: selection.targetDeviceId, path: targetPath, scanRoot: ctx.snapshots.get(selection.targetDeviceId)!.roots.find((root) => contains(root, targetPath))! };
+        target = { deviceId: selection.targetDeviceId, path: targetPath, scanRoot: ctx.snapshots.get(selection.targetDeviceId)!.roots.find((root) => contains(root, targetPath))!, policy: mutationPolicy(ctx, selection.targetDeviceId) };
       }
       const spec: Specification = { version: 1, action: selection.action, generated: selection.generated,
         source: { deviceId: source.deviceId, path: selection.sourcePath, manifestPath: source.path,
-          fingerprint: { size: metadata.size, sha256: "", modifiedAt: metadata.modifiedAt ?? null, identity: metadata.identity }, record: record(source) }, target,
+          fingerprint: { size: metadata.size, sha256: "", modifiedAt: metadata.modifiedAt ?? null, evidence: metadata.identity ? "native" : "content", identity: metadata.identity, uniqueId: metadata.uniqueId },
+          policy: selection.action === "copy" ? "read_content" : mutationPolicy(ctx, selection.sourceDeviceId), record: record(source) }, target,
         payload: selection.rewritten?.toString("base64"), quarantinePath: path.posix.join(path.posix.dirname(selection.sourcePath), `.ludotek-${planId}-${operationId}-backup`),
         tempPath: target ? path.posix.join(path.posix.dirname(target.path), `.ludotek-${planId}-${operationId}-temp`) : undefined,
         undoPath: target ? path.posix.join(path.posix.dirname(target.path), `.ludotek-${planId}-${operationId}-undo`) : undefined, artifacts: [] };
@@ -607,7 +698,7 @@ export async function createFilePlan(input: FilePlanInput, request: Request, opt
       const captured = capturedDescriptors.get(fileKey(operation.spec.source.deviceId, operation.spec.source.path));
       if (captured) { operation.spec.source.fingerprint = captured.fingerprint; continue; }
       const fresh = await fingerprint(ctx, operation.spec.source.deviceId, operation.spec.source.path);
-      if (fresh.identity !== operation.spec.source.fingerprint.identity || fresh.modifiedAt !== operation.spec.source.fingerprint.modifiedAt || fresh.size !== operation.spec.source.fingerprint.size) return fail("FILE_CHANGED", "File changed during preview preparation");
+      if (fresh.identity !== operation.spec.source.fingerprint.identity || fresh.uniqueId !== operation.spec.source.fingerprint.uniqueId || fresh.modifiedAt !== operation.spec.source.fingerprint.modifiedAt || fresh.size !== operation.spec.source.fingerprint.size) return fail("FILE_CHANGED", "File changed during preview preparation");
       operation.spec.source.fingerprint = fresh;
     }
     const snapshots = [...ctx.snapshots.values()];
@@ -677,7 +768,8 @@ async function preflight(ctx: Context, plan: FilePlan, operations: RuntimeOperat
     const { spec } = operation;
     if (!spec.source.saveVersionId && !spec.source.uploadSourceId) {
       await ctx.safePath(spec.source.deviceId, spec.source.path);
-      await requireCapabilities(ctx, spec.source.deviceId, path.posix.dirname(spec.source.path));
+      await (spec.action === "copy" ? requireReadCapabilities : requireCapabilities)(ctx, spec.source.deviceId, path.posix.dirname(spec.source.path));
+      if (spec.action !== "copy" && (spec.source.policy ?? "strict_native") !== mutationPolicy(ctx, spec.source.deviceId)) return fail("TRANSPORT_POLICY_CHANGED", "Mutation transport strength changed since preview");
     }
     await fingerprint(ctx, spec.source.deviceId, spec.source.path, spec.source.fingerprint);
     if (spec.source.manifestTracked !== false && !spec.source.noSourceManifest) {
@@ -688,6 +780,7 @@ async function preflight(ctx: Context, plan: FilePlan, operations: RuntimeOperat
     if (spec.target) {
       await ctx.safePath(spec.target.deviceId, spec.target.path, true);
       await requireCapabilities(ctx, spec.target.deviceId, path.posix.dirname(spec.target.path));
+      if ((spec.target.policy ?? "strict_native") !== mutationPolicy(ctx, spec.target.deviceId)) return fail("TRANSPORT_POLICY_CHANGED", "Target transport strength changed since preview");
       if (await exists(ctx, spec.target.deviceId, spec.target.path)) {
         const replacement = operations.find((operation) => operation.spec.action === "delete" && operation.spec.source.deviceId === spec.target!.deviceId && operation.spec.source.path === spec.target!.path);
         if (!replacement && (spec.action !== "rewrite" || spec.target.deviceId !== spec.source.deviceId || spec.target.path !== spec.source.path)) return fail("TARGET_COLLISION", "Target collision appeared since preview");
@@ -702,22 +795,26 @@ async function stage(ctx: Context, plan: FilePlan, operation: RuntimeOperation) 
   const { spec } = operation; if (!spec.target) return;
   await journal(ctx, plan, operation, "stage_intent");
   const targetIo = await ctx.io(spec.target.deviceId);
+  const writeTemp = spec.target.policy === "ftp_checked" ? targetIo.checked!.writeTempFrom.bind(targetIo.checked) : targetIo.writeExclusiveTempFrom.bind(targetIo);
   const expectedSize = spec.payload ? Buffer.byteLength(spec.payload, "base64") : spec.source.fingerprint.size;
-  if (spec.payload) await targetIo.writeExclusiveTempFrom(spec.tempPath!, Readable.from(Buffer.from(spec.payload, "base64")), ctx.limits(expectedSize));
+  if (spec.payload) await writeTemp(spec.tempPath!, Readable.from(Buffer.from(spec.payload, "base64")), ctx.limits(expectedSize));
   else {
     const bridge = new PassThrough(); const controller = new AbortController();
     const limits = { ...ctx.limits(expectedSize), signal: AbortSignal.any([ctx.signal, controller.signal]) };
-    const write = targetIo.writeExclusiveTempFrom(spec.tempPath!, bridge, limits).catch((error) => { controller.abort(error); bridge.destroy(); throw error; });
+    const sourceIo = !spec.source.uploadSourceId && !spec.source.saveVersionId ? await (spec.target.policy === "ftp_checked" && spec.target.deviceId === spec.source.deviceId ? ctx.readIo(spec.source.deviceId) : ctx.io(spec.source.deviceId)) : undefined;
+    await sourceIo?.checkPath?.(spec.source.path, ctx.snapshots.get(spec.source.deviceId)!.roots);
+    const write = writeTemp(spec.tempPath!, bridge, limits).catch((error) => { controller.abort(error); bridge.destroy(); throw error; });
     const read = (spec.source.uploadSourceId ? readProtectedUploadTo(ctx.db, spec.source.uploadSourceId, bridge, limits) : spec.source.saveVersionId ? (async () => {
       const source = await verifiedSaveSource(ctx, spec.source.saveVersionId!);
       const { readSaveObjectTo } = await import("@/lib/save-store");
       return readSaveObjectTo(source.version.storageKey, bridge, limits, { storageDirectory: ctx.options.storageDirectory });
-    })() : (await ctx.io(spec.source.deviceId)).readTo(spec.source.path, bridge, limits)).catch((error) => { controller.abort(error); bridge.destroy(); throw error; });
+    })() : sourceIo!.readTo(spec.source.path, bridge, limits)).catch((error) => { controller.abort(error); bridge.destroy(); throw error; });
     for (const result of await Promise.allSettled([write, read])) if (result.status === "rejected") throw result.reason;
   }
   const verified = await fingerprint(ctx, spec.target.deviceId, spec.tempPath!);
   if (verified.size !== expectedSize || verified.sha256 !== (spec.payload ? digest(Buffer.from(spec.payload, "base64")) : spec.source.fingerprint.sha256)) return fail("STAGED_HASH_MISMATCH", "Temporary file does not match the verified planned bytes");
   spec.staged = verified;
+  if (spec.target.policy === "ftp_checked") (spec.receipts ??= {}).stage = true;
   await journal(ctx, plan, operation, "staged");
 }
 async function quarantine(ctx: Context, plan: FilePlan, operation: RuntimeOperation) {
@@ -725,19 +822,28 @@ async function quarantine(ctx: Context, plan: FilePlan, operation: RuntimeOperat
   await fingerprint(ctx, spec.source.deviceId, spec.source.path, spec.source.fingerprint);
   if (spec.source.backupVersionId) await verifyTargetBackup(ctx, spec.source);
   await journal(ctx, plan, operation, "quarantine_intent"); const io = await ctx.io(spec.source.deviceId);
-  await io.flushFile!(spec.source.path);
-  await io.renameNoReplace(spec.source.path, spec.quarantinePath);
+  if (spec.source.policy === "ftp_checked") {
+    await io.checked!.acknowledgeFile(spec.source.path);
+    await io.checked!.rename(spec.source.path, spec.quarantinePath);
+  } else {
+    await io.flushFile!(spec.source.path);
+    await io.renameNoReplace(spec.source.path, spec.quarantinePath);
+  }
   await fingerprint(ctx, spec.source.deviceId, spec.quarantinePath, spec.source.fingerprint);
   if (await exists(ctx, spec.source.deviceId, spec.source.path)) return fail("PARTIAL_QUARANTINE", "Quarantine retained the source entry; reconcile before continuing");
+  if (spec.source.policy === "ftp_checked") (spec.receipts ??= {}).quarantine = true;
   await journal(ctx, plan, operation, "quarantined");
 }
 async function publish(ctx: Context, plan: FilePlan, operation: RuntimeOperation) {
   const { spec } = operation; if (!spec.target || !spec.staged) return;
   await fingerprint(ctx, spec.target.deviceId, spec.tempPath!, spec.staged);
   await journal(ctx, plan, operation, "publish_intent");
-  await (await ctx.io(spec.target.deviceId)).publishFileNoReplace(spec.tempPath!, spec.target.path);
+  const io = await ctx.io(spec.target.deviceId);
+  if (spec.target.policy === "ftp_checked") await io.checked!.publish(spec.tempPath!, spec.target.path);
+  else await io.publishFileNoReplace(spec.tempPath!, spec.target.path);
   await fingerprint(ctx, spec.target.deviceId, spec.target.path, spec.staged);
   if (await exists(ctx, spec.target.deviceId, spec.tempPath!)) return fail("PARTIAL_PUBLICATION", "Publication retained a temporary entry; reconcile before continuing");
+  if (spec.target.policy === "ftp_checked") (spec.receipts ??= {}).publish = true;
   await journal(ctx, plan, operation, "published");
 }
 async function validateDescriptors(ctx: Context, operations: RuntimeOperation[], recovery = false) {
@@ -771,7 +877,7 @@ async function updateManifest(tx: Prisma.TransactionClient, operations: RuntimeO
     if (spec.source.manifestTracked === false) continue;
     const original = spec.source;
     if (undo) {
-      if (spec.source.noSourceManifest) continue;
+      if (spec.source.noSourceManifest || spec.action === "copy") continue;
       const restored = manifestData(original.record);
       if (restored.gameId && !await tx.game.findUnique({ where: { id: restored.gameId } })) restored.gameId = null;
       await tx.deviceFile.upsert({ where: { deviceId_path: { deviceId: original.deviceId, path: original.manifestPath } }, create: { deviceId: original.deviceId, path: original.manifestPath, ...restored }, update: restored });
@@ -806,31 +912,48 @@ async function finish(ctx: Context, plan: FilePlan, operations: RuntimeOperation
     await updateManifest(tx, operations, undo, parseSnapshots(plan));
     for (const operation of operations) {
       if (status === "ready") operation.spec.staged = undefined;
+      if (status === "ready") operation.spec.receipts = undefined;
       await tx.filePlanOperation.update({ where: { id: operation.row.id }, data: { phase: status === "ready" ? "planned" : status === "applied" ? "complete" : "restored", specification: JSON.stringify(operation.spec), error: null } });
     }
   });
 }
 async function verifyRecovery(ctx: Context, operations: RuntimeOperation[]) {
   for (const { spec } of operations) {
-    const source = await exists(ctx, spec.source.deviceId, spec.source.path); const backup = await exists(ctx, spec.source.deviceId, spec.quarantinePath);
-    if (source) {
-      const ownOutput = operations.find((operation) => operation.spec.target?.deviceId === spec.source.deviceId && operation.spec.target.path === spec.source.path && operation.spec.staged?.identity === source.identity);
+    const source = spec.action === "copy" ? null : await exists(ctx, spec.source.deviceId, spec.source.path); const backup = await exists(ctx, spec.source.deviceId, spec.quarantinePath);
+    // A copy never owns or restores its source. Only its verified output is undone.
+    if (spec.action === "copy") {
+      if (backup) return fail("RECOVERY_CONFLICT", "A copy has an unexpected source quarantine; preserve it for inspection");
+    } else if (source) {
+      const ownOutput = operations.find((operation) => operation.spec.target?.deviceId === spec.source.deviceId && operation.spec.target.path === spec.source.path && operation.spec.staged &&
+        (operation.spec.target.policy === "ftp_checked" ? operation.spec.receipts?.publish && !operation.spec.receipts.undoTarget : operation.spec.staged.identity === source.identity));
+      if (spec.source.policy === "ftp_checked" && spec.receipts?.quarantine && !spec.receipts.restoreSource && !ownOutput) return fail("RECOVERY_CONFLICT", "Source reappeared after confirmed FTP quarantine without a recorded restore");
       await fingerprint(ctx, spec.source.deviceId, spec.source.path, ownOutput?.spec.staged ?? spec.source.fingerprint, true);
-    } else if (!backup && !(spec.action === "copy" && spec.source.uploadSourceId)) return fail("RECOVERY_CONFLICT", "Neither the original source nor its verified backup exists");
-    if (backup) await fingerprint(ctx, spec.source.deviceId, spec.quarantinePath, spec.source.fingerprint, true);
+    } else if (!backup) return fail("RECOVERY_CONFLICT", "Neither the original source nor its verified backup exists");
+    if (backup) {
+      if (spec.source.policy === "ftp_checked" && (!spec.receipts?.quarantine || spec.receipts.restoreSource)) return fail("RECOVERY_CONFLICT", "FTP quarantine ownership has no recorded completed acknowledgement; preserve it for manual review");
+      await fingerprint(ctx, spec.source.deviceId, spec.quarantinePath, spec.source.fingerprint, true);
+    }
     if (spec.target) {
       const target = await exists(ctx, spec.target.deviceId, spec.target.path);
-      const replacement = operations.find((operation) => operation.spec.action === "delete" && operation.spec.source.deviceId === spec.target!.deviceId && operation.spec.source.path === spec.target!.path && target?.identity === operation.spec.source.fingerprint.identity);
-      if (target && !(spec.action === "rewrite" && target.identity === spec.source.fingerprint.identity) && !replacement) {
+      if (spec.target.policy === "ftp_checked" && !target && spec.receipts?.publish && !spec.receipts.undoTarget) return fail("RECOVERY_CONFLICT", "Confirmed FTP publication disappeared without a recorded Undo");
+      const replacement = operations.find((operation) => operation.spec.action === "delete" && operation.spec.source.deviceId === spec.target!.deviceId && operation.spec.source.path === spec.target!.path && target &&
+        (operation.spec.source.policy === "ftp_checked" ? !operation.spec.receipts?.quarantine || operation.spec.receipts.restoreSource : target.identity === operation.spec.source.fingerprint.identity));
+      const originalRewrite = spec.action === "rewrite" && (spec.source.policy === "ftp_checked" ? !spec.receipts?.quarantine || spec.receipts.restoreSource : target?.identity === spec.source.fingerprint.identity);
+      if (target && !originalRewrite && !replacement) {
         if (!spec.staged) return fail("RECOVERY_CONFLICT", "Target ownership was never durably recorded");
+        if (spec.target.policy === "ftp_checked" && (!spec.receipts?.publish || spec.receipts.undoTarget)) return fail("RECOVERY_CONFLICT", "FTP publication has no recorded completed acknowledgement; preserve the public file for manual review");
         await fingerprint(ctx, spec.target.deviceId, spec.target.path, spec.staged, true);
       }
       if (await exists(ctx, spec.target.deviceId, spec.tempPath!)) {
         if (!spec.staged) return fail("RECOVERY_CONFLICT", "Temporary ownership was not durably recorded; preserve it for inspection");
+        if (spec.target.policy === "ftp_checked" && (!spec.receipts?.stage || spec.receipts.publish)) return fail("RECOVERY_CONFLICT", "FTP staging completion is unrecorded or inconsistent; preserve it for review");
         await fingerprint(ctx, spec.target.deviceId, spec.tempPath!, spec.staged, true);
       }
-      if (await exists(ctx, spec.target.deviceId, spec.undoPath!)) {
+      const undo = await exists(ctx, spec.target.deviceId, spec.undoPath!);
+      if (spec.target.policy === "ftp_checked" && spec.receipts?.undoTarget && !undo) return fail("RECOVERY_CONFLICT", "Recorded FTP Undo quarantine disappeared; preserve the remaining files for review");
+      if (undo) {
         if (!spec.staged) return fail("RECOVERY_CONFLICT", "Undo backup ownership is unknown");
+        if (spec.target.policy === "ftp_checked" && !spec.receipts?.undoTarget) return fail("RECOVERY_CONFLICT", "FTP undo effect has no recorded completed acknowledgement");
         await fingerprint(ctx, spec.target.deviceId, spec.undoPath!, spec.staged, true);
       }
     }
@@ -840,7 +963,10 @@ async function retainEntry(ctx: Context, plan: FilePlan, operation: RuntimeOpera
   const target = path.posix.join(path.posix.dirname(filename), `.ludotek-${plan.id}-${operation.row.id}-${randomUUID()}-retained`);
   operation.spec.artifacts.push({ deviceId: id, path: target, fingerprint: expected });
   await journal(ctx, plan, operation, phase, true); await fingerprint(ctx, id, filename, expected, true);
-  await (await ctx.io(id)).renameNoReplace(filename, target); await fingerprint(ctx, id, target, expected, true);
+  const io = await ctx.io(id);
+  if (mutationPolicy(ctx, id) === "ftp_checked") await io.checked!.rename(filename, target);
+  else await io.renameNoReplace(filename, target);
+  await fingerprint(ctx, id, target, expected, true);
   if (await exists(ctx, id, filename)) return fail("RECOVERY_CONFLICT", "Recovery retained a second namespace entry and needs another explicit check");
   await journal(ctx, plan, operation, `${phase}_done`, true);
 }
@@ -849,22 +975,30 @@ async function rollback(ctx: Context, plan: FilePlan, operations: RuntimeOperati
   for (const operation of [...operations].reverse()) {
     const { spec } = operation; if (!spec.target || !spec.staged) continue;
     const target = await exists(ctx, spec.target.deviceId, spec.target.path);
-    if (target && target.identity === spec.staged.identity) {
+    if (target && (spec.target.policy === "ftp_checked" ? spec.receipts?.publish && !spec.receipts.undoTarget : target.identity === spec.staged.identity)) {
       await journal(ctx, plan, operation, "undo_target_intent", true); await fingerprint(ctx, spec.target.deviceId, spec.target.path, spec.staged, true);
       if (await exists(ctx, spec.target.deviceId, spec.undoPath!)) await retainEntry(ctx, plan, operation, spec.target.deviceId, spec.undoPath!, spec.staged, "retain_previous_undo");
-      await (await ctx.io(spec.target.deviceId)).renameNoReplace(spec.target.path, spec.undoPath!);
+      const io = await ctx.io(spec.target.deviceId);
+      if (spec.target.policy === "ftp_checked") await io.checked!.rename(spec.target.path, spec.undoPath!);
+      else await io.renameNoReplace(spec.target.path, spec.undoPath!);
       await fingerprint(ctx, spec.target.deviceId, spec.undoPath!, spec.staged, true);
       if (await exists(ctx, spec.target.deviceId, spec.target.path)) return fail("RECOVERY_CONFLICT", "Undo could not remove the verified target namespace entry");
+      if (spec.target.policy === "ftp_checked") (spec.receipts ??= {}).undoTarget = true;
       await journal(ctx, plan, operation, "undo_target_done", true);
     }
     if (await exists(ctx, spec.target.deviceId, spec.tempPath!)) await retainEntry(ctx, plan, operation, spec.target.deviceId, spec.tempPath!, spec.staged, "retain_temp");
   }
   for (const operation of operations) {
-    const { spec } = operation; const source = await exists(ctx, spec.source.deviceId, spec.source.path); const backup = await exists(ctx, spec.source.deviceId, spec.quarantinePath);
+    const { spec } = operation; if (spec.action === "copy") continue;
+    const source = await exists(ctx, spec.source.deviceId, spec.source.path); const backup = await exists(ctx, spec.source.deviceId, spec.quarantinePath);
     if (backup && !source) {
       await journal(ctx, plan, operation, "restore_source_intent", true); await fingerprint(ctx, spec.source.deviceId, spec.quarantinePath, spec.source.fingerprint, true);
-      await (await ctx.io(spec.source.deviceId)).renameNoReplace(spec.quarantinePath, spec.source.path);
-      await fingerprint(ctx, spec.source.deviceId, spec.source.path, spec.source.fingerprint, true); await journal(ctx, plan, operation, "source_restored", true);
+      const io = await ctx.io(spec.source.deviceId);
+      if (spec.source.policy === "ftp_checked") await io.checked!.rename(spec.quarantinePath, spec.source.path);
+      else await io.renameNoReplace(spec.quarantinePath, spec.source.path);
+      await fingerprint(ctx, spec.source.deviceId, spec.source.path, spec.source.fingerprint, true);
+      if (spec.source.policy === "ftp_checked") (spec.receipts ??= {}).restoreSource = true;
+      await journal(ctx, plan, operation, "source_restored", true);
     } else if (backup && source) await retainEntry(ctx, plan, operation, spec.source.deviceId, spec.quarantinePath, spec.source.fingerprint, "retain_duplicate_backup");
   }
   // Reset paths and retain undo artifacts atomically with the final status.
@@ -916,6 +1050,9 @@ export async function applyFilePlan(id: string, request: Request, options: FileP
     return await getFilePlan(id, options);
   } catch (error) {
     if (started) {
+      // Recovery uses committed receipts, never in-memory evidence whose DB commit failed.
+      const durable = await loadPlan(plan.id, ctx.db);
+      for (const operation of operations) { const row = durable.operations.find((entry) => entry.id === operation.row.id)!; operation.row = row; operation.spec = parseSpec(row); }
       try { await rollback(ctx, plan, operations, "ready"); }
       catch (recoveryError) { try { await markRecovery(ctx, plan, recoveryError); } catch { /* Keep the last durable phase on store failure. */ } }
     }
@@ -931,7 +1068,17 @@ async function recover(id: string, request: Request, options: FilePlanOptions, u
   try {
     if (undo && plan.status === "undone") return view(plan);
     if (undo && plan.status !== "applied") return fail("NOT_APPLIED", "Only a successfully applied plan can be undone");
-    for (const state of parseSnapshots(plan)) { await ctx.loadDevice(state.id); for (const root of state.roots) await requireCapabilities(ctx, state.id, root); }
+    for (const state of parseSnapshots(plan)) await ctx.loadDevice(state.id);
+    for (const { spec } of operations) {
+      if (spec.action !== "copy") {
+        await requireCapabilities(ctx, spec.source.deviceId, path.posix.dirname(spec.source.path));
+        if ((spec.source.policy ?? "strict_native") !== mutationPolicy(ctx, spec.source.deviceId)) return fail("TRANSPORT_POLICY_CHANGED", "Source mutation strength changed since preview");
+      }
+      if (spec.target) {
+        await requireCapabilities(ctx, spec.target.deviceId, path.posix.dirname(spec.target.path));
+        if ((spec.target.policy ?? "strict_native") !== mutationPolicy(ctx, spec.target.deviceId)) return fail("TRANSPORT_POLICY_CHANGED", "Target mutation strength changed since preview");
+      }
+    }
     await ctx.assert(parseSnapshots(plan), true); await verifyRecovery(ctx, operations);
     if (!undo && plan.status === "applied") return view(plan);
     await claim(ctx, plan, undo ? "undoing" : "reconciling", undo ? ["applied"] : ["ready", "applying", "undoing", "reconciling", "recovery_needed", "applied"]); claimed = true;

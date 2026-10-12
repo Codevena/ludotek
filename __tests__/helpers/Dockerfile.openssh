@@ -1,0 +1,31 @@
+# Use a clean context containing only this file and openssh-entrypoint.sh.
+FROM alpine:3.22
+
+RUN apk add --no-cache openssh-server coreutils \
+    && adduser -D -u 1000 -s /bin/sh smoke \
+    && mkdir -p /run/sshd /fixtures \
+    && printf '%s\n' \
+      'Port 22' \
+      'ListenAddress 0.0.0.0' \
+      'HostKey /etc/ssh/ssh_host_ed25519_key' \
+      'PidFile /run/sshd.pid' \
+      'PermitRootLogin no' \
+      'PermitEmptyPasswords no' \
+      'PasswordAuthentication yes' \
+      'KbdInteractiveAuthentication no' \
+      'PubkeyAuthentication no' \
+      'AllowUsers smoke' \
+      'UseDNS no' \
+      'LoginGraceTime 10' \
+      'MaxAuthTries 2' \
+      'MaxSessions 4' \
+      'MaxStartups 2' \
+      'ClientAliveInterval 5' \
+      'ClientAliveCountMax 1' \
+      'Subsystem sftp internal-sftp' \
+      > /etc/ssh/sshd_config
+
+COPY openssh-entrypoint.sh /usr/local/bin/openssh-smoke-entrypoint
+RUN chmod 0755 /usr/local/bin/openssh-smoke-entrypoint
+EXPOSE 22
+ENTRYPOINT ["/usr/local/bin/openssh-smoke-entrypoint"]

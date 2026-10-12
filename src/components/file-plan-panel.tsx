@@ -82,6 +82,10 @@ export function FilePlanPanel({ plan, onChanged }: { plan: FilePlanView; onChang
         <p role="status" className="text-sm text-vault-amber">{STATUS[current.status] ?? current.status}</p>
       </div>
       <p className="text-sm text-vault-muted">{current.operations.length} Schritte · {Number(current.totalBytes).toLocaleString("de-DE")} Bytes. Die Vorschau verändert keine Dateien. Löschen bewahrt Dateien in der Quarantäne.</p>
+      {current.warningLevel === "checked_ftp" && <div role="note" className="rounded-lg border border-vault-amber p-3 text-sm text-vault-amber">
+        <p className="font-medium">FTP/FTPS: geprüfter Transfer mit begrenzter Wiederherstellung</p>
+        <ul className="mt-2 list-disc pl-5 space-y-1">{current.limitations?.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
+      </div>}
       <ol className="space-y-3">{current.operations.map((entry, index) => {
         const operation = entry as unknown as Record<string, unknown>;
         const source = typeof operation.sourcePath === "string" ? operation.sourcePath : typeof operation.filePath === "string" ? operation.filePath : "";
@@ -100,7 +104,7 @@ export function FilePlanPanel({ plan, onChanged }: { plan: FilePlanView; onChang
         {!busy && recovery && <button type="button" onClick={() => act("reconcile")} className="btn-secondary">Wiederherstellung prüfen</button>}
         {busy && <><p aria-live="polite" className="text-sm text-vault-muted">Dateiplan läuft. Bestätigte Ergebnisse werden aus dem Journal geladen.</p><button type="button" onClick={() => request.current?.abort()} className="btn-secondary">Ausführung abbrechen</button></>}
       </div>
-      <p className="text-xs text-vault-muted">Bei fremden Änderungen wird Rücknahme oder Wiederherstellung als Konflikt angehalten. Gesicherte Dateien bleiben erhalten.</p>
+      <p className="text-xs text-vault-muted">{current.warningLevel === "checked_ftp" ? "FTP/FTPS hält erkennbare Inhaltsänderungen und unklare Serverantworten als Konflikt an. Rücknahme ist nur ohne gleichzeitige externe Schreibzugriffe möglich; identische fremde Ersetzungen sind nicht unterscheidbar." : "Bei fremden Änderungen wird Rücknahme oder Wiederherstellung als Konflikt angehalten."} Gesicherte Dateien bleiben erhalten.</p>
     </section>
   );
 }

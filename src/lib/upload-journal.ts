@@ -10,7 +10,7 @@ import { getDeviceProfile, deviceProfileAcquire, validDeviceNumber } from "@/lib
 import { acquireDeviceFiles } from "@/lib/device-jobs";
 import { createConnection, requireFileIo, type DeviceConnection } from "@/lib/connection";
 import { decrypt } from "@/lib/encryption";
-import { createUploadFilePlan, applyFilePlan, getFilePlanFingerprints, getUploadSourceReleaseProof, type FilePlanOptions, type FilePlanView } from "@/lib/file-plans";
+import { createUploadFilePlan, applyFilePlan, getFilePlanFingerprints, getUploadSourceReleaseProof, assertFilePlanMutationCapabilities, assertFilePlanSpace, FilePlanError, type FilePlanOptions, type FilePlanView } from "@/lib/file-plans";
 import { PLATFORM_CONFIG } from "@/lib/platforms";
 import { readProfileFingerprint } from "@/lib/device-profile-sync";
 import { convert } from "@/lib/converter";
@@ -233,14 +233,14 @@ export async function preflightUploadTarget(deviceId: number, platform: string, 
   const profile = (await getDeviceProfile(deviceId, { db })).profile;
   const connection = await (options.connect ?? connectDevice)(device);
   try {
-    const io = requireFileIo(connection); const caps = await io.capabilities(directory);
-    for (const name of ["readStream", "exclusiveTemp", "publishNoReplace", "renameNoReplace", "fileFlush", "directoryFlush", "freeBytes"] as const) if (caps[name].state !== "supported") throw new UploadInputError(`Target cannot safely upload: ${name} is ${caps[name].state}`, 422);
+    const io = requireFileIo(connection);
+    await io.checkPath?.(directory, profile.romRoots.map((root) => root.path));
+    await assertFilePlanMutationCapabilities(io, directory, device.protocol);
     if ((await io.lstat(directory)).type !== "directory") throw new UploadInputError("Target platform directory must already exist; create it through a verified file plan", 422);
-    const space = await io.freeBytes(directory);
-    if (space.state !== "known" || space.bytes < BigInt(profile.reserveBytes)) throw new UploadInputError("Target free space is unavailable or below its reserve", 422);
+    await assertFilePlanSpace(io, directory, BigInt(0), BigInt(profile.reserveBytes), device.protocol);
     await jobs.assertActive();
     return { device, directory, profile, connection, io };
-  } catch (error) { connection.disconnect(); throw error; }
+  } catch (error) { connection.disconnect(); if (error instanceof FilePlanError) throw new UploadInputError(error.message, error.status); throw error; }
 }
 
 export async function bindUploadedCatalog(plan: FilePlanView, input: { title: string; platform: string; representative: string; deviceId: number }, jobs: DeviceJobs, db: PrismaClient = prisma) {
@@ -316,9 +316,8 @@ export async function processUploadThroughJournal(input: ReturnType<typeof valid
               for (const name of prepared.names) assertUploadFilename(name);
               if (collisions.has(game.id)) throw new UploadInputError("Colliding transfer filenames", 409);
               if (activeTarget.profile.formats.length && prepared.names.some((name) => !activeTarget.profile.formats.includes(path.extname(name).toLowerCase()))) throw new UploadInputError("A planned file format is not allowed by the target profile", 422);
-              for (const name of prepared.names) { try { await activeTarget.io.lstat(path.posix.join(activeTarget.directory, name)); throw new UploadInputError("Target file already exists; upload never overwrites", 409); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } }
-              const targetSpace = await activeTarget.io.freeBytes(activeTarget.directory);
-              if (targetSpace.state !== "known" || targetSpace.bytes < BigInt(game.totalSize) + BigInt(activeTarget.profile.reserveBytes)) throw new UploadInputError("Target free space is insufficient including reserve", 422);
+              for (const name of prepared.names) { try { await activeTarget.io.lstat(path.posix.join(activeTarget.directory, name)); throw new UploadInputError("Target file already exists; upload never overwrites", 409); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT" && (error as { code?: number }).code !== 2) throw error; } }
+              await assertFilePlanSpace(activeTarget.io, activeTarget.directory, BigInt(game.totalSize), BigInt(activeTarget.profile.reserveBytes), activeTarget.device.protocol);
               send({ type: "game-start", gameId: game.id, title: game.title, step: "convert" });
               const outputs: { name: string; localPath: string; disc?: number }[] = []; const consumed = new Set<string>();
               const generated = path.join(session.sessionDir, `.ludotek-generated-${randomUUID()}`);
@@ -346,14 +345,13 @@ export async function processUploadThroughJournal(input: ReturnType<typeof valid
               const journalOptions = { ...options, heldJobs: { deviceIds: [selected], jobs: scoped } };
               const plan = await (options.createPlan ?? createUploadFilePlan)({ targetDeviceId: selected, sources: sources.map((source) => ({ sourceId: source.id, targetPath: path.posix.join(activeTarget.directory, source.filename) })) }, request, journalOptions);
               planId = plan.id; send({ type: "game-plan", gameId: game.id, planId });
-              const availableTarget = await activeTarget.io.freeBytes(activeTarget.directory);
-              if (availableTarget.state !== "known" || availableTarget.bytes < BigInt(plan.totalBytes) + BigInt(activeTarget.profile.reserveBytes)) throw new UploadInputError("Actual upload plan exceeds target space including reserve", 422);
+              await assertFilePlanSpace(activeTarget.io, activeTarget.directory, BigInt(plan.totalBytes), BigInt(activeTarget.profile.reserveBytes), activeTarget.device.protocol);
               send({ type: "transfer-progress", gameId: game.id, planId, percent: 0, completedFiles: 0, totalFiles: plan.operations.length });
               const applied = await (options.applyPlan ?? applyFilePlan)(plan.id, request, journalOptions);
               if (applied.status !== "applied") throw new UploadInputError("Upload file plan needs recovery", 409);
               send({ type: "transfer-progress", gameId: game.id, planId, percent: 100, completedFiles: applied.operations.length, totalFiles: applied.operations.length });
               for (const expected of await getFilePlanFingerprints(plan.id, { db })) {
-                const actual = await readProfileFingerprint(activeTarget.io, expected.path, scoped);
+                const actual = await readProfileFingerprint(activeTarget.io, expected.path, scoped, undefined, activeTarget.profile.romRoots.map((root) => root.path));
                 if (actual.sha256 !== expected.sha256 || actual.size !== expected.size) throw new UploadInputError("Target changed before catalog binding", 409);
               }
               await scoped.assertActive(); send({ type: "game-step", gameId: game.id, step: "scan" });

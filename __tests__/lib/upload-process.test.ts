@@ -15,7 +15,7 @@ vi.mock("@/lib/encryption", () => ({ decrypt: (value: string) => value }));
 vi.mock("@/lib/converter", () => ({ convert: deps.convert }));
 vi.mock("@/lib/device-jobs", () => ({ acquireDeviceFiles: async (_ids: number[], request: Request) => ({ signal: request.signal, assertActive: async () => request.signal.throwIfAborted(), assertOwned: async () => {}, close: async () => {} }), assertDeviceJobsOwned: async () => {} }));
 vi.mock("@/lib/connection", () => ({ createConnection: async () => ({
-  fileIo: { capabilities: async () => Object.fromEntries(["readStream", "exclusiveTemp", "publishNoReplace", "renameNoReplace", "fileFlush", "directoryFlush", "freeBytes"].map((key) => [key, { state: "supported" }])), lstat: async (name: string) => { if (/\/roms\/[a-z0-9-]+$/.test(name)) return { type: "directory" }; throw Object.assign(new Error("absent"), { code: "ENOENT" }); }, freeBytes: async () => ({ state: "known", bytes: BigInt(128 * 1024 ** 3) }) }, disconnect: () => {},
+  fileIo: { capabilities: async () => Object.fromEntries(["readStream", "exclusiveTemp", "publishNoReplace", "renameNoReplace", "fileFlush", "directoryFlush", "freeBytes"].map((key) => [key, { state: "supported" }])), lstat: async (name: string) => { if (/\/roms\/[a-z0-9-]+$/.test(name)) return { type: "directory" }; throw Object.assign(new Error("absent"), { code: "ENOENT" }); }, flushFile: async () => {}, freeBytes: async () => ({ state: "known", bytes: BigInt(128 * 1024 ** 3) }) }, disconnect: () => {},
 }), requireFileIo: (connection: { fileIo: unknown }) => connection.fileIo }));
 const fakeDb = vi.hoisted(() => ({
   settings: { findUnique: deps.settings }, device: { findUnique: deps.device },
@@ -26,7 +26,8 @@ const fakeDb = vi.hoisted(() => ({
   deviceFile: { findMany: async ({ where }: { where: { deviceId: number; path: { in: string[] } } }) => where.path.in.map((filename) => ({ path: filename, deviceId: where.deviceId, kind: "file", platform: filename.split("/")[3] })), updateMany: async () => ({ count: 1 }) },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: { ...fakeDb, $transaction: async (work: (db: typeof fakeDb) => Promise<unknown>) => work(fakeDb) } }));
-vi.mock("@/lib/file-plans", () => ({
+vi.mock("@/lib/file-plans", async (original) => ({
+  ...await original<typeof import("@/lib/file-plans")>(),
   createUploadFilePlan: deps.createPlan, applyFilePlan: deps.transfer,
   getFilePlanFingerprints: async () => [], getUploadSourceReleaseProof: async () => ({ releasable: true, sourceIds: [] }),
 }));

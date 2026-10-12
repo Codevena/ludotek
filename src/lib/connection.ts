@@ -3,6 +3,7 @@ import { Client as FtpClient } from "basic-ftp";
 import { Readable, Writable } from "stream";
 import { getLocalFilesRoots, resolveLocalPath, LocalPathError } from "@/lib/local-paths";
 import { LocalFileIo, SftpFileIo, FtpFileIo, FileIoError, type FileIo, type FileEntryStat } from "@/lib/file-io";
+import { createSftpNativeMetadata } from "@/lib/sftp-file-io";
 export type { FileIo, FileEntryStat, IoLimits, FileIoCapabilities, FreeBytesResult } from "@/lib/file-io";
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ export function quoteShellArg(value: string): string {
 // ---------------------------------------------------------------------------
 
 /** Execute a command over an SSH connection and collect stdout. */
-export function sshExec(conn: SshClient, command: string): Promise<string> {
+export function sshExec(conn: SshClient, command: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     let settled = false;
     let channel: import("ssh2").ClientChannel | undefined;
@@ -142,6 +143,7 @@ export function sshExec(conn: SshClient, command: string): Promise<string> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
       if (error) reject(error);
       else resolve(Buffer.concat(stdout).toString());
       if (close && channel) closeChannel(channel);
@@ -150,6 +152,9 @@ export function sshExec(conn: SshClient, command: string): Promise<string> {
     const timer = setTimeout(() => {
       settle(new Error(`SSH command timed out after ${SSH_COMMAND_TIMEOUT}ms`), true);
     }, SSH_COMMAND_TIMEOUT);
+    const abort = () => settle(new FileIoError("SSH command aborted", { code: "ABORT_ERR" }), true);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) { abort(); return; }
 
     try {
       conn.exec(command, (err, stream) => {
@@ -204,7 +209,7 @@ class SshConnection implements DeviceConnection {
   readonly fileIo: FileIo;
 
   constructor(private conn: SshClient) {
-    this.fileIo = new SftpFileIo(() => this.getSftp(), () => this.disconnect());
+    this.fileIo = new SftpFileIo(() => this.getSftp(), () => this.disconnect(), createSftpNativeMetadata((command, signal) => sshExec(this.conn, command, signal)));
   }
 
   async lstat(path: string): Promise<FileEntryStat> { return this.fileIo.lstat(path); }

@@ -10,7 +10,7 @@ vi.mock("@/lib/disc-inputs", async (original) => ({ ...await original<typeof imp
   loadUploadSession: async () => ({ sessionDir: deps.sessionDir, descriptorInputs: new Map(), games: [{ id: "game-toy-file", title: "Toy", type: "single", conversion: "none", totalSize: 3, files: [{ name: "Toy.bin", size: 3, path: path.join(deps.sessionDir, "Toy.bin") }] }] }),
 }));
 vi.mock("@/lib/device-jobs", () => ({ acquireDeviceFiles: async (_ids: number[], request: Request) => ({ signal: request.signal, assertActive: async () => request.signal.throwIfAborted(), assertOwned: async () => {}, close: deps.fileClose }), assertDeviceJobsOwned: async () => {} }));
-vi.mock("@/lib/connection", () => ({ createConnection: async () => ({ fileIo: { capabilities: async () => Object.fromEntries(["readStream", "exclusiveTemp", "publishNoReplace", "renameNoReplace", "fileFlush", "directoryFlush", "freeBytes"].map((key) => [key, { state: "supported" }])), lstat: async (filename: string) => { if (filename === "/fixture/roms/psx") return { type: "directory" }; throw Object.assign(new Error("absent"), { code: "ENOENT" }); }, freeBytes: async () => ({ state: "known", bytes: BigInt(100000) }) }, disconnect: () => {} }), requireFileIo: (connection: { fileIo: unknown }) => connection.fileIo }));
+vi.mock("@/lib/connection", () => ({ createConnection: async () => ({ fileIo: { capabilities: async () => Object.fromEntries(["readStream", "exclusiveTemp", "publishNoReplace", "renameNoReplace", "fileFlush", "directoryFlush", "freeBytes"].map((key) => [key, { state: "supported" }])), lstat: async (filename: string) => { if (filename === "/fixture/roms/psx") return { type: "directory" }; throw Object.assign(new Error("absent"), { code: "ENOENT" }); }, flushFile: async () => {}, freeBytes: async () => ({ state: "known", bytes: BigInt(100000) }) }, disconnect: () => {} }), requireFileIo: (connection: { fileIo: unknown }) => connection.fileIo }));
 vi.mock("@/lib/converter", () => ({ convert: vi.fn() }));
 vi.mock("@/lib/igdb", () => ({ searchIgdb: deps.search }));
 vi.mock("@/lib/steamgriddb", () => ({ searchSteamGridDb: vi.fn() }));
@@ -25,7 +25,7 @@ const fakeDb = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: { ...fakeDb, $transaction: async (work: (db: typeof fakeDb) => Promise<unknown>) => work(fakeDb) } }));
 const plan = () => ({ id: deps.planId, status: "applied", kind: "upload", totalBytes: "3", operations: [{ targetPath: "/fixture/roms/psx/Toy.bin", targetDeviceId: 1 }] });
-vi.mock("@/lib/file-plans", () => ({ createUploadFilePlan: async () => ({ ...plan(), status: "ready" }), applyFilePlan: deps.transfer, getFilePlanFingerprints: async () => [], getUploadSourceReleaseProof: async () => ({ releasable: true, sourceIds: [] }) }));
+vi.mock("@/lib/file-plans", async (original) => ({ ...await original<typeof import("@/lib/file-plans")>(), createUploadFilePlan: async () => ({ ...plan(), status: "ready" }), applyFilePlan: deps.transfer, getFilePlanFingerprints: async () => [], getUploadSourceReleaseProof: async () => ({ releasable: true, sourceIds: [] }) }));
 vi.mock("@/lib/job-admission", async (original) => ({ ...await original<typeof import("@/lib/job-admission")>(), acquireEnrichment: deps.acquire }));
 
 import { AdmissionError } from "@/lib/job-admission";
