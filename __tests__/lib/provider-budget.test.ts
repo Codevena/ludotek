@@ -1,4 +1,5 @@
-import { setImmediate } from "node:timers/promises";
+import { performance } from "node:perf_hooks";
+import { setTimeout as ioPoll } from "node:timers/promises";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDatabase } from "../helpers/temp-database";
@@ -21,8 +22,12 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 afterAll(async () => { await second.$disconnect(); await fixture.cleanup(); });
 
 async function flushUntil(predicate: () => boolean) {
-  for (let i = 0; i < 10000; i++) { if (predicate()) return; await setImmediate(); }
-  throw new Error("SQLite work did not settle");
+  const deadline = performance.now() + 2000;
+  while (!predicate()) {
+    if (performance.now() >= deadline) throw new Error("SQLite work did not settle");
+    // Let real SQLite I/O finish while provider waits stay on the fake clock.
+    await ioPoll(1);
+  }
 }
 
 describe("persistent provider budgets", () => {

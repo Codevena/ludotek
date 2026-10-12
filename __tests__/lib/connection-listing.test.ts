@@ -29,6 +29,7 @@ const temporaryPaths: string[] = [];
 
 class SshFixture extends EventEmitter {
   connect = vi.fn(() => this.emit("ready"));
+  setNoDelay = vi.fn(() => this);
   end = vi.fn();
   sftp = vi.fn((callback) => callback(null, dependencies.sftp));
   exec = vi.fn((_command, callback) => {

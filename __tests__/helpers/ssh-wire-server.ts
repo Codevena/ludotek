@@ -59,6 +59,7 @@ export async function startSshWireServer(options: SshWireOptions = {}) {
   };
   const extensions = options.extensions ?? ["hardlink@openssh.com", "fsync@openssh.com", "statvfs@openssh.com"];
   const server = new Server({ hostKeys: [key] }, (connection) => {
+    (connection as Connection & { setNoDelay(noDelay: boolean): Connection }).setNoDelay(true);
     connections.add(connection); connection.on("close", () => connections.delete(connection)); connection.on("error", () => {});
     connection.on("authentication", (context) => context.accept());
     connection.on("ready", () => connection.on("session", (accept) => {

@@ -758,6 +758,7 @@ function connectSsh(config: ConnectionConfig): Promise<DeviceConnection> {
 
     conn.on("ready", () => {
       clearTimeout(timer);
+      conn.setNoDelay(true);
       resolve(new SshConnection(conn));
     });
 

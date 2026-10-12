@@ -1,6 +1,6 @@
 # Ludotek: Remote-Dateiaktionen und lokaler Releasekandidat abgenommen
 
-Markus beauftragt die Wiederherstellung der blockierten SSH-/SFTP- und FTP-/FTPS-Schreiber, tatsächliche Dockerprüfung und Releasevorbereitung. Er wählt ausdrücklich normales FTP mit Hashprüfung/Quarantäne und dokumentierter Grenze bei Fremdänderungen. Docker Desktop auf diesem Mac ist für den begrenzten isolierten Testlauf freigegeben. Kein Push/Tag/GitHub-Release/Merge/Deploy freigegeben.
+Markus beauftragt die Wiederherstellung der blockierten SSH-/SFTP- und FTP-/FTPS-Schreiber und wählt normales FTP mit Hashprüfung/Quarantäne und dokumentierter Fremdänderungsgrenze. Begrenzte Docker-Desktop-Tests freigegeben. Anschließend ausdrücklich „push und veröffentliche das auf github“: Branch und GitHub-Vorabversion samt Tag/Imagepipeline genehmigt; kein Main-Merge/Live-App-Deploy.
 
 ## Arbeitsort und Stand
 
@@ -11,7 +11,9 @@ Markus beauftragt die Wiederherstellung der blockierten SSH-/SFTP- und FTP-/FTPS
 - SSH-/SFTP- und FTP-/FTPS-Schreiber samt Journal/Upload/Profil/Save-Restore/mkdir/Undo bestehen echte Protokolltests. Zusätzlich tatsächlicher Linux/OpenSSH-Smoke und Docker-HTTP/Chrome: eigener Legacy-Upgrade, UID1000, Auth/Origin/Rootgrenzen, Scan/Profile/Savebackup, persistenter Neustart und Restore/Apply/Undo. Reale Hardware und AMD64-Laufzeit bleiben ungeprüft.
 - PRE R1 PASS. POST R1 WARN zur ignorierten ROM-Zielreserve von Root reproduziert und mit zwei kausalen Wire-Regressionen geschlossen; POST R2 PASS0CRITICAL/0WARN. OpenSSH fehlende-REALPATH-Semantik ebenfalls kausal korrigiert. Alle vollständigen Reports/Mapping im Reviewdokument.
 - Lokaler Code-/Releasecommit `599cf93f3473630159a36ac5ae769d301fc5aa2f`, Basis `fa21ea6`. Unveränderter geänderter Sourcekandidat32 Dateien/SHA256`c62ac413c3f80656d785660ec7ecfe69ea8d7e3fa880bdb01d30181936443381` vor/nach Commit bestätigt; Gitleaks regulär bestanden. Kein Push.
-- Releaseversion lokal `2.0.0-rc.1`; Release-/Upgradeentwurf `docs/release-2.0.0-rc.1.md`. Keine Veröffentlichung.
+- RC1-Branch/Tag aufd046efe bereits gepusht; nur ein eigener Release-Draft. Externe CI38241346849 fand zehn Linux-Timing-/SQLite-Poolfälle, Publisher übersprungen. Immutable RC1-Tag bleibt unverändert.
+- Korrigierter Kandidat2.0.0-rc.2: SQLite-Pool1/ProdSingleton, SSH-TCP_NODELAY, native I/O-Testpolling und angemessener16-CLI-Testdeckel. DB-/Owner-/Budget-/Produktfristen unverändert.963/963 Tests in94 Dateien auf Mac48,48s und eigenem Linux/Tokio2-Container141,06s, Typ/Lint, PRE/POST-Delta PASS.
+- CI-Delta14-Dateien-SHA256`46d82c65a07decfd8078f38879e3054c872bd4d7945175c3a41364060c0876b9`, Basisd046efe. Plan/volle Reports: docs/dev/2026-10-12-github-ci-plan.md und -review.md; Upgrade/Release: docs/release-2.0.0-rc.2.md. Native Rust-Pool- und Linux-Paketlatenzfehler kausal vor Fix reproduziert.
 
 ## Ausführung und Sicherheit
 
@@ -25,4 +27,4 @@ Markus beauftragt die Wiederherstellung der blockierten SSH-/SFTP- und FTP-/FTPS
 
 ## Nächster Schritt
 
-Brain und Daily Note12.10.2026 halten Codecommit und Ergebnis fest. Offen bleibt ausschließlich die gesonderte Freigabe für Push/Tag/GitHub-Release beziehungsweise Imageveröffentlichung. Kein weiteres Implementierungs- oder Testgate aus diesem Auftrag offen; alle Worker und Reviewer abgeschlossen. Weitere Hardware-/Nutzerbibliotheksprüfung wäre ein eigener konkret begrenzter Auftrag.
+Lokalen RC2-Commit erstellen und autorisierten Branch/neuenRC2-Tag pushen. Externe correctness→verify-image→ARM64/AMD64-Publisher prüfen, dann eigenen korrigierten Draft als Vorabversion veröffentlichen. Keine erneute Freigabe nötig. RC1-Draft nach Erfolg entfernen, RC1-Tag erhalten. Eigene Debugimages/temporäre Artefakte/Docker Desktop aufräumen und Brain/Daily nach Veröffentlichung aktualisieren. Reale Hardware-/Nutzerbibliotheksprüfung bleibt ein eigener Auftrag.

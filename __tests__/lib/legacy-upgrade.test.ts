@@ -49,7 +49,9 @@ describe("existing db-push upgrade", () => {
       try { expect(await backup.game.count()).toBe(1); expect(await backup.device.count()).toBe(1); }
       finally { await backup.$disconnect(); }
     } finally { await legacy.$disconnect(); await upgraded?.$disconnect(); await fixture.cleanup(); }
-  }, 20000);
+  // This functional upgrade starts sixteen separate Prisma baseline processes.
+  // Shared two-core runners need more startup time; product deadlines are unchanged.
+  }, 60000);
 
   it("detects a divergent legacy schema before a migration is marked applied", async () => {
     const fixture = await createTestDatabase();
