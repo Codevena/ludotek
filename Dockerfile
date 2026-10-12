@@ -1,12 +1,10 @@
-FROM node:20-slim AS base
-# Pin pnpm to the last 9.x: pnpm 10.10+/11 require the `node:sqlite` builtin,
-# which node:20 does not provide (added in Node 22.5+ / stable in 24), so
-# `pnpm@latest` breaks `pnpm install` here. 9.15.9 reads the v9.0 lockfile fine.
-RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+FROM node:24-slim AS base
+# Generate and consume the hook-bound lock with the same installer everywhere.
+RUN corepack enable && corepack prepare pnpm@11.21.0 --activate
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml .pnpmfile.cjs ./
 RUN pnpm install --frozen-lockfile
 
 FROM base AS builder

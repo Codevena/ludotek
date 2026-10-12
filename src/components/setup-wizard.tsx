@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DeviceForm, type DeviceFormData } from "@/components/device-form";
 import { FileBrowser } from "@/components/file-browser";
@@ -123,9 +124,9 @@ export function SetupWizard() {
         )}
       </div>
       <div className="text-center mt-4">
-        <a href="/?skipSetup=1" className="text-xs text-vault-muted hover:text-vault-text transition-colors">
+        <Link href="/?skipSetup=1" className="text-xs text-vault-muted hover:text-vault-text transition-colors">
           Skip setup
-        </a>
+        </Link>
       </div>
     </div>
   );

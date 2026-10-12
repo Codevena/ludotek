@@ -126,6 +126,8 @@ For your own LAN, publish to a specific private host address, keep `ADMIN_TOKEN`
 ```bash
 git clone https://github.com/Codevena/ludotek.git
 cd ludotek
+corepack enable
+corepack prepare pnpm@11.21.0 --activate
 pnpm install
 cp .env.example .env
 pnpm exec prisma migrate deploy
@@ -168,6 +170,8 @@ Coordination requires all local processes to use the **same SQLite file**. Separ
 | `OPENROUTER_MODEL` | `google/gemini-2.5-flash` | AI model for Discover, Fun Facts & Stories |
 
 All other settings (IGDB API keys, SteamGridDB key, devices, scan paths) are configured through the UI after first launch.
+
+Use Node.js 22.13+ or 24 LTS and the pinned pnpm 11.21.0 for local installation. Docker uses Node.js 24. The hook-bound lockfile must be generated and consumed with that same installer. `.pnpmfile.cjs` supplies a restricted default native-build list when no operator policy exists and respects an existing workspace list, including denied builds. Transitive patches keep the deployed dependency graph updated while Prisma stays on 6.x.
 
 ## Supported Platforms
 

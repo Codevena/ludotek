@@ -1,9 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
-  experimental: {
-    serverComponentsExternalPackages: ["ssh2", "cpu-features", "unzipper"],
-  },
+  serverExternalPackages: ["ssh2", "cpu-features", "unzipper"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "images.igdb.com" },

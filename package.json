@@ -2,6 +2,8 @@
   "name": "ludotek",
   "version": "1.2.0",
   "private": true,
+  "packageManager": "pnpm@11.21.0",
+  "engines": { "node": ">=22.13.0" },
   "scripts": {
     "dev": "node scripts/local-server.mjs dev",
     "build": "next build",
@@ -13,25 +15,16 @@
   "dependencies": {
     "@prisma/client": "6.19.3",
     "@types/ssh2": "^1.15.5",
-    "basic-ftp": "^5.2.2",
-    "next": "14.2.35",
+    "basic-ftp": "6.2.1",
+    "next": "15.5.27",
     "next-themes": "^0.4.6",
     "prisma": "6.19.3",
-    "react": "^18",
-    "react-dom": "^18",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "react-markdown": "^10.1.0",
     "recharts": "^3.8.1",
     "ssh2": "^1.17.0",
     "unzipper": "^0.12.3"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "cpu-features",
-      "prisma",
-      "ssh2"
-    ]
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -41,15 +34,15 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@types/unzipper": "^0.10.11",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^8",
-    "eslint-config-next": "14.2.35",
+    "eslint-config-next": "15.5.27",
     "jsdom": "^29.0.2",
     "playwright": "^1.59.1",
-    "postcss": "^8",
+    "postcss": "8.5.23",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.21.0",
     "typescript": "^5",
