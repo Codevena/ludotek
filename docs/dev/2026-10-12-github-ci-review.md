@@ -13,6 +13,12 @@ User hat Push und GitHub-Veröffentlichung ausdrücklich genehmigt. Branch und i
 
 Geprüfter Delta-Source14 Dateien/SHA256`46d82c65a07decfd8078f38879e3054c872bd4d7945175c3a41364060c0876b9`, Basisd046efe. Ausgeschlossen nur generierte Reviewnachweise und Handoff. Finale Mac-Suite mit Tokio2:963/963 in94 Dateien,48,48s, Exit0; Typprüfung und Lint ebenfalls Exit0. Unveränderter Source nach diesen Gates bestätigt. GitHub-RC2-Container-/Publisher-Gates folgen nach dem autorisierten Push; noch keine Behauptung über deren Ergebnis.
 
+## Externe RC2-Abnahme und kleiner Smoke-Delta
+
+CI38268919901 auf2905c04 bestätigt correctness einschließlich vollständiger Suite/Typ/Lint. Das frische AMD64-Image baut und die App absolviert Scan/Save/Neustart/Restore bis zum erfolgreichen Apply. Danach scheitert allein der Host-Testzugriff mit EACCES: korrekte private Dateien gehören UID1000, GitHub-Runner hatUID1001; auch Hostcleanup kann0700-Backupordner nicht betreten. Publisher bleibt übersprungen, Release weiter Draft.
+
+Korrigierter RC3-Smoke liest die neue Save-Datei per dockerexec als App-UID1000 und bereinigt ausschließlich die drei bekannten Unterbäume seines eigenen mkdtemp-Binds über einen begrenzten, kurzlebigen Cleanup-Prozess. Produktrechte/UID/Speichercode unverändert. Syntaxprüfung/gezieltes ESLint/Diffcheck grün; keine neue Appänderung, keine Wiederholung bereits bestandener Produktsuites erforderlich. RC1/RC2-Tags bleiben immutable, neue Veröffentlichungsversion2.0.0-rc.3.
+
 ## Vollständige unabhängige Berichte (PRE R1, POST R1, POST R2)
 
 # CI SQLite pool delta — PRE round 1

@@ -106,7 +106,9 @@ try {
   const restore = await json(`/api/saves/versions/${saves.versions[0].id}/restore`, "POST", { targetDeviceId: id, targetPath: "/fixtures/saves/Restored.srm" });
   assert.equal(restore.plan.status, "ready");
   assert.equal((await json(`/api/file-plans/${restore.plan.id}/apply`, "POST")).plan.status, "applied");
-  assert.equal(await readFile(path.join(root, "fixtures/saves/Restored.srm"), "utf8"), "synthetic-save");
+  // Native Linux keeps the app's private file owned by container UID1000.
+  // Read as that same user instead of weakening permissions for the host runner.
+  assert.equal((await docker(["exec", name, "node", "-e", "process.stdout.write(require('node:fs').readFileSync('/fixtures/saves/Restored.srm','utf8'))"])).stdout, "synthetic-save");
   assert.equal((await json(`/api/file-plans/${restore.plan.id}/undo`, "POST")).plan.status, "undone");
   await assert.rejects(stat(path.join(root, "fixtures/saves/Restored.srm")), { code: "ENOENT" });
   if (process.env.LUDOTEK_SMOKE_BROWSER_MODULE) {
@@ -122,5 +124,10 @@ try {
   process.exitCode = 1;
 } finally {
   if (started) await docker(["stop", "--time", "3", name]);
+  // Only our own mkdtemp root is mounted. A disposable cleanup process can
+  // remove private UID1000 artifacts even when the host runner has UID1001.
+  await docker(["run", "--rm", "--name", `${name}-cleanup`, "--memory", "128m", "--cpus", "1", "--pids-limit", "64", "--user", "0",
+    "--mount", `type=bind,source=${root},target=/cleanup`, "--entrypoint", "node", image, "-e",
+    "const fs=require('node:fs');for(const dir of ['db','data','fixtures'])fs.rmSync('/cleanup/'+dir,{recursive:true,force:true});"]);
   await rm(root, { recursive: true, force: true });
 }
