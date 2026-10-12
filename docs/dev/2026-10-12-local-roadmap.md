@@ -87,13 +87,13 @@ Neue Verantwortung: `src/lib/file-operations/` und zugehörige API; additive Pri
 
 - [x] Baseline: vorhandene Abhängigkeiten anhand Lockfile installieren, vorhandene Tests prüfen; vor großen Artefakten freien Speicher kontrollieren.
 - [x] Schritt 1 mit fokussierten kausalen RED/GREEN-Tests implementieren; Verifikation/Review: `2026-10-12-catalog-review.md`.
-- [ ] Schritt 2 nach Ursachenanalyse, fokussierten Tests und Plan-Review implementieren.
+- [x] Schritt 2 nach Ursachenanalyse, fokussierten Tests und Plan-Review implementieren; abschließende A-05-Bindung im gemeinsamen Journalpaket.
 - [x] Schritt 3 mit unabhängiger Planprüfung, Security-Inventar, Sicherheits-RED/GREEN und POST R3 implementieren; Evidenz `2026-10-12-local-admission-review.md`.
-- [ ] Schritt 4 als gemeinsame Grundlage für die Features mit isoliertem SQLite/Filesystem-Test und unabhängiger Prüfung implementieren.
-- [ ] Schritte 5–9 jeweils backendseitig und in der bestehenden Oberfläche vollständig umsetzen; keine bloßen API-Stubs.
-- [ ] Veraltete Produktionsabhängigkeiten anhand aktueller offizieller Advisories beheben; README/Quickstart, Backup/Recovery, SECURITY.md und proportionale Offline-CI aktualisieren. Bestehende gelöschte Docker-Datei nicht ungefragt wiederherstellen.
-- [ ] Abschluss: unveränderten finalen Baum mit `pnpm test`, `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm build` seriell prüfen; UI am lokalen Testbestand prüfen; gesamte Anforderungsliste unabhängig prüfen.
-- [ ] Auditstatus nur mit aktuellem konkretem Nachweis aktualisieren. Brain und Handoff bei materiellen Meilensteinen aktualisieren. Lokale zusammenhängende Commits mit exakter Pfadauswahl; kein Push.
+- [x] Schritt 4 als gemeinsame Grundlage für die Features mit isoliertem SQLite/Filesystem-Test und unabhängiger Prüfung implementieren.
+- [x] Schritte 5–9 jeweils backendseitig und in der bestehenden Oberfläche vollständig umsetzen; gemeinsame Abnahme `2026-10-12-file-foundation-review.md`.
+- [x] Veraltete Produktionsabhängigkeiten anhand aktueller offizieller Advisories beheben; README/Quickstart, Backup/Recovery, SECURITY.md und proportionale Offline-CI aktualisieren. Nutzer-Löschung der Docker-Datei erhalten.
+- [x] Abschluss:878 Tests, Typ/Lint, sauberer isolierter Produktions-/Standalonebuild und echte Desktop-/390px-Chrome-Abnahme; unveränderter Sourcebaum, unabhängiger POST R2/R3 PASS. Build benutzt identischen installierten Next direkt, weil pnpm in der Symlinkkopie eine Neuinstallation verweigerte; finales internes Dependencymirror ohne Installation.
+- [x] Auditstatus mit lokalem `e605b23` und Fixes-Trailern aktualisiert: `pd zeig --kurz --repo` meldet0 offene/12 erledigte Befunde. Brain, vollständige Reviewakte und Handoff nachgeführt; Nutzeränderungen erhalten, kein Push.
 
 Jeder Teilabschluss nennt verifizierte Ergebnisse und alle noch offenen Teile. Das Gesamtziel bleibt aktiv, bis sämtliche Befunde und Features nachweislich umgesetzt sind.
 
@@ -105,11 +105,11 @@ Jeder Teilabschluss nennt verifizierte Ergebnisse und alle noch offenen Teile. D
 
 ## Aktueller Arbeitsstand
 
-- Vor Umsetzung bestätigte Codeuntersuchung alle zwölf Befunde. A-01/A-02/A-03/A-04/A-06/A-07/A-08/A-09/A-10/A-11 inzwischen verifiziert; A-05/A-12 sowie alle sechs vollständigen Nutzerfunktionen bleiben offen.
+- Alle zwölf Befunde anhand aktueller Quellen behoben und alle sechs beauftragten lokalen Funktionen abgenommen; letzter Featurecommit `e605b23`, pd bestätigt0 offene/12 erledigte Befunde. Finale Evidenz:878/878 Tests, Typ/Lint, Produktions-/Standalone-/390px-Browser und unabhängiger POST R2/R3 PASS. Kein Push. Dateipläne aktuell nur mit belegten LOCAL-Fähigkeiten, unbekannte Remote-Garantien abgelehnt, Hardware-/Containerabnahme nicht behauptet.
 - `pnpm install --frozen-lockfile` wurde zunächst bei 7,7 GiB frei vom bash-guard abgewiesen. Nach erneuter Messung waren ohne Task-Bereinigung 9,8 GiB frei; unveränderte Installation erfolgreich, Baseline `pnpm test`: 57/57 grün. Keine Hook-Umgehung oder Verlagerung auf andere Volumes.
 - Markus hat ausschließlich `uv cache clean --cache-dir /Users/markus/.cache/uv` (gemessen 1,9 GiB) genehmigt. Der Prozess ist nach 300 Sekunden an aktiver uv-Sperre gescheitert, ohne Löschung; kein `--force`, keine anderen Cachelöschungen. Whisper-Modelle gehören zur installierten Whisper-CLI; kein offener Zugriff in lsof, keine Löschfreigabe.
 - A-07/A-08/A-09 vollständig implementiert: 110/110 Gesamttests, Typprüfung, Lint, isolierter Produktionsbuild (44 Seiten) und unabhängiger Implementierungsreview PASS. Ursächliche RED/GREENs und Reviewer-Evidenz in `2026-10-12-catalog-review.md`. Eigene Build-/Testdatenbankartefakte entfernt, Nutzerdaten unverändert.
 - Worker-Schreibaufträge des ersten Pakets abgeschlossen. Lokaler Milestone `90836cc` auf `codex/ludotek-local-roadmap`, Gitleaks-Hook bestanden, kein Push. pd bestätigt 3 erledigte/9 offene Befunde. Delta-Plan A-03/A-06 PRE-Review PASS mit INFO; Worker `/root/scanner_ssh_fix` bearbeitet die drei Produktdateien und neue Tests, Nutzer-Scanner-Test bleibt erhalten.
 - A-02/A-03/A-04/A-06 umgesetzt und verifiziert, dazu lokaler Feature-4-Backendkern. 338/338 Gesamttests, Typ/Lint/isolierter Build, eigener echter CHD-Smoke und unabhängiger POST PASS (228 fokussierte Tests). Evidenz `2026-10-12-io-integrity-review.md`. Alle sechs vollständigen Nutzerfunktionen bleiben offen; Integritäts-UI/API/Persistenz/Zulassung folgen.
 - A-01/A-10/A-11-Delta implementiert: 573/573 Tests, Typ/Lint/isolierter Build42, tatsächlicher Produktions-/Dev-/Standalone-Smoke grün; POST R3 PASS mit geschlossenen bestätigten R1/R2-Befunden. Vollständige Evidenz `2026-10-12-local-admission-review.md`. pnpm-Metadatencache-Cleanup nur vorgelegt, weiterhin keine Freigabe.
-- Gemeinsamer Datei-/Featureplan `2026-10-12-file-foundation-plan.md` PRE R2 PASS. Descriptor-Abhängigkeiten, gemeinsame files-Leases und interne immutable Backups explizit. Noch keine Manifest-/Journal-/Featuremutation. Aktueller Dependency-Audit35 Advisories; gepatchte Versionen vor neuem I/O-Paket übernehmen, Prisma6 beibehalten. Gesamtziel aktiv, kein Push.
+- Gemeinsamer Datei-/Featureplan `2026-10-12-file-foundation-plan.md` PRE R2 PASS. Descriptor-Abhängigkeiten, gemeinsame files-Leases und interne immutable Backups explizit. Noch keine Manifest-/Journal-/Featuremutation. Dependency-Paket `384ede7` abgeschlossen: Produktionsaudit0 bekannte Meldungen, 577/577 Tests, Typ/Lint/Build42/echte lokale Runtime-Smokes und clean frozen-Neuinstallation grün; PRE R2/POST R1 PASS. Prisma6 beibehalten. Allgemeine Betriebs-/Recoverydoku und Offline-CI bleiben offen. Gesamtziel aktiv, kein Push.
