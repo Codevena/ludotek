@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDecryptedDevice, getDecryptedSettings } from "@/lib/encryption";
-import { detectGames } from "@/lib/upload-detector";
+import { assertUploadFilename, loadUploadSession, UploadInputError, validateUploadBody } from "@/lib/disc-inputs";
 import { convert } from "@/lib/converter";
 import {
   transferFiles,
@@ -13,36 +13,21 @@ import {
 import { searchIgdb } from "@/lib/igdb";
 import { searchSteamGridDb } from "@/lib/steamgriddb";
 import { PLATFORM_CONFIG } from "@/lib/platforms";
-import { readdir, stat, rm } from "fs/promises";
+import { rm } from "fs/promises";
 import path from "path";
-
-const UPLOAD_BASE = "/tmp/ludotek-uploads";
 
 export async function POST(request: NextRequest) {
   const authError = requireAuth(request);
   if (authError) return authError;
 
-  let body: { sessionId?: string; platform?: string; gameIds?: string[]; deviceId?: number };
+  let body: ReturnType<typeof validateUploadBody>;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    body = validateUploadBody(await request.json(), true);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof UploadInputError ? error.message : "Invalid JSON body" }, { status: 400 });
   }
 
   const { sessionId, platform, gameIds } = body;
-
-  if (!sessionId || !platform || !gameIds || gameIds.length === 0) {
-    return NextResponse.json(
-      { error: "sessionId, platform, and gameIds are required" },
-      { status: 400 }
-    );
-  }
-
-  // Path traversal check (match detect route's approach)
-  const sessionDir = path.resolve(UPLOAD_BASE, sessionId);
-  if (!sessionDir.startsWith(UPLOAD_BASE + path.sep)) {
-    return NextResponse.json({ error: "Invalid sessionId" }, { status: 400 });
-  }
 
   // Load settings for IGDB credentials and determine target device
   const settings = await getDecryptedSettings();
@@ -53,8 +38,8 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  const targetDeviceId = typeof rawDeviceId === "number" ? rawDeviceId : parseInt(String(rawDeviceId), 10);
-  if (!Number.isInteger(targetDeviceId) || targetDeviceId <= 0) {
+  const targetDeviceId = rawDeviceId;
+  if (typeof targetDeviceId !== "number" || !Number.isSafeInteger(targetDeviceId) || targetDeviceId <= 0) {
     return NextResponse.json(
       { error: "No target device specified. Select a device or set an active device." },
       { status: 400 }
@@ -71,34 +56,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Upload via FTP is not supported yet" }, { status: 400 });
   }
 
-  // Re-read files from session dir and rebuild game list
-  let sessionFiles: { name: string; size: number; path: string }[];
+  let session: Awaited<ReturnType<typeof loadUploadSession>>;
   try {
-    // Recursive: ZIPs are now extracted preserving their folder structure, so
-    // files can live in subdirectories. Keep `name` as the basename (the
-    // detector groups by it) and `path` as the full location.
-    const relNames = await readdir(sessionDir, { recursive: true });
-    sessionFiles = (
-      await Promise.all(
-        relNames.map(async (rel) => {
-          const filePath = path.join(sessionDir, rel as string);
-          const s = await stat(filePath);
-          if (!s.isFile()) return null;
-          return { name: path.basename(rel as string), size: s.size, path: filePath };
-        })
-      )
-    ).filter((f): f is { name: string; size: number; path: string } => f !== null);
-  } catch {
+    session = await loadUploadSession(sessionId, platform);
+  } catch (error) {
     return NextResponse.json(
-      { error: "Session directory not found" },
-      { status: 404 }
+      { error: error instanceof Error ? error.message : "Invalid upload session" },
+      { status: error instanceof UploadInputError ? error.status : 400 }
     );
   }
-
-  const allGames = detectGames(sessionFiles, platform);
+  const { sessionDir, games: allGames, descriptorInputs } = session;
   const selectedGames = allGames.filter((g) => gameIds.includes(g.id));
 
-  if (selectedGames.length === 0) {
+  if (selectedGames.length === 0 || selectedGames.length !== new Set(gameIds).size) {
     return NextResponse.json(
       { error: "No matching games found for provided gameIds" },
       { status: 400 }
@@ -107,6 +77,33 @@ export async function POST(request: NextRequest) {
 
   const platDef = PLATFORM_CONFIG.find((p) => p.id === platform);
   const platformLabel = platDef?.label || platform;
+
+  const discInputs = new Set(Array.from(descriptorInputs.values()).flat());
+  const plans = new Map(selectedGames.map((game) => {
+    const convertibleExts = game.conversion === "none" ? new Set<string>() :
+      game.conversion === "chd" ? new Set([".cue", ".gdi", ".iso"]) : new Set([".iso"]);
+    const conversions = game.files.filter((file) => !discInputs.has(file.path) && convertibleExts.has(path.extname(file.name).toLowerCase()));
+    const outputExt = game.conversion === "chd" ? ".chd" : ".rvz";
+    const plannedInputs = new Set(conversions.flatMap((file) => [file.path, ...(descriptorInputs.get(file.path) ?? [])]));
+    const plannedNames = [
+      ...conversions.map((file) => path.parse(file.name).name + outputExt),
+      ...game.files.filter((file) => !plannedInputs.has(file.path)).map((file) => file.name),
+    ];
+    return [game.id, { conversions, outputExt, plannedNames }];
+  }));
+  // Include playlists: a raw M3U game can collide with another game's playlist.
+  const remoteOwners = new Map<string, string>();
+  const collidingGames = new Set<string>();
+  for (const game of selectedGames) {
+    const remoteDir = getTransferPath(platform, game.type === "multi-disc");
+    const targets = plans.get(game.id)!.plannedNames.map((name) => remoteDir + name);
+    if (game.type === "multi-disc") targets.push(getTransferPath(platform, false) + `${game.title}.m3u`);
+    for (const target of targets) {
+      const owner = remoteOwners.get(target);
+      if (owner) { collidingGames.add(owner); collidingGames.add(game.id); }
+      remoteOwners.set(target, game.id);
+    }
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -130,64 +127,35 @@ export async function POST(request: NextRequest) {
           send({ type: "game-start", gameId: game.id, title: game.title, step: "convert" });
 
           // ── STEP 1: CONVERT ──
-          let filesToTransfer: { name: string; localPath: string }[] = [];
+          const filesToTransfer: { name: string; localPath: string }[] = [];
 
-          if (game.conversion !== "none") {
-            // Files that trigger conversion (chdman reads .cue which references .bin)
-            const convertibleExts =
-              game.conversion === "chd"
-                ? new Set([".cue", ".gdi", ".iso"])
-                : new Set([".iso"]); // rvz
+          const { conversions, outputExt, plannedNames } = plans.get(game.id)!;
+          if (plannedNames.length === 0) throw new Error("No files to transfer");
+          for (const name of plannedNames) assertUploadFilename(name);
+          if (collidingGames.has(game.id)) throw new Error("Colliding transfer filenames");
+          if (game.type === "multi-disc") assertUploadFilename(`${game.title}.m3u`);
 
-            const outputExt = game.conversion === "chd" ? ".chd" : ".rvz";
-            // Files that are already in target format — pass through
-            const alreadyConvertedExts = new Set([".chd", ".rvz"]);
-            // Files implicitly consumed by conversion (.bin referenced by .cue)
-            const implicitExts = new Set([".bin"]);
-
-            for (const file of game.files) {
-              const ext = path.extname(file.name).toLowerCase();
-
-              if (convertibleExts.has(ext)) {
-                // Convert this file
-                const inputPath = file.path;
-                const baseName = path.basename(file.name, ext);
-                const outputPath = path.join(sessionDir, baseName + outputExt);
-
-                send({ type: "convert-progress", gameId: game.id, file: file.name, percent: 0 });
-
-                await convert({
-                  inputPath,
-                  outputPath,
-                  format: game.conversion,
-                  // PS2 raw DVD/CD images (.iso) need createdvd (createcd rejects
-                  // them); a rare PS2 .cue/.gdi stays on createcd. Other CHD
-                  // platforms (psx/dreamcast/saturn/segacd) always use createcd.
-                  chdType: platform === "ps2" && ext === ".iso" ? "dvd" : "cd",
-                  onProgress: (percent) => {
-                    send({ type: "convert-progress", gameId: game.id, file: file.name, percent: Math.round(percent) });
-                  },
-                });
-
-                send({ type: "convert-done", gameId: game.id, file: file.name });
-                filesToTransfer.push({ name: baseName + outputExt, localPath: outputPath });
-              } else if (alreadyConvertedExts.has(ext)) {
-                // Already converted — transfer as-is
-                filesToTransfer.push({ name: file.name, localPath: file.path });
-              } else if (implicitExts.has(ext)) {
-                // .bin files are consumed by .cue conversion — skip
-              } else {
-                // Unknown extension — transfer as-is
-                filesToTransfer.push({ name: file.name, localPath: file.path });
-              }
-            }
-          } else {
-            // No conversion — transfer original files
-            filesToTransfer = game.files.map((f) => ({
-              name: f.name,
-              localPath: f.path,
-            }));
+          // Convert first. Only successful conversions consume their actual inputs.
+          const consumed = new Set<string>();
+          for (const file of conversions) {
+            const ext = path.extname(file.name).toLowerCase();
+            const outputName = path.parse(file.name).name + outputExt;
+            const outputPath = path.join(path.dirname(file.path), outputName);
+            send({ type: "convert-progress", gameId: game.id, file: file.name, percent: 0 });
+            await convert({
+              inputPath: file.path,
+              outputPath,
+              format: game.conversion as "chd" | "rvz",
+              chdType: platform === "ps2" && ext === ".iso" ? "dvd" : "cd",
+              onProgress: (percent) => send({ type: "convert-progress", gameId: game.id, file: file.name, percent: Math.round(percent) }),
+            });
+            consumed.add(file.path);
+            for (const input of descriptorInputs.get(file.path) ?? []) consumed.add(input);
+            filesToTransfer.push({ name: outputName, localPath: outputPath });
+            send({ type: "convert-done", gameId: game.id, file: file.name });
           }
+          filesToTransfer.push(...game.files.filter((file) => !consumed.has(file.path)).map((file) => ({ name: file.name, localPath: file.path })));
+          if (filesToTransfer.length === 0) throw new Error("No files to transfer");
 
           // ── STEP 2: TRANSFER ──
           send({ type: "game-step", gameId: game.id, step: "transfer" });
@@ -241,7 +209,7 @@ export async function POST(request: NextRequest) {
           // For DB tracking, use the first transferred file name (or M3U for multi-disc)
           const transferredFileName = isMultiDisc
             ? `${game.title}.m3u`
-            : filesToTransfer[0]?.name || game.files[0].name;
+            : filesToTransfer[0].name;
 
           const dbGame = await prisma.game.upsert({
             where: {

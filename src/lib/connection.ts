@@ -7,7 +7,9 @@ import { Readable, Writable } from "stream";
 // ---------------------------------------------------------------------------
 const CONNECTION_TIMEOUT = 10_000;
 const SSH_COMMAND_TIMEOUT = 15_000;
+const MAX_SSH_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MAX_ENTRIES = 500;
+const MAX_COMPLETE_ENTRIES = 100_000;
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -38,7 +40,7 @@ export interface FileStat {
 }
 
 export interface DeviceConnection {
-  listDir(path: string): Promise<DirEntry[]>;
+  listDir(path: string, options?: { requireComplete?: boolean }): Promise<DirEntry[]>;
   listDirDetailed(path: string): Promise<DetailedDirEntry[]>;
   mkdir(path: string): Promise<void>;
   rename(oldPath: string, newPath: string): Promise<void>;
@@ -87,6 +89,20 @@ function sortEntries<T extends DirEntry>(entries: T[]): T[] {
   });
 }
 
+/** A complete listing must fail explicitly instead of returning a partial view. */
+function limitEntries<T>(entries: T[], requireComplete = false): T[] {
+  if (requireComplete && entries.length > MAX_COMPLETE_ENTRIES) {
+    throw new Error(`Directory listing exceeds the ${MAX_COMPLETE_ENTRIES} entry limit`);
+  }
+  return requireComplete ? entries : entries.slice(0, MAX_ENTRIES);
+}
+
+/** Preserve a path as one POSIX shell argument, including literal metacharacters. */
+export function quoteShellArg(value: string): string {
+  if (value.includes("\0")) throw new Error("Shell path contains NUL");
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
 // ---------------------------------------------------------------------------
 // SSH helpers
 // ---------------------------------------------------------------------------
@@ -94,35 +110,74 @@ function sortEntries<T extends DirEntry>(entries: T[]): T[] {
 /** Execute a command over an SSH connection and collect stdout. */
 export function sshExec(conn: SshClient, command: string): Promise<string> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let channel: import("ssh2").ClientChannel | undefined;
+    let exitCode: number | null | undefined;
+    let exitSignal: string | undefined;
+    let totalBytes = 0;
+    const stdout: Buffer[] = [];
+
+    function closeChannel(stream: import("ssh2").ClientChannel) {
+      try {
+        stream.close();
+      } catch {
+        // The original command failure remains authoritative.
+      }
+    }
+
+    function settle(error?: Error, close = false) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(Buffer.concat(stdout).toString());
+      if (close && channel) closeChannel(channel);
+    }
+
     const timer = setTimeout(() => {
-      reject(new Error(`SSH command timed out after ${SSH_COMMAND_TIMEOUT}ms`));
+      settle(new Error(`SSH command timed out after ${SSH_COMMAND_TIMEOUT}ms`), true);
     }, SSH_COMMAND_TIMEOUT);
 
-    conn.exec(command, (err, stream) => {
-      if (err) {
-        clearTimeout(timer);
-        return reject(err);
-      }
-
-      let stdout = "";
-      let stderr = "";
-
-      stream.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString();
-      });
-
-      stream.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-
-      stream.on("close", () => {
-        clearTimeout(timer);
-        if (stderr) {
-          console.warn(`[ssh stderr] ${stderr.trim()}`);
+    try {
+      conn.exec(command, (err, stream) => {
+        if (err) return settle(err);
+        channel = stream;
+        // Error listeners also absorb errors emitted while a timed-out channel
+        // is closing. Late callbacks must never leave their channel running.
+        stream.on("error", (error: Error) => settle(error, true));
+        stream.stderr.on("error", (error: Error) => settle(error, true));
+        if (settled) {
+          closeChannel(stream);
+          return;
         }
-        resolve(stdout);
+
+        function collect(chunk: Buffer, isStdout: boolean) {
+          if (settled) return;
+          totalBytes += chunk.length;
+          if (totalBytes > MAX_SSH_OUTPUT_BYTES) {
+            settle(new Error("SSH command output exceeds the 4 MiB limit"), true);
+            return;
+          }
+          if (isStdout) stdout.push(chunk);
+        }
+
+        stream.on("data", (chunk: Buffer) => collect(chunk, true));
+        stream.stderr.on("data", (chunk: Buffer) => collect(chunk, false));
+        stream.once("exit", (code: number | null, signal?: string) => {
+          exitCode = code;
+          exitSignal = signal;
+        });
+        stream.once("close", () => {
+          if (exitSignal || exitCode !== 0) {
+            settle(new Error("SSH command did not exit successfully"));
+          } else {
+            settle();
+          }
+        });
       });
-    });
+    } catch (error) {
+      settle(error instanceof Error ? error : new Error("SSH command failed"), true);
+    }
   });
 }
 
@@ -146,7 +201,7 @@ class SshConnection implements DeviceConnection {
     });
   }
 
-  async listDir(path: string): Promise<DirEntry[]> {
+  async listDir(path: string, options?: { requireComplete?: boolean }): Promise<DirEntry[]> {
     // Use SFTP readdir to properly detect symlinks
     try {
       const sftp = await this.getSftp();
@@ -159,9 +214,10 @@ class SshConnection implements DeviceConnection {
         },
       );
 
-      const entries: DirEntry[] = items
-        .filter((item) => item.filename !== "." && item.filename !== "..")
-        .slice(0, MAX_ENTRIES)
+      const entries: DirEntry[] = limitEntries(
+        items.filter((item) => item.filename !== "." && item.filename !== ".."),
+        options?.requireComplete,
+      )
         .map((item) => {
           const isLink = (item.attrs.mode! & 0o170000) === 0o120000;
           if (isLink) {
@@ -174,10 +230,10 @@ class SshConnection implements DeviceConnection {
         });
 
       return sortEntries(entries);
-    } catch {
+    } catch (error) {
+      if (options?.requireComplete) throw error;
       // Fallback to ls -1p if SFTP fails
-      const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
-      const cmd = `ls -1p -- "${safePath}" 2>/dev/null | head -${MAX_ENTRIES}`;
+      const cmd = `ls -1p -- ${quoteShellArg(path)} 2>/dev/null | head -${MAX_ENTRIES}`;
       const output = await sshExec(this.conn, cmd);
 
       const entries: DirEntry[] = output
@@ -266,8 +322,7 @@ class SshConnection implements DeviceConnection {
   async remove(path: string): Promise<void> {
     const info = await this.stat(path);
     if (info.isDirectory) {
-      const safePath = path.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
-      await sshExec(this.conn, `rm -rf -- "${safePath}"`);
+      await sshExec(this.conn, `rm -rf -- ${quoteShellArg(path)}`);
     } else {
       const sftp = await this.getSftp();
       return new Promise((resolve, reject) => {
@@ -360,12 +415,13 @@ class SshConnection implements DeviceConnection {
 class FtpConnection implements DeviceConnection {
   constructor(private client: FtpClient) {}
 
-  async listDir(path: string): Promise<DirEntry[]> {
+  async listDir(path: string, options?: { requireComplete?: boolean }): Promise<DirEntry[]> {
     const items = await this.client.list(path);
 
-    const entries: DirEntry[] = items
-      .filter((item) => item.name && item.name !== "." && item.name !== "..")
-      .slice(0, MAX_ENTRIES)
+    const entries: DirEntry[] = limitEntries(
+      items.filter((item) => item.name && item.name !== "." && item.name !== ".."),
+      options?.requireComplete,
+    )
       .map((item) => ({
         name: item.name,
         type: item.isSymbolicLink
@@ -505,12 +561,13 @@ class FtpConnection implements DeviceConnection {
 // ---------------------------------------------------------------------------
 
 class LocalConnection implements DeviceConnection {
-  async listDir(path: string): Promise<DirEntry[]> {
+  async listDir(path: string, options?: { requireComplete?: boolean }): Promise<DirEntry[]> {
     const fs = await import("fs/promises");
     const items = await fs.readdir(path, { withFileTypes: true });
-    const entries: DirEntry[] = items
-      .filter((item) => item.name !== "." && item.name !== "..")
-      .slice(0, MAX_ENTRIES)
+    const entries: DirEntry[] = limitEntries(
+      items.filter((item) => item.name !== "." && item.name !== ".."),
+      options?.requireComplete,
+    )
       .map((item) => ({
         name: item.name,
         type: item.isSymbolicLink()

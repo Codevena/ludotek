@@ -1,7 +1,7 @@
 import { Client } from "ssh2";
 import { cleanFilename } from "./filename-cleaner";
 import { getPlatformByDir } from "./platforms";
-import { createConnection } from "./connection";
+import { createConnection, quoteShellArg, sshExec, type DeviceConnection } from "./connection";
 
 const SKIP_FILES = new Set(["metadata.txt", "systeminfo.txt", "media", ".sbi"]);
 const SKIP_EXTENSIONS = new Set([".cue", ".sbi", ".txt", ".log", ".sh", ".lua", ".toml", ".ini", ".bak", ".pat", ".ps"]);
@@ -46,31 +46,44 @@ export async function scanDevice(
   device: DeviceConfig,
   onPathStart?: (pathLabel: string) => void,
 ): Promise<{ games: ScannedGame[]; reliable: boolean }> {
-  const conn = await createConnection({
-    protocol: device.protocol,
-    host: device.host,
-    port: device.port,
-    user: device.user,
-    password: device.password,
-    ftps: device.ftps,
-  });
+  if (
+    !Array.isArray(device.scanPaths) || device.scanPaths.length === 0 ||
+    !device.scanPaths.every((scanPath) =>
+      scanPath && typeof scanPath.path === "string" && scanPath.path.startsWith("/") &&
+      (scanPath.type === "rom" || scanPath.type === "steam"),
+    )
+  ) {
+    return { games: [], reliable: false };
+  }
+
+  let conn: DeviceConnection;
+  try {
+    conn = await createConnection({
+      protocol: device.protocol,
+      host: device.host,
+      port: device.port,
+      user: device.user,
+      password: device.password,
+      ftps: device.ftps,
+    });
+  } catch (error) {
+    console.warn("Scan connection failed:", error);
+    return { games: [], reliable: false };
+  }
   try {
     const allGames: ScannedGame[] = [];
-    // `reliable` stays true only if every configured scan-path root was
-    // reachable. The caller uses it to decide whether an empty result means
+    // `reliable` stays true only if every relevant directory was completely
+    // read. The caller uses it to decide whether an empty result means
     // "device genuinely has no games" (safe to prune stale links) vs. "a path
     // was temporarily unreadable" (must NOT prune, or the whole library is lost).
     let reliable = true;
     for (const scanPath of device.scanPaths) {
       try {
         onPathStart?.(scanPath.path);
-        // Probe the root with stat() first: it THROWS on a missing/unreadable
-        // path (and confirms SFTP works), whereas listDir() falls back to
-        // `ls 2>/dev/null` and returns [] silently on error — which would make a
-        // transient mount/connection failure look like an empty device.
-        await conn.stat(scanPath.path);
+        const root = await conn.stat(scanPath.path);
+        if (!root.isDirectory) throw new Error("Scan root is not a directory");
         if (scanPath.type === "rom") {
-          const dirs = await conn.listDir(scanPath.path);
+          const dirs = await conn.listDir(scanPath.path, { requireComplete: true });
           for (const dir of dirs) {
             if (dir.type !== "dir" && dir.type !== "symlink") continue;
             // Skip multidisc directories — their games are represented by .m3u in the main dir
@@ -78,6 +91,7 @@ export async function scanDevice(
 
             // Check if platform uses a subdir (e.g. xbox/roms/, wiiu/roms/)
             const platformDef = getPlatformByDir(dir.name);
+            if (!platformDef) continue;
             const basePath = `${scanPath.path}/${dir.name}`;
             const romPath = platformDef?.subdir
               ? `${basePath}/${platformDef.subdir}`
@@ -88,7 +102,7 @@ export async function scanDevice(
             const subdirPrefix = platformDef?.subdir ? `${platformDef.subdir}/` : "";
             const allFiles: string[] = [];
             try {
-              const entries = await conn.listDir(romPath);
+              const entries = await conn.listDir(romPath, { requireComplete: true });
               for (const entry of entries) {
                 if (entry.type === "file" || entry.type === "symlink") {
                   allFiles.push(`${subdirPrefix}${entry.name}`);
@@ -97,19 +111,20 @@ export async function scanDevice(
                   if (entry.name.startsWith(".")) continue;
                   // Recurse one level into subdirectories (for region/genre folders)
                   try {
-                    const subEntries = await conn.listDir(`${romPath}/${entry.name}`);
+                    const subEntries = await conn.listDir(`${romPath}/${entry.name}`, { requireComplete: true });
                     for (const sub of subEntries) {
                       if (sub.type !== "dir") {
                         allFiles.push(`${subdirPrefix}${entry.name}/${sub.name}`);
                       }
                     }
                   } catch {
-                    // Skip inaccessible subdirs
+                    reliable = false;
                   }
                 }
               }
             } catch {
-              // subdir doesn't exist — skip (e.g. xbox/roms/ not created yet)
+              // A known platform cannot be treated as empty when unreadable.
+              reliable = false;
               continue;
             }
 
@@ -120,7 +135,7 @@ export async function scanDevice(
             }
           }
         } else {
-          const entries = await conn.listDir(scanPath.path);
+          const entries = await conn.listDir(scanPath.path, { requireComplete: true });
           const steamGames = entries
             .filter((e) => e.type === "dir" || e.type === "symlink")
             .filter((e) => !matchesBlacklist(e.name, device.blacklist))
@@ -223,26 +238,6 @@ export function deduplicateGames(games: ScannedGame[]): ScannedGame[] {
   return Array.from(seen.values());
 }
 
-function sanitizeShellArg(str: string): string {
-  return str.replace(/[`$\\;"'|&<>(){}!\n\r]/g, "");
-}
-
-function sshExec(conn: Client, command: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    conn.exec(command, (err, stream) => {
-      if (err) return reject(err);
-      let data = "";
-      stream.on("data", (chunk: Buffer) => {
-        data += chunk.toString();
-      });
-      stream.stderr.on("data", (chunk: Buffer) => {
-        console.warn("SSH stderr:", chunk.toString());
-      });
-      stream.on("close", () => resolve(data.trim()));
-    });
-  });
-}
-
 /** @deprecated Use scanDevice() instead */
 export async function scanSteamDeck(
   host: string,
@@ -263,15 +258,14 @@ export async function scanSteamDeck(
 
         const dirs = await sshExec(
           conn,
-          `ls -1 "${ROM_BASE}" 2>/dev/null || echo ""`
+          `ls -1 -- ${quoteShellArg(ROM_BASE)}`
         );
         const romDirs = dirs.split("\n").filter((d) => d.trim());
 
         for (const dir of romDirs) {
-          const safeDirName = sanitizeShellArg(dir);
           const listing = await sshExec(
             conn,
-            `ls -1 "${ROM_BASE}/${safeDirName}" 2>/dev/null || echo ""`
+            `ls -1 -- ${quoteShellArg(`${ROM_BASE}/${dir}`)}`
           );
           if (listing) {
             const games = parseRomListing(listing, dir);
@@ -282,7 +276,7 @@ export async function scanSteamDeck(
         for (const steamPath of STEAM_PATHS) {
           const listing = await sshExec(
             conn,
-            `ls -1 "${steamPath}" 2>/dev/null || echo ""`
+            `ls -1 -- ${quoteShellArg(steamPath)}`
           );
           if (listing) {
             const steamGames = listing

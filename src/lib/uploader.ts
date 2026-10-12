@@ -1,5 +1,6 @@
 import fs from "fs";
 import { Client, SFTPWrapper } from "ssh2";
+import { assertUploadFilename, assertUploadPlatform } from "@/lib/disc-inputs";
 
 const ROM_BASE = "/run/media/deck/SD/Emulation/roms";
 const EMU_VIRTUAL_BASE = "/home/deck/EmuVirtual/Emulation/roms";
@@ -21,6 +22,7 @@ export function getTransferPath(
   platform: string,
   isMultiDisc: boolean
 ): string {
+  assertUploadPlatform(platform);
   const suffix = isMultiDisc ? `-multidisc` : "";
   return `${ROM_BASE}/${platform}${suffix}/`;
 }
@@ -34,6 +36,8 @@ export function generateM3u(
   platform: string,
   discFilenames: string[]
 ): string {
+  assertUploadPlatform(platform);
+  for (const filename of discFilenames) assertUploadFilename(filename);
   const pathBase = DIRECT_SD_PLATFORMS.has(platform)
     ? `${ROM_BASE}/${platform}-multidisc`
     : `${EMU_VIRTUAL_BASE}/${platform}-multidisc`;
@@ -51,6 +55,7 @@ export async function transferFiles(
   jobs: TransferJob[],
   port: number = 22
 ): Promise<void> {
+  if (jobs.length === 0) throw new Error("No files to transfer");
   const conn = new Client();
 
   return new Promise((resolve, reject) => {
@@ -111,6 +116,8 @@ export async function transferM3u(
   platform: string,
   port: number = 22
 ): Promise<void> {
+  assertUploadPlatform(platform);
+  assertUploadFilename(m3uFilename);
   const conn = new Client();
 
   return new Promise((resolve, reject) => {
