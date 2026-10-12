@@ -1,6 +1,18 @@
 # GitHub/Linux-Abnahme und Veröffentlichung
 
-User hat Push und GitHub-Veröffentlichung ausdrücklich genehmigt. Branch und immutable Tagv2.0.0-rc.1 wurden aufd046efe gepusht; Release nur als eigener Draft. Erster CI-Lauf38241346849 scheiterte mit945/955 Tests, Containerprüfung/Publisher wurden übersprungen. RC1-Tag bleibt unverändert; korrigierter Kandidat2.0.0-rc.2.
+Markus hat Push und GitHub-Veröffentlichung ausdrücklich genehmigt. [Vorabversion v2.0.0-rc.3](https://github.com/Codevena/ludotek/releases/tag/v2.0.0-rc.3) ist mit vollständig grüner CI und veröffentlichtem AMD64-/ARM64-Image abgeschlossen. Die folgenden früheren RC1-/RC2-Nachweise dokumentieren die kausalen Korrekturen; deren immutable Tags bleiben erhalten.
+
+## Abschließende externe RC3-Abnahme und Veröffentlichung
+
+- Source-/Tagziel: `c7b9b4ce29c686b484e101e5323512b96f7d7ef4`; remote peeled Tag `v2.0.0-rc.3` und veröffentlichte Releasefelder unabhängig geprüft. Release-ID 410521096, veröffentlicht am 12.10.2026 um 16:02:19 UTC, draft=false/prerelease=true. Stabile letzte Release weiterhin v1.2.0.
+- [CI38270421347](https://github.com/Codevena/ludotek/actions/runs/38270421347) auf exakt diesem Source: correctness / verify, verify-image und build-and-push jeweils SUCCESS. Vollständige externe Suite 963/963 in 94 Dateien, 120,96s; Typ/Lint ebenfalls bestanden.
+- Tatsächlich frisches natives AMD64-Image gebaut und isolierten Container-Smoke ausgeführt: UID1000, eigener Legacy-Upgrade, Auth/Origin, LOCAL-Wurzelschutz, Scan/Profile/Savebackup, persistenter Neustart, Restore/Apply/Undo. Original-Joblog bestätigt `PASS Docker`; private Produktrechte bleiben unverändert.
+- OCI-Index `ghcr.io/codevena/ludotek:2.0.0-rc.3`, Digest `sha256:00f71d955e007b1f8e8aa77f66f741192a94e5a931bd0ef7c94d9088a06b6f99` daemonlos abgefragt: linux/amd64 (`62bc44b9…`) und linux/arm64 (`8dc82366…`); zwei unknown/unknown-Einträge explizit als Attestationen gekennzeichnet. Publisher setzt nur `2.0.0-rc.3` und `c7b9b4c`, Revision exaktc7b9b4c; kein latest-/major-/minor-Tag.
+- ARM64-Laufzeit vorher lokal abgenommen; der veröffentlichte ARM64-Build erhält keinen zusätzlichen Runtime-Smoke. Reale Hardware/Nutzerbibliotheken weiterhin ungeprüft. Kein Main-Merge/Live-App-Deploy; main unverändert7dc14cee. Eigene lokale Testobjekte entfernt, Docker Desktop gestoppt; Nutzercheckout und Bestandsimages/-Volumes bewahrt.
+
+## Erste externe RC1-Abnahme
+
+Branch und immutable Tagv2.0.0-rc.1 wurden aufd046efe gepusht; Release damals nur als eigener Draft. Erster CI-Lauf38241346849 scheiterte mit945/955 Tests, Containerprüfung/Publisher wurden übersprungen. RC1-Tag bleibt unverändert; anschließend korrigierter Kandidat2.0.0-rc.2.
 
 ## Kausale Controller-Nachweise
 
@@ -11,7 +23,7 @@ User hat Push und GitHub-Veröffentlichung ausdrücklich genehmigt. Branch und i
 - Voller Linuxlauf fand den CPU-iterationsabhängigen Fake-Timer-Testhelper:10k setImmediate-Schritte können vor echtem SQLite-I/O ablaufen. Isolierter Fall53ms grün, Gesamtlauf drei Pollfehler plus Spätaufrufkaskade. Testhelper wartet auf native I/O mit1ms und2s-Monotoniegrenze; Produkttimer bleiben gefakt, sämtliche Assertions unverändert. Fehlender Script-Bind im eigenen Debugharness separat korrigiert, kein Produktfehler.
 - Eigener lokaler Linux-Node22-Container mit2 CPUs/Tokio2, readonly Source-Binds und ausschließlich temporärer SQLite/FS: finale vollständige Suite963/963 in94 Dateien,141,06s, Exit0. Debugimage nutzte wegen blockiertem Binärdownload vorhandenen generierten Client und direkt vom offiziellen, commitgepinnnten Prisma-Endpunkt geladenen Linux-Schemaengine; Produktionsinstaller und CI benutzen weiterhin den unveränderten frozen-Lock/normalen Installer.
 
-Geprüfter Delta-Source14 Dateien/SHA256`46d82c65a07decfd8078f38879e3054c872bd4d7945175c3a41364060c0876b9`, Basisd046efe. Ausgeschlossen nur generierte Reviewnachweise und Handoff. Finale Mac-Suite mit Tokio2:963/963 in94 Dateien,48,48s, Exit0; Typprüfung und Lint ebenfalls Exit0. Unveränderter Source nach diesen Gates bestätigt. GitHub-RC2-Container-/Publisher-Gates folgen nach dem autorisierten Push; noch keine Behauptung über deren Ergebnis.
+Damals geprüfter Delta-Source14 Dateien/SHA256`46d82c65a07decfd8078f38879e3054c872bd4d7945175c3a41364060c0876b9`, Basisd046efe. Ausgeschlossen nur generierte Reviewnachweise und Handoff. Finale Mac-Suite mit Tokio2:963/963 in94 Dateien,48,48s, Exit0; Typprüfung und Lint ebenfalls Exit0. Unveränderter Source nach diesen Gates bestätigt. Die anschließenden externen RC2- und erfolgreichen RC3-Gates sind gesondert in diesem Bericht dokumentiert.
 
 ## Externe RC2-Abnahme und kleiner Smoke-Delta
 

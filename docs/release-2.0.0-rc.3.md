@@ -1,6 +1,8 @@
-# Ludotek 2.0.0-rc.3 — lokaler Releasekandidat
+# Ludotek 2.0.0-rc.3 — Vorabversion
 
-Ludotek bleibt eine private, lokal oder im eigenen LAN genutzte Open-Source-Spielebibliothek unter MIT. Dieser Kandidat ist lokal vorbereitet; Tag, GitHub-Release und Containerveröffentlichung sind noch nicht erfolgt.
+Ludotek bleibt eine private, lokal oder im eigenen LAN genutzte Open-Source-Spielebibliothek unter MIT. [GitHub-Vorabversion v2.0.0-rc.3](https://github.com/Codevena/ludotek/releases/tag/v2.0.0-rc.3) ist am 12.10.2026 veröffentlicht. Der immutable Tag zeigt auf `c7b9b4ce29c686b484e101e5323512b96f7d7ef4`; die stabile letzte Release bleibt v1.2.0.
+
+Container: `ghcr.io/codevena/ludotek:2.0.0-rc.3` für linux/amd64 und linux/arm64. Geprüfter OCI-Index-Digest: `sha256:00f71d955e007b1f8e8aa77f66f741192a94e5a931bd0ef7c94d9088a06b6f99`.
 
 ## Korrekturen gegenüber rc.2
 
@@ -43,4 +45,4 @@ Für eine Rückkehr die App stoppen und die **zusammengehörige Sicherung von Da
 
 ## Abnahme
 
-Die ausgeführten Gates, Review-Ergebnisse und genauen Grenzen stehen in [Remote-Release-Review](dev/2026-10-12-remote-release-review.md). Protokollprüfungen verwenden eigene Dateien und echte SSH/SFTP-/FTP-/FTPS-Verbindungen; Docker und Chrome verwenden eine eigene migrierte SQLite-Bibliothek. Der lokale Dockerlauf prüft ARM64. Reale Gerätebestände, AMD64-Laufzeit und externe GitHub-CI wurden noch nicht abgenommen.
+Die ausgeführten Gates, Review-Ergebnisse und genauen Grenzen stehen in [Remote-Release-Review](dev/2026-10-12-remote-release-review.md) und [GitHub-CI-Review](dev/2026-10-12-github-ci-review.md). Protokollprüfungen verwenden eigene Dateien und echte SSH/SFTP-/FTP-/FTPS-Verbindungen; Docker und Chrome verwenden eine eigene migrierte SQLite-Bibliothek. 963/963 Tests in 94 Dateien bestehen auf Mac und Linux mit zwei Tokio-Threads. [GitHub-CI38270421347](https://github.com/Codevena/ludotek/actions/runs/38270421347) besteht vollständig: Tests/Typ/Lint, frischer AMD64-Container-Smoke samt Save/Neustart/Restore/Undo und Imagebuild/Upload für beide Plattformen. Der lokale Dockerlauf prüfte ARM64; der veröffentlichte ARM64-Build erhielt keinen zusätzlichen Laufzeit-Smoke. Reale Gerätebestände und Betreiberbibliotheken sind ungeprüft.
