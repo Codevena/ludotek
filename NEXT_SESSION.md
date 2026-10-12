@@ -10,7 +10,7 @@ Markus beauftragt die Wiederherstellung der blockierten SSH-/SFTP- und FTP-/FTPS
 - Neuer Plan: `docs/dev/2026-10-12-remote-release-plan.md`; unabhängiges PRE R1 PASS0CRITICAL/0WARN, vollständiger Report und Mapping in `docs/dev/2026-10-12-remote-release-review.md`.
 - SSH-/SFTP- und FTP-/FTPS-Schreiber samt Journal/Upload/Profil/Save-Restore/mkdir/Undo bestehen echte Protokolltests. Zusätzlich tatsächlicher Linux/OpenSSH-Smoke und Docker-HTTP/Chrome: eigener Legacy-Upgrade, UID1000, Auth/Origin/Rootgrenzen, Scan/Profile/Savebackup, persistenter Neustart und Restore/Apply/Undo. Reale Hardware und AMD64-Laufzeit bleiben ungeprüft.
 - PRE R1 PASS. POST R1 WARN zur ignorierten ROM-Zielreserve von Root reproduziert und mit zwei kausalen Wire-Regressionen geschlossen; POST R2 PASS0CRITICAL/0WARN. OpenSSH fehlende-REALPATH-Semantik ebenfalls kausal korrigiert. Alle vollständigen Reports/Mapping im Reviewdokument.
-- Unveränderter geänderter Sourcekandidat32 Dateien/SHA256`c62ac413c3f80656d785660ec7ecfe69ea8d7e3fa880bdb01d30181936443381`; Basis `fa21ea6`. Lokaler Commit ist der nächste Schritt; kein Push.
+- Lokaler Code-/Releasecommit `599cf93f3473630159a36ac5ae769d301fc5aa2f`, Basis `fa21ea6`. Unveränderter geänderter Sourcekandidat32 Dateien/SHA256`c62ac413c3f80656d785660ec7ecfe69ea8d7e3fa880bdb01d30181936443381` vor/nach Commit bestätigt; Gitleaks regulär bestanden. Kein Push.
 - Releaseversion lokal `2.0.0-rc.1`; Release-/Upgradeentwurf `docs/release-2.0.0-rc.1.md`. Keine Veröffentlichung.
 
 ## Ausführung und Sicherheit
@@ -25,4 +25,4 @@ Markus beauftragt die Wiederherstellung der blockierten SSH-/SFTP- und FTP-/FTPS
 
 ## Nächster Schritt
 
-Abgenommenen Kandidaten exakt lokal committen und Brain/Daily Note nachführen. Danach bleibt nur die gesonderte Freigabe für Push/Tag/GitHub-Release beziehungsweise Imageveröffentlichung. Kein weiteres Implementierungs- oder Testgate aus diesem Auftrag offen; alle Worker und Reviewer abgeschlossen. Weitere Hardware-/Nutzerbibliotheksprüfung wäre ein eigener konkret begrenzter Auftrag.
+Brain und Daily Note12.10.2026 halten Codecommit und Ergebnis fest. Offen bleibt ausschließlich die gesonderte Freigabe für Push/Tag/GitHub-Release beziehungsweise Imageveröffentlichung. Kein weiteres Implementierungs- oder Testgate aus diesem Auftrag offen; alle Worker und Reviewer abgeschlossen. Weitere Hardware-/Nutzerbibliotheksprüfung wäre ein eigener konkret begrenzter Auftrag.
