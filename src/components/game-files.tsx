@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
 interface DeviceFile {
@@ -13,23 +14,34 @@ interface DeviceFile {
 interface GameFilesProps {
   gameId: number;
   files: DeviceFile[];
+  unconfirmedDeviceCount?: number;
 }
 
-export function GameFiles({ gameId, files }: GameFilesProps) {
+export function GameFiles({ gameId, files, unconfirmedDeviceCount = 0 }: GameFilesProps) {
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
   const [pendingRenames, setPendingRenames] = useState<Map<string, string>>(new Map());
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<DeviceFile | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [plans, setPlans] = useState<Map<string, string>>(new Map());
+  const fileSignature = JSON.stringify(files.map((file) => `${file.deviceId}:${file.filePath}`));
+  useEffect(() => {
+    const confirmed = new Set<string>(JSON.parse(fileSignature));
+    setPendingDeletes((previous) => new Set([...previous].filter((key) => confirmed.has(key))));
+    setPendingRenames((previous) => new Map([...previous].filter(([key]) => confirmed.has(key))));
+    setPlans((previous) => new Map([...previous].filter(([key]) => confirmed.has(key))));
+  }, [fileSignature]);
 
-  if (files.length === 0) return null;
+  if (files.length === 0 && unconfirmedDeviceCount === 0) return null;
 
   const fileKey = (f: DeviceFile) => `${f.deviceId}:${f.filePath}`;
 
   async function stageDelete(file: DeviceFile) {
     const key = fileKey(file);
     setLoading(key);
+    setError("");
     try {
       const res = await fetch("/api/sync/queue", {
         method: "POST",
@@ -41,14 +53,15 @@ export function GameFiles({ gameId, files }: GameFilesProps) {
           filePath: file.filePath,
         }),
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (res.status === 201 && Number.isInteger(data.item?.id) && data.item.planId === data.plan?.id && data.plan?.status === "ready") {
         setPendingDeletes((prev) => new Set(prev).add(key));
+        setPlans((previous) => new Map(previous).set(key, data.plan.id));
       } else {
-        const data = await res.json();
-        console.error("Failed to stage delete:", data.error);
+        throw new Error(data.error || "Die Löschvorschau wurde nicht gespeichert.");
       }
     } catch (err) {
-      console.error("Failed to stage delete:", err);
+      setError(err instanceof Error ? err.message : "Die Löschvorschau wurde nicht gespeichert.");
     } finally {
       setLoading(null);
       setConfirmDelete(null);
@@ -69,11 +82,12 @@ export function GameFiles({ gameId, files }: GameFilesProps) {
       return;
     }
     if (safeName.includes("/") || safeName.includes("\\") || safeName.includes("..")) {
-      console.error("Invalid filename: must not contain path separators");
+      setError("Der Dateiname darf keine Pfadtrenner oder '..' enthalten.");
       return;
     }
 
     setLoading(key);
+    setError("");
     const dir = file.filePath.substring(0, file.filePath.lastIndexOf("/"));
     const newPath = `${dir}/${safeName}`;
 
@@ -89,14 +103,15 @@ export function GameFiles({ gameId, files }: GameFilesProps) {
           newPath,
         }),
       });
-      if (res.ok) {
-        setPendingRenames((prev) => new Map(prev).set(key, editValue));
+      const data = await res.json();
+      if (res.status === 201 && Number.isInteger(data.item?.id) && data.item.planId === data.plan?.id && data.plan?.status === "ready") {
+        setPendingRenames((prev) => new Map(prev).set(key, safeName));
+        setPlans((previous) => new Map(previous).set(key, data.plan.id));
       } else {
-        const data = await res.json();
-        console.error("Failed to stage rename:", data.error);
+        throw new Error(data.error || "Die Umbenennungsvorschau wurde nicht gespeichert.");
       }
     } catch (err) {
-      console.error("Failed to stage rename:", err);
+      setError(err instanceof Error ? err.message : "Die Umbenennungsvorschau wurde nicht gespeichert.");
     } finally {
       setLoading(null);
       setEditingKey(null);
@@ -114,6 +129,8 @@ export function GameFiles({ gameId, files }: GameFilesProps) {
   return (
     <div className="mt-8">
       <h2 className="font-heading text-xl font-bold mb-4">Files on Devices</h2>
+      {unconfirmedDeviceCount > 0 && <p className="text-sm text-vault-muted mb-4">{unconfirmedDeviceCount} Gerätezuordnung(en) ohne bestätigten Dateipfad. Gerät erneut scannen, bevor Dateien verändert werden.</p>}
+      {error && <p role="alert" className="text-sm text-red-400 mb-4">{error}</p>}
       <div className="space-y-3">
         {Array.from(byDevice.entries()).map(([deviceId, group]) => (
           <div key={deviceId} className="card">
@@ -143,6 +160,7 @@ export function GameFiles({ gameId, files }: GameFilesProps) {
                       {isDeleted && (
                         <p className="text-xs text-red-400 mt-0.5">Staged for deletion</p>
                       )}
+                      {plans.has(key) && <Link href={`/files?plan=${encodeURIComponent(plans.get(key)!)}`} className="text-xs text-vault-amber underline">Gespeicherte Vorschau, Rücknahme und Wiederherstellung öffnen</Link>}
                     </div>
                     {!isDeleted && !isEditing && !renamedTo && (
                       <div className="flex gap-1.5 flex-shrink-0">

@@ -3,6 +3,8 @@ import { scanDevice } from "@/lib/scanner";
 import { setScanProgress, clearScanProgress } from "@/lib/scan-progress";
 import { decrypt } from "@/lib/encryption";
 import { deleteGameFiles } from "@/lib/image-cache";
+import { persistDeviceManifest } from "@/lib/device-manifest";
+import { acquireDeviceFiles, assertDeviceJobsOwned, type DeviceJobs } from "@/lib/device-jobs";
 
 interface DeviceScanResult {
   device: string;
@@ -12,7 +14,17 @@ interface DeviceScanResult {
   error?: string;
 }
 
-export async function runScanInBackground(deviceId?: number): Promise<void> {
+/** Claim all affected devices before reporting that the background scan started. */
+export async function startScanInBackground(deviceId?: number): Promise<void> {
+  const devices = await prisma.device.findMany({ where: deviceId ? { id: deviceId } : undefined, select: { id: true } });
+  if (devices.length === 0) throw new Error("No devices configured");
+  // The accepted background job survives completion of the HTTP response.
+  const jobs = await acquireDeviceFiles(devices.map((device) => device.id), new Request("http://ludotek.internal/scan"));
+  void runScanInBackground(deviceId, jobs).catch((error) => console.error("Scan crashed:", error));
+}
+
+export async function runScanInBackground(deviceId?: number, suppliedJobs?: DeviceJobs): Promise<void> {
+  let jobs = suppliedJobs;
   // Set scanning=true immediately to prevent TOCTOU race on concurrent requests
   setScanProgress({
     scanning: true,
@@ -46,6 +58,9 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
       });
       return;
     }
+
+    jobs ??= await acquireDeviceFiles(devices.map((device) => device.id), new Request("http://ludotek.internal/scan"));
+    await jobs.assertActive();
 
     // Count total scan paths across all devices
     let totalPaths = 0;
@@ -88,8 +103,9 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
     });
 
     for (const { device, scanPaths, blacklist } of deviceConfigs) {
+      await jobs.assertActive();
       try {
-        const { games, reliable } = await scanDevice(
+        const { games, reliable, files } = await scanDevice(
           {
             id: device.id,
             protocol: device.protocol as "ssh" | "ftp" | "local",
@@ -116,74 +132,93 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
             });
             completedPaths++;
           },
+          { signal: jobs.signal, assertActive: () => jobs!.assertActive() },
         );
 
         let newCount = 0;
         let updatedCount = 0;
         const scannedGameIds: number[] = [];
+        const gameIds = new Map<string, number>();
 
         for (const game of games) {
-          // First try exact file match (same ROM, same platform)
-          let existing = await prisma.game.findUnique({
-            where: {
-              originalFile_platform: {
-                originalFile: game.originalFile,
-                platform: game.platform,
+          await jobs.assertActive();
+          await prisma.$transaction(async (tx) => {
+            await assertDeviceJobsOwned(jobs!, tx);
+            jobs!.signal.throwIfAborted();
+            const physical = files.find((file) => file.type === "file" && file.gameKey === `${game.title}|${game.platform}` && file.relativePath === game.originalFile);
+            const confirmed = physical ? await tx.deviceFile.findFirst({
+              where: { deviceId: device.id, path: physical.path, kind: "file", gameId: { not: null }, size: BigInt(physical.size), modifiedAt: physical.modifiedAt ?? null },
+              select: { game: true },
+            }) : null;
+            // Journal-renamed paths retain the existing catalog identity and
+            // metadata; shared representative filenames need not be changed.
+            let existing = confirmed?.game ?? await tx.game.findUnique({
+              where: {
+                originalFile_platform: {
+                  originalFile: game.originalFile,
+                  platform: game.platform,
+                },
               },
-            },
-          });
-
-          // Fall back to title+platform match (cross-device dedup for same game with different filename)
-          if (!existing) {
-            existing = await prisma.game.findFirst({
-              where: { title: game.title, platform: game.platform },
             });
-          }
 
-          let result;
-          if (existing) {
-            // Update title if it changed (e.g. ROM renamed on disk)
-            if (existing.title !== game.title) {
-              await prisma.game.update({
-                where: { id: existing.id },
-                data: { title: game.title },
+            // Fall back to title+platform match (cross-device dedup for same game with different filename)
+            if (!existing) {
+              existing = await tx.game.findFirst({
+                where: { title: game.title, platform: game.platform },
               });
-              updatedCount++;
             }
-            result = existing;
-          } else {
-            result = await prisma.game.create({
-              data: {
-                title: game.title,
-                originalFile: game.originalFile,
-                platform: game.platform,
-                platformLabel: game.platformLabel,
-                source: game.source,
+
+            let result;
+            if (existing) {
+              // Update title if it changed (e.g. ROM renamed on disk)
+              if (!confirmed?.game && existing.title !== game.title) {
+                await tx.game.update({
+                  where: { id: existing.id },
+                  data: { title: game.title },
+                });
+                updatedCount++;
+              }
+              result = existing;
+            } else {
+              result = await tx.game.create({
+                data: {
+                  title: game.title,
+                  originalFile: game.originalFile,
+                  platform: game.platform,
+                  platformLabel: game.platformLabel,
+                  source: game.source,
+                },
+              });
+              newCount++;
+            }
+
+            scannedGameIds.push(result.id);
+            gameIds.set(`${game.title}|${game.platform}`, result.id);
+
+            // Create/refresh the GameDevice link, recording the filename THIS
+            // device's scan saw. Updating on re-scan fixes the .m3u-supersedes-disc
+            // case (SCANNING-2) and keeps each device's path independent (SCANNING-3).
+            await tx.gameDevice.upsert({
+              where: {
+                gameId_deviceId: {
+                  gameId: result.id,
+                  deviceId: device.id,
+                },
               },
-            });
-            newCount++;
-          }
-
-          scannedGameIds.push(result.id);
-
-          // Create/refresh the GameDevice link, recording the filename THIS
-          // device's scan saw. Updating on re-scan fixes the .m3u-supersedes-disc
-          // case (SCANNING-2) and keeps each device's path independent (SCANNING-3).
-          await prisma.gameDevice.upsert({
-            where: {
-              gameId_deviceId: {
+              update: { originalFile: game.originalFile },
+              create: {
                 gameId: result.id,
                 deviceId: device.id,
+                originalFile: game.originalFile,
               },
-            },
-            update: { originalFile: game.originalFile },
-            create: {
-              gameId: result.id,
-              deviceId: device.id,
-              originalFile: game.originalFile,
-            },
+            });
           });
         }
+
+        await jobs.assertActive();
+        await persistDeviceManifest(prisma, device.id, files, reliable, gameIds, {
+          assertOwned: (tx) => assertDeviceJobsOwned(jobs!, tx), signal: jobs.signal,
+        });
 
         // Clean up stale GameDevice links for games no longer on this device.
         // Prune only when the scan was RELIABLE (every relevant directory was
@@ -193,37 +228,21 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
         // scanDevice() can return 0 games silently for an unreachable path and
         // pruning then would wipe the device's whole library.
         if (reliable) {
-          const staleFilter =
-            scannedGameIds.length > 0 ? { gameId: { notIn: scannedGameIds } } : {};
-
-          await prisma.gameDevice.deleteMany({
-            where: { deviceId: device.id, ...staleFilter },
+          const orphanIds = await prisma.$transaction(async (tx) => {
+            await assertDeviceJobsOwned(jobs!, tx);
+            jobs!.signal.throwIfAborted();
+            const staleFilter = scannedGameIds.length > 0 ? { gameId: { notIn: scannedGameIds } } : {};
+            await tx.gameDevice.deleteMany({ where: { deviceId: device.id, ...staleFilter } });
+            await tx.syncQueue.deleteMany({ where: { deviceId: device.id, status: { in: ["pending", "failed"] }, ...staleFilter } });
+            const orphans = await tx.game.findMany({ where: { devices: { none: {} } }, select: { id: true } });
+            const ids = orphans.map((game) => game.id);
+            if (ids.length) await tx.game.deleteMany({ where: { id: { in: ids }, devices: { none: {} } } });
+            return ids;
           });
-
-          // Clean up stale SyncQueue items for games no longer on this device
-          await prisma.syncQueue.deleteMany({
-            where: {
-              deviceId: device.id,
-              status: { in: ["pending", "failed"] },
-              ...staleFilter,
-            },
-          });
-
-          // Orphan cleanup is destructive too, so it shares the completeness
-          // guard with device-link and queue cleanup.
-          const orphanedGames = await prisma.game.findMany({
-            where: { devices: { none: {} } },
-            select: { id: true },
-          });
-          if (orphanedGames.length > 0) {
-            const orphanIds = orphanedGames.map((g) => g.id);
+          if (orphanIds.length) {
+            await jobs.assertActive();
             await deleteGameFiles(orphanIds);
-            await prisma.game.deleteMany({
-              where: { id: { in: orphanIds } },
-            });
-            console.warn(
-              `Removed ${orphanedGames.length} orphaned games with no device links`,
-            );
+            console.warn(`Removed ${orphanIds.length} orphaned games with no device links`);
           }
         } else {
           console.warn(
@@ -315,5 +334,7 @@ export async function runScanInBackground(deviceId?: number): Promise<void> {
       error: err instanceof Error ? err.message : "Unknown error",
     });
     setTimeout(() => clearScanProgress(), 10000);
+  } finally {
+    await jobs?.close();
   }
 }

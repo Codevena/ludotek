@@ -31,29 +31,58 @@ describe("optional metadata and discovery stop consumers", () => {
   });
 
   it.each(["enrich-skipped", "enrich-error"])("shows %s on the actual upload page while retaining transfer success", async (eventType) => {
-    vi.stubGlobal("fetch", async (url: string) => {
+    vi.stubGlobal("fetch", async (url: string, options?: RequestInit) => {
       if (url === "/api/auth") return Response.json({ authRequired: false, configured: true, authenticated: true, mode: "local" });
+      if (url === "/api/devices") return Response.json({ devices: [{ id: 42, name: "Synthetic LOCAL target", protocol: "local" }] });
       if (url === "/api/upload") return Response.json({ sessionId: "fixture-session" });
       if (url === "/api/upload/detect") return Response.json({ games: [{ id: "toy-game", title: "Toy upload", type: "single", discCount: 1, files: [{ name: "Toy.sfc", size: 3, path: "/fixture/Toy.sfc" }], conversion: "none", totalSize: 3 }] });
-      if (url === "/api/upload/process") return sse([
+      if (url === "/api/upload/process") { expect(JSON.parse(options!.body as string).deviceId).toBe(42); return sse([
         { type: "start", totalGames: 1 },
         { type: "game-start", gameId: "toy-game", step: "transfer" },
+        { type: "game-plan", gameId: "toy-game", planId: "12345678-1234-4234-9234-123456789abc" },
         { type: "game-step", gameId: "toy-game", step: "enrich" },
         { type: eventType, gameId: "toy-game", reason: "Admission store unavailable" },
         { type: "game-done", gameId: "toy-game", dbId: 1, coverUrl: null },
         { type: "done", succeeded: 1, failed: 0 },
-      ]);
+      ]); }
       throw new Error(`Unexpected request ${url}`);
     });
     const { container } = render(React.createElement(UploadPage));
     fireEvent.click(await screen.findByText(/Manual mode — select platform first/));
+    fireEvent.change(await screen.findByLabelText("Upload-Zielgerät"), { target: { value: "42" } });
     fireEvent.click(screen.getByRole("button", { name: /Super Nintendo/ }));
     const input = container.querySelector('input[type="file"]')!;
     fireEvent.change(input, { target: { files: [new File(["toy"], "Toy.sfc")] } });
-    fireEvent.click(await screen.findByRole("button", { name: /Upload to Steam Deck/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Upload selected games/ }));
     expect(await screen.findByText(/Admission store unavailable/)).toBeTruthy();
     expect(screen.getByText("1 succeeded")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Dateiplan und Rücknahme prüfen" })).toHaveProperty("href", "http://localhost:3000/files?plan=12345678-1234-4234-9234-123456789abc");
     expect(screen.queryByText("1 failed")).toBeNull();
     await waitFor(() => expect(screen.getByRole("img", { name: "Metadata warning" })).toBeTruthy());
+  });
+
+  it("keeps a saved plan reachable when file effects precede an upload catalog failure", async () => {
+    vi.stubGlobal("fetch", async (url: string, options?: RequestInit) => {
+      if (url === "/api/auth") return Response.json({ authRequired: false, configured: true, authenticated: true, mode: "local" });
+      if (url === "/api/devices") return Response.json({ devices: [{ id: 42, name: "Synthetic LOCAL target", protocol: "local" }] });
+      if (url === "/api/upload") return Response.json({ sessionId: "fixture-session" });
+      if (url === "/api/upload/detect") return Response.json({ games: [{ id: "toy-game", title: "Toy upload", type: "single", discCount: 1, files: [{ name: "Toy.sfc", size: 3, path: "/fixture/Toy.sfc" }], conversion: "none", totalSize: 3 }] });
+      if (url === "/api/upload/process") { expect(JSON.parse(options!.body as string).deviceId).toBe(42); return sse([
+        { type: "start", totalGames: 1 },
+        { type: "game-plan", gameId: "toy-game", planId: "12345678-1234-4234-9234-123456789abc" },
+        { type: "game-error", gameId: "toy-game", error: "Catalog commit failed after publication" },
+        { type: "done", succeeded: 0, failed: 1 },
+      ]); }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    const { container } = render(React.createElement(UploadPage));
+    fireEvent.click(await screen.findByText(/Manual mode — select platform first/));
+    fireEvent.change(await screen.findByLabelText("Upload-Zielgerät"), { target: { value: "42" } });
+    fireEvent.click(screen.getByRole("button", { name: /Super Nintendo/ }));
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(["toy"], "Toy.sfc")] } });
+    fireEvent.click(await screen.findByRole("button", { name: /Upload selected games/ }));
+    expect(await screen.findByText("Catalog commit failed after publication")).toBeTruthy();
+    expect(screen.getByText("1 failed")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Dateiplan und Wiederherstellung prüfen" })).toHaveProperty("href", "http://localhost:3000/files?plan=12345678-1234-4234-9234-123456789abc");
   });
 });

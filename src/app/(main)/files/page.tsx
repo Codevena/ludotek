@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { FilePanel } from "@/components/file-panel";
 import type { FilePanelBrowseState } from "@/components/file-panel";
 import { FilePreviewModal } from "@/components/file-preview-modal";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FilePlanPanel, FilePlanHistory } from "@/components/file-plan-panel";
+import type { FilePlanView } from "@/lib/file-plans";
 
 interface DeviceOption {
   id: number;
@@ -34,7 +36,8 @@ export default function FilesPage() {
   const [refreshLeft, setRefreshLeft] = useState(0);
   const [refreshRight, setRefreshRight] = useState(0);
   const [transferring, setTransferring] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [plan, setPlan] = useState<FilePlanView | null>(null);
+  const [transferError, setTransferError] = useState("");
   const [moveConfirm, setMoveConfirm] = useState<{
     direction: "left-to-right" | "right-to-left";
     files: string[];
@@ -60,12 +63,6 @@ export default function FilesPage() {
       }
     }
     loadDevices();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearTimeout(pollRef.current);
-    };
   }, []);
 
   const handleLeftSelection = useCallback(
@@ -111,6 +108,7 @@ export default function FilesPage() {
       if (!sourceDeviceId || !targetDeviceId || files.length === 0 || !targetBrowse.ready || targetBrowse.virtualRoot) return;
 
       setTransferring(true);
+      setTransferError("");
       try {
         const res = await fetch("/api/devices/transfer", {
           method: "POST",
@@ -124,42 +122,13 @@ export default function FilesPage() {
           }),
         });
 
-        if (!res.ok) {
-          console.error("Transfer request failed:", res.status);
-          setTransferring(false);
-          return;
-        }
-
-        // Kick off TransferBar polling
-        if (typeof window.__transferBarPoll === "function") {
-          window.__transferBarPoll();
-        }
-
-        // Poll transfer status until done
-        const poll = async () => {
-          try {
-            const statusRes = await fetch("/api/devices/transfer/status");
-            if (!statusRes.ok) {
-              setTransferring(false);
-              pollRef.current = null;
-              return;
-            }
-            const status = await statusRes.json();
-            if (status.status !== "in_progress") {
-              setTransferring(false);
-              pollRef.current = null;
-              setRefreshLeft((n) => n + 1);
-              setRefreshRight((n) => n + 1);
-              return;
-            }
-            pollRef.current = setTimeout(poll, 1000);
-          } catch {
-            setTransferring(false);
-            pollRef.current = null;
-          }
-        };
-        pollRef.current = setTimeout(poll, 1000);
-      } catch {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Transferplan konnte nicht vorbereitet werden.");
+        if (!data.plan) throw new Error("Die Transfer-Vorschau fehlt.");
+        setPlan(data.plan);
+      } catch (error) {
+        setTransferError(error instanceof Error ? error.message : "Transferplan konnte nicht vorbereitet werden.");
+      } finally {
         setTransferring(false);
       }
     },
@@ -214,6 +183,8 @@ export default function FilesPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-vault-text">File Manager</h1>
+      <p className="text-sm text-vault-muted">Dateiaktionen erstellen zunächst eine Vorschau. Erst „Plan ausführen“ verändert Dateien; gespeicherte Pläne bieten Rücknahme und Wiederherstellung.</p>
+      {transferError && <p role="alert" className="text-sm text-red-400">{transferError}</p>}
 
       {/* Transfer buttons */}
       <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -275,6 +246,13 @@ export default function FilesPage() {
         />
       </div>
 
+      {plan && <FilePlanPanel plan={plan} onChanged={(result) => {
+        if (["applied", "undone", "compensated", "rolled_back"].includes(result.status)) {
+          setRefreshLeft((value) => value + 1); setRefreshRight((value) => value + 1);
+        }
+      }} />}
+      <FilePlanHistory onChanged={() => { setRefreshLeft((value) => value + 1); setRefreshRight((value) => value + 1); }} />
+
       {/* Preview modal */}
       {preview && (
         <FilePreviewModal
@@ -286,10 +264,10 @@ export default function FilesPage() {
 
       <ConfirmDialog
         open={moveConfirm !== null}
-        title="Move Files"
-        message={`Move ${moveConfirm?.files.length ?? 0} file${(moveConfirm?.files.length ?? 0) > 1 ? "s" : ""}? Source files will be deleted after transfer.`}
+        title="Verschiebeplan vorbereiten"
+        message={`${moveConfirm?.files.length ?? 0} Dateien prüfen? Die Vorschau verändert keine Dateien. Bei der späteren Ausführung bleiben Quelldateien in der Quarantäne wiederherstellbar.`}
         items={moveConfirm?.files.map(f => f.split("/").pop() ?? f)}
-        confirmLabel="Move"
+        confirmLabel="Vorschau erstellen"
         confirmVariant="warning"
         onConfirm={() => {
           if (moveConfirm) {

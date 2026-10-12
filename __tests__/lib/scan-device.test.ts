@@ -39,6 +39,8 @@ afterEach(async () => {
 });
 
 function listings(paths: Record<string, DirEntry[] | Error>) {
+  vi.mocked(connection.stat).mockImplementation(async (path) => ({ size: 0,
+    isDirectory: path === "/roms" || path === "/steam" || Object.prototype.hasOwnProperty.call(paths, path) }));
   vi.mocked(connection.listDir).mockImplementation(async (path) => {
     const listing = paths[path];
     if (listing instanceof Error) throw listing;
@@ -53,27 +55,27 @@ describe("scan completeness", () => {
     [{ path: "/roms", type: "other" }], [{ path: null, type: "rom" }], null,
   ].map((scanPaths) => ({ scanPaths })))("rejects an invalid or empty path configuration without connecting: $scanPaths", async ({ scanPaths }) => {
     const result = await scanDevice({ ...device, scanPaths } as Parameters<typeof scanDevice>[0]);
-    expect(result).toEqual({ games: [], reliable: false });
+    expect(result).toEqual({ games: [], reliable: false, files: [] });
     expect(dependencies.createConnection).not.toHaveBeenCalled();
   });
 
   it("rejects a root that is a file without listing it", async () => {
     vi.mocked(connection.stat).mockResolvedValue({ size: 12, isDirectory: false });
-    expect(await scanDevice(device)).toEqual({ games: [], reliable: false });
+    expect(await scanDevice(device)).toEqual({ games: [], reliable: false, files: [] });
     expect(connection.listDir).not.toHaveBeenCalled();
     expect(connection.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("marks a failed configured root as unreliable", async () => {
     vi.mocked(connection.stat).mockRejectedValue(new Error("mount missing"));
-    expect(await scanDevice(device)).toEqual({ games: [], reliable: false });
+    expect(await scanDevice(device)).toEqual({ games: [], reliable: false, files: [] });
     expect(connection.listDir).not.toHaveBeenCalled();
     expect(connection.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("marks connection failure as unreliable", async () => {
     dependencies.createConnection.mockRejectedValue(new Error("offline"));
-    await expect(scanDevice(device)).resolves.toEqual({ games: [], reliable: false });
+    await expect(scanDevice(device)).resolves.toEqual({ games: [], reliable: false, files: [] });
   });
 
   it("retains games from readable platforms but marks a known platform failure as unreliable", async () => {
@@ -98,10 +100,13 @@ describe("scan completeness", () => {
     expect(result.games.map((game) => game.originalFile)).toEqual(["Mario.nes"]);
   });
 
-  it("ignores unknown platform directories without attempting to read them", async () => {
-    listings({ "/roms": [{ name: "unknown-platform", type: "dir" }] });
-    expect(await scanDevice(device)).toEqual({ games: [], reliable: true });
-    expect(connection.listDir).toHaveBeenCalledTimes(1);
+  it("inventories unknown platform directories without inventing catalog games", async () => {
+    listings({ "/roms": [{ name: "unknown-platform", type: "dir" }], "/roms/unknown-platform": [] });
+    const result = await scanDevice(device);
+    expect(result.games).toEqual([]);
+    expect(result.reliable).toBe(true);
+    expect(result.files).toEqual([expect.objectContaining({ path: "/roms/unknown-platform", platform: null, type: "directory" })]);
+    expect(connection.listDir).toHaveBeenCalledTimes(2);
   });
 
   it("uses complete listings for roots, platforms, regions and Steam", async () => {
@@ -110,19 +115,20 @@ describe("scan completeness", () => {
       "/roms/nes": [{ name: "USA", type: "dir" }],
       "/roms/nes/USA": [{ name: "Mario.nes", type: "file" }],
       "/steam": [{ name: "Portal", type: "dir" }],
+      "/steam/Portal": [],
     });
     const result = await scanDevice({
       ...device, scanPaths: [...device.scanPaths, { path: "/steam", type: "steam" }],
     });
     expect(result.reliable).toBe(true);
-    expect(result.games.map((game) => game.originalFile)).toEqual(["USA/Mario.nes", "Portal"]);
+    expect(result.games.map((game) => game.originalFile).sort()).toEqual(["Portal", "USA/Mario.nes"]);
     for (const path of ["/roms", "/roms/nes", "/roms/nes/USA", "/steam"]) {
       expect(connection.listDir).toHaveBeenCalledWith(path, { requireComplete: true });
     }
   });
 
   it("accepts a completely read empty device as reliable", async () => {
-    expect(await scanDevice(device)).toEqual({ games: [], reliable: true });
+    expect(await scanDevice(device)).toEqual({ games: [], reliable: true, files: [] });
     expect(connection.disconnect).toHaveBeenCalledTimes(1);
   });
 

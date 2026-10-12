@@ -1,213 +1,26 @@
-import fs from "fs";
-import { Client, SFTPWrapper } from "ssh2";
-import { assertUploadFilename, assertUploadPlatform } from "@/lib/disc-inputs";
+import path from "node:path";
+import { assertUploadFilename, assertUploadPlatform, UploadInputError } from "@/lib/disc-inputs";
 
-const ROM_BASE = "/run/media/deck/SD/Emulation/roms";
-const EMU_VIRTUAL_BASE = "/home/deck/EmuVirtual/Emulation/roms";
-
-// Saturn uses direct SD path; all other platforms use EmuVirtual
-const DIRECT_SD_PLATFORMS = new Set(["saturn"]);
-
-export interface TransferJob {
-  localPath: string;
-  remotePath: string;
-  onProgress?: (bytesTransferred: number, totalBytes: number) => void;
-}
-
-/**
- * Returns the remote path on the Steam Deck for a given platform.
- * Multi-disc files go into a `-multidisc` subdirectory.
- */
-export function getTransferPath(
-  platform: string,
-  isMultiDisc: boolean
-): string {
+/** Formatting only; callers supply their verified profile root. */
+export function getTransferPath(platform: string, _isMultiDisc: boolean, targetRoot?: string): string {
   assertUploadPlatform(platform);
-  const suffix = isMultiDisc ? `-multidisc` : "";
-  return `${ROM_BASE}/${platform}${suffix}/`;
+  if (!targetRoot || !targetRoot.startsWith("/") || targetRoot === "/" || path.posix.normalize(targetRoot) !== targetRoot || /[\x00-\x1f\x7f]/.test(targetRoot)) throw new UploadInputError("A verified device-profile target root is required");
+  return `${targetRoot}/`;
 }
-
-/**
- * Generates M3U playlist content for multi-disc games.
- * Each line is the full path to a disc file on the Steam Deck.
- */
-export function generateM3u(
-  _title: string,
-  platform: string,
-  discFilenames: string[]
-): string {
+/** Relative names, independent of device and mount paths. */
+export function generateM3u(_title: string, platform: string, discFilenames: string[]): string {
   assertUploadPlatform(platform);
+  if (!discFilenames.length || discFilenames.length > 100) throw new UploadInputError("A playlist needs 1–100 actual disc files");
   for (const filename of discFilenames) assertUploadFilename(filename);
-  const pathBase = DIRECT_SD_PLATFORMS.has(platform)
-    ? `${ROM_BASE}/${platform}-multidisc`
-    : `${EMU_VIRTUAL_BASE}/${platform}-multidisc`;
-
-  return discFilenames.map((f) => `${pathBase}/${f}\n`).join("");
+  return discFilenames.map((filename) => `${filename}\n`).join("");
 }
-
-/**
- * Transfers files to the Steam Deck via SFTP.
- */
-export async function transferFiles(
-  host: string,
-  user: string,
-  password: string,
-  jobs: TransferJob[],
-  port: number = 22
-): Promise<void> {
-  if (jobs.length === 0) throw new Error("No files to transfer");
-  const conn = new Client();
-
-  return new Promise((resolve, reject) => {
-    conn.on("ready", () => {
-      conn.sftp((err, sftp) => {
-        if (err) {
-          conn.end();
-          return reject(err);
-        }
-
-        (async () => {
-          try {
-            // Collect unique directories to create
-            const dirSet = new Set(
-              jobs.map((j) => {
-                const parts = j.remotePath.split("/");
-                parts.pop(); // remove filename
-                return parts.join("/");
-              })
-            );
-            const dirs = Array.from(dirSet);
-
-            for (let i = 0; i < dirs.length; i++) {
-              await mkdirSftp(sftp, dirs[i]);
-            }
-
-            for (const job of jobs) {
-              await transferOne(sftp, job);
-            }
-
-            conn.end();
-            resolve();
-          } catch (transferErr) {
-            conn.end();
-            reject(transferErr);
-          }
-        })();
-      });
-    });
-
-    conn.on("error", (connErr) => {
-      reject(connErr);
-    });
-
-    conn.connect({ host, port, username: user, password });
-  });
+/** Retired direct entry points fail before opening a transport. */
+export async function transferFiles(_host: string, _user: string, _password: string, _jobs: unknown[], _port?: number): Promise<never> {
+  void _host; void _user; void _password; void _jobs; void _port;
+  throw new UploadInputError("Direct transfers are retired; use the verified upload file journal", 422);
 }
-
-/**
- * Writes an M3U playlist file directly to the Steam Deck via SFTP.
- */
-export async function transferM3u(
-  host: string,
-  user: string,
-  password: string,
-  m3uFilename: string,
-  m3uContent: string,
-  platform: string,
-  port: number = 22
-): Promise<void> {
-  assertUploadPlatform(platform);
-  assertUploadFilename(m3uFilename);
-  const conn = new Client();
-
-  return new Promise((resolve, reject) => {
-    conn.on("ready", () => {
-      conn.sftp((err, sftp) => {
-        if (err) {
-          conn.end();
-          return reject(err);
-        }
-
-        const remoteDir = `${ROM_BASE}/${platform}`;
-        const remotePath = `${remoteDir}/${m3uFilename}`;
-
-        (async () => {
-          try {
-            await mkdirSftp(sftp, remoteDir);
-
-            const writeStream = sftp.createWriteStream(remotePath);
-            writeStream.end(m3uContent, "utf8", () => {
-              conn.end();
-              resolve();
-            });
-            writeStream.on("error", (writeErr: Error) => {
-              conn.end();
-              reject(writeErr);
-            });
-          } catch (mkdirErr) {
-            conn.end();
-            reject(mkdirErr);
-          }
-        })();
-      });
-    });
-
-    conn.on("error", (connErr) => {
-      reject(connErr);
-    });
-
-    conn.connect({ host, port, username: user, password });
-  });
-}
-
-function mkdirSftp(
-  sftp: SFTPWrapper,
-  dirPath: string
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    sftp.mkdir(dirPath, (err: Error | null | undefined) => {
-      if (!err) return resolve();
-      // Ignore "already exists" errors (SFTP status code 4 / FAILURE)
-      const msg = err.message || "";
-      if (msg.includes("already exists") || msg.includes("Failure")) {
-        return resolve();
-      }
-      reject(err);
-    });
-  });
-}
-
-function transferOne(
-  sftp: SFTPWrapper,
-  job: TransferJob
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const stat = fs.statSync(job.localPath);
-    const totalBytes = stat.size;
-    let bytesTransferred = 0;
-
-    const readStream = fs.createReadStream(job.localPath);
-    const writeStream = sftp.createWriteStream(job.remotePath);
-
-    readStream.on("data", (chunk: string | Buffer) => {
-      bytesTransferred += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
-      if (job.onProgress) {
-        job.onProgress(bytesTransferred, totalBytes);
-      }
-    });
-
-    writeStream.on("close", () => {
-      resolve();
-    });
-
-    writeStream.on("error", (err: Error) => {
-      reject(err);
-    });
-
-    readStream.on("error", (err: Error) => {
-      reject(err);
-    });
-
-    readStream.pipe(writeStream);
-  });
+export async function transferM3u(_host: string, _user: string, _password: string, filename: string, _contents: string, platform: string, _port?: number): Promise<never> {
+  void _port;
+  assertUploadPlatform(platform); assertUploadFilename(filename);
+  throw new UploadInputError("Direct playlist writes are retired; use the verified upload file journal", 422);
 }

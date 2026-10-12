@@ -54,6 +54,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
   const [ftps, setFtps] = useState(initial?.ftps ?? false);
 
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [testMessage, setTestMessage] = useState("");
 
@@ -102,6 +103,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
+    setSubmitError("");
     try {
       await onSubmit({
         name,
@@ -113,6 +115,8 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
         password: protocol === "local" ? "" : password,
         ftps: protocol === "ftp" ? ftps : false,
       });
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Device could not be saved");
     } finally {
       setSubmitting(false);
     }
@@ -120,6 +124,7 @@ export function DeviceForm({ initial, onSubmit, onCancel, submitLabel = "Save" }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {submitError && <p role="alert" className="text-sm text-red-400">{submitError}</p>}
       {/* Name */}
       <div>
         <label className="block text-sm text-vault-muted mb-1">Name</label>

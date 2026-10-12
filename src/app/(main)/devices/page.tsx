@@ -5,6 +5,10 @@ import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { FileBrowser } from "@/components/file-browser";
 import { useScan } from "@/context/scan-context";
+import { SyncDoctor } from "@/components/sync-doctor";
+import { DeviceIntegrity } from "@/components/device-integrity";
+import { DeviceProfileSync } from "@/components/device-profile-sync";
+import { DeviceSaves } from "@/components/device-saves";
 
 interface Device {
   id: number;
@@ -269,6 +273,10 @@ export default function DevicesPage() {
           </div>
         </div>
       )}
+      {selectedDevice && <div className="mt-8"><SyncDoctor key={selectedDevice.id} deviceId={selectedDevice.id} /></div>}
+      {selectedDevice && <div className="mt-8"><DeviceIntegrity key={selectedDevice.id} deviceId={selectedDevice.id} /></div>}
+      {selectedDevice && <div className="mt-8"><DeviceProfileSync key={selectedDevice.id} deviceId={selectedDevice.id} /></div>}
+      {selectedDevice && <div className="mt-8"><DeviceSaves key={selectedDevice.id} deviceId={selectedDevice.id} /></div>}
     </div>
   );
 }

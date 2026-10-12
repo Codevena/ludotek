@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 interface TransferStatus {
-  status: "in_progress" | "error" | "idle";
+  status: "in_progress" | "error" | "idle" | "ready" | "complete" | "undone";
+  planId?: string;
   current: string;
   progress: number;
   completed: number;
@@ -90,7 +92,7 @@ export function TransferBar() {
 
   // Auto-dismiss success after 3 seconds
   useEffect(() => {
-    if (data && data.status === "idle" && !data.error && data.completed > 0) {
+    if (data && data.status === "complete" && !data.error && data.total > 0 && data.completed === data.total) {
       setShowSuccess(true);
       const timer = setTimeout(() => setShowSuccess(false), 3000);
       return () => clearTimeout(timer);
@@ -99,23 +101,20 @@ export function TransferBar() {
   }, [data?.status, data?.error, data?.completed]);
 
   // Success message
-  if (showSuccess) {
+  if (showSuccess && data?.status === "complete" && !data.error && data.total > 0 && data.completed === data.total) {
     return (
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-vault-surface border-t border-vault-border px-6 py-3">
-        <div className="text-sm text-green-400">Transfer complete ({data?.completed} files)</div>
+        <div className="text-sm text-green-400">Dateiplan abgeschlossen ({data?.completed} Schritte){data?.planId && <> · <Link className="underline" href={`/files?plan=${data.planId}`}>Rücknahme prüfen</Link></>}</div>
       </div>
     );
   }
 
   // Nothing to show
-  if (!data || (data.status === "idle" && !data.error) || dismissed) return null;
+  if (!data || !["in_progress", "error"].includes(data.status) || dismissed) return null;
 
   const { status, current, progress, completed, total, mode, error } = data;
 
-  const pct =
-    total > 0
-      ? Math.round(((completed + progress / 100) / total) * 100)
-      : 0;
+  const pct = Math.max(0, Math.min(100, progress));
 
   const modeLabel = mode === "move" ? "Moving" : "Copying";
 
@@ -125,6 +124,7 @@ export function TransferBar() {
         {error ? (
           <div className="flex items-center justify-between">
             <p className="text-sm text-red-400">{error}</p>
+            {data.planId && <Link className="ml-3 text-sm text-vault-amber underline" href={`/files?plan=${data.planId}`}>Wiederherstellung prüfen</Link>}
             <button
               type="button"
               onClick={() => setDismissed(true)}
@@ -140,7 +140,7 @@ export function TransferBar() {
               <span className="text-vault-text">
                 {modeLabel} {current}&hellip;{" "}
                 <span className="text-vault-muted">
-                  ({completed}/{total} files)
+                  ({completed}/{total} Schritte)
                 </span>
               </span>
               <span className="text-vault-text tabular-nums">{pct}%</span>

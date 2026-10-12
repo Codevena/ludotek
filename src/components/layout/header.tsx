@@ -54,8 +54,8 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-10 bg-vault-bg/80 backdrop-blur-md border-b border-vault-border px-6 py-4 flex items-center gap-4">
-      <SearchBar />
+    <header className="sticky top-0 z-10 bg-vault-bg/80 backdrop-blur-md border-b border-vault-border px-4 sm:px-6 py-4 flex flex-wrap items-center gap-2 sm:gap-4">
+      <div className="basis-full lg:basis-auto lg:flex-1 min-w-0"><SearchBar /></div>
       <Link
         href="/"
         className="px-4 py-2 text-sm font-medium text-vault-muted hover:text-vault-text transition-colors"
@@ -94,15 +94,15 @@ export function Header() {
       </Link>
 
       {/* Sync Panel, Active Device Selector & Theme Toggle */}
-      <div className="ml-auto flex items-center gap-3">
+      <div className="w-full xl:w-auto xl:ml-auto min-w-0 flex flex-wrap items-center gap-3">
         <SyncPanel />
         {devices.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="min-w-0 flex items-center gap-2">
             <span className="text-vault-muted text-xs">Device:</span>
             <select
               value={activeDeviceId ?? ""}
               onChange={(e) => handleDeviceChange(e.target.value)}
-              className="bg-vault-surface border border-vault-border rounded-lg px-2 py-1.5 text-xs text-vault-text focus:outline-none focus:border-vault-amber/50"
+              className="min-w-0 max-w-48 bg-vault-surface border border-vault-border rounded-lg px-2 py-1.5 text-xs text-vault-text focus:outline-none focus:border-vault-amber/50"
             >
               <option value="">All Devices</option>
               {devices.map((d) => (
@@ -116,6 +116,13 @@ export function Header() {
         <div className="w-px h-5 bg-vault-border" />
         <ThemeToggle />
       </div>
+      <nav aria-label="Weitere Bibliotheksseiten" className="w-full md:hidden flex flex-wrap gap-x-4 gap-y-2 text-xs text-vault-muted">
+        <Link href="/saves" className="hover:text-vault-amber">Save-Versionen</Link>
+        <Link href="/?favorites=true" className="hover:text-vault-amber">Favorites</Link>
+        <Link href="/wishlist" className="hover:text-vault-amber">Wishlist</Link>
+        <Link href="/insights" className="hover:text-vault-amber">Insights</Link>
+        <Link href="/timeline" className="hover:text-vault-amber">Timeline</Link>
+      </nav>
     </header>
   );
 }

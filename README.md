@@ -8,7 +8,7 @@
   </p>
 
   <p>
-    <img src="https://img.shields.io/badge/Next.js-14-black?logo=next.js" alt="Next.js" />
+    <img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js" alt="Next.js" />
     <img src="https://img.shields.io/badge/TypeScript-5-blue?logo=typescript" alt="TypeScript" />
     <img src="https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma" alt="Prisma" />
     <img src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite" alt="SQLite" />
@@ -74,7 +74,21 @@ Upload ROMs directly from your browser. **Smart mode** auto-detects platforms fr
 
 ### Sync Queue
 
-Stage rename and delete operations on remote devices, review them in the Sync Panel, then apply all changes atomically. Operations are grouped by device with status tracking and error reporting.
+Stage rename and delete operations against confirmed physical files and review their stored plans in the Sync Panel. The shared journal verifies source identities, hashes and target collisions, preserves original files in quarantine, and records each filesystem step before updating the catalog. Filesystem and SQLite changes are separate: interrupted work requires explicit recovery, and changed foreign files cause a visible conflict. Applied plans offer Undo; retries reuse the recorded plan.
+
+### Device Diagnostics, Integrity and Profiles
+
+The Devices page provides an explicit Sync Doctor inventory, DAT import and streaming checksum jobs, and editable Steam Deck/Retroid/Miyoo/Custom profiles. Doctor reports distinguish incomplete observations from confirmed missing files. Integrity checks compare every supplied checksum and size; absent DAT matches remain unknown unless you explicitly selected an expected revision. ROM sync supports push, pull and two-way previews with per-file conflict choices and verified successful baselines. Descriptor copies rewrite CUE/GDI/M3U references to actual destination paths.
+
+### Save Versions
+
+Declare save roots in a device profile, inspect its save files, then start a backup. Immutable content objects and version records live in the protected application data directory. Restore and save sync use the same file journal and first preserve any existing target in a verified, persisted backup. Removing a catalog game or device does not delete its versions; the **Save-Versionen** navigation entry shows the global paginated history.
+
+### LAN Discovery
+
+Admin Settings offers an explicitly started scan of a selected private local interface. It probes only SSH/FTP ports with bounded hosts, time and concurrency; there are no credential attempts or automatic device creation. Selecting a result prefills the existing device form. Oversized subnets, including ordinary IPv6 /64 sweeps, are visibly unavailable.
+
+File jobs share an authoritative SQLite namespace and sorted device leases, including overlapping LOCAL roots. Unknown remote no-clobber or durability capabilities are rejected before a file mutation; an SSH/FTP connection alone does not establish safe publication. Destination parent directories must already exist. LOCAL journal operations require regular files and supported exclusive-create, no-replace publication, available-space and file/directory flush capabilities. Concurrent native edits outside Ludotek remain distinct from application leases; detected changes stop recovery, and the narrow native check/unlink race cannot be excluded by Node's path API.
 
 ### Wishlist
 

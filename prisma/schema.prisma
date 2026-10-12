@@ -41,6 +41,7 @@ model Game {
   localArtworkPaths    String?  // JSON array: ["artwork/123/0.jpg", ...]
   syncQueue       SyncQueue[]
   cacheEntries    CacheEntry[]
+  deviceFiles     DeviceFile[]
 
   @@unique([originalFile, platform])
   @@index([platform])
@@ -102,6 +103,9 @@ model Device {
   updatedAt DateTime @updatedAt
   games     GameDevice[]
   syncQueue SyncQueue[]
+  files     DeviceFile[]
+  inventory DeviceInventory?
+  profile   DeviceProfile?
 }
 
 model GameDevice {
@@ -127,6 +131,8 @@ model SyncQueue {
   newPath   String?  // full new path (rename only)
   status    String   @default("pending") // "pending" | "applied" | "failed"
   error     String?  // error message if failed
+  planId    String?
+  claimOwner String?
   createdAt DateTime @default(now())
 
   device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
@@ -177,4 +183,235 @@ model ProviderWindow {
 model AdmissionClock {
   id    Int    @id
   value BigInt
+}
+
+// Physical entries are independent of the catalog's deduplicated representative.
+model DeviceFile {
+  id            Int      @id @default(autoincrement())
+  deviceId      Int
+  gameId        Int?
+  path          String
+  scanRoot      String
+  platformAlias String
+  relativePath  String
+  platform      String?
+  source        String
+  kind          String
+  size          BigInt
+  modifiedAt    String?
+  sha256        String?
+  generation    String
+  seenAt        DateTime @default(now())
+  device        Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  game          Game?    @relation(fields: [gameId], references: [id], onDelete: SetNull)
+  integrityResults IntegrityResult[]
+
+  @@unique([deviceId, path])
+  @@index([gameId, deviceId])
+  @@index([deviceId, generation])
+}
+
+model DeviceInventory {
+  deviceId      Int      @id
+  generation    String
+  complete      Boolean
+  scannedAt     DateTime @default(now())
+  device        Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+// Journals deliberately have no cascading device/game foreign keys: deleting
+// a catalog entry must not discard recovery instructions or verified backups.
+model FilePlan {
+  id            String   @id @default(uuid())
+  kind          String
+  status        String   @default("ready")
+  deviceState   String
+  totalBytes    BigInt
+  owner         String?
+  revision      Int      @default(0)
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  appliedAt     DateTime?
+  operations    FilePlanOperation[]
+
+  @@index([status, createdAt])
+}
+
+model FilePlanOperation {
+  id            String   @id @default(uuid())
+  planId        String
+  ordinal       Int
+  kind          String
+  specification String
+  phase         String   @default("planned")
+  error         String?
+  updatedAt     DateTime @updatedAt
+  plan          FilePlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, ordinal])
+}
+
+model DoctorReport {
+  id        String   @id @default(uuid())
+  deviceId  Int
+  complete  Boolean
+  findings  String
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+}
+
+model DatSource {
+  id          String   @id @default(uuid())
+  name        String
+  format      String
+  roms        String
+  contentHash String   @unique
+  createdAt   DateTime @default(now())
+}
+
+model IntegrityJob {
+  id              String   @id @default(uuid())
+  deviceId        Int
+  datSourceId     String?
+  status          String
+  progress        Int      @default(0)
+  total           Int      @default(0)
+  checked         Int      @default(0)
+  cancelRequested Boolean  @default(false)
+  owner           String?
+  globalOwner     String?
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  completedAt     DateTime?
+  results         IntegrityResult[]
+
+  @@index([deviceId, createdAt])
+}
+
+model IntegrityResult {
+  id                 Int          @id @default(autoincrement())
+  jobId              String
+  deviceFileId       Int?
+  deviceId           Int
+  path               String
+  fingerprint        String
+  observedModifiedAt String?
+  datSourceId        String?
+  expectedRom        String?
+  status             String
+  matches            String
+  matchCount         Int          @default(0)
+  createdAt          DateTime     @default(now())
+  job                IntegrityJob @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  file               DeviceFile?  @relation(fields: [deviceFileId], references: [id], onDelete: SetNull)
+
+  @@index([jobId, id])
+  @@index([deviceFileId, createdAt])
+}
+
+model DeviceProfile {
+  deviceId     Int      @id
+  template     String
+  romRoots     String
+  saveRoots    String
+  formats      String
+  reserveBytes BigInt
+  updatedAt    DateTime @updatedAt
+  device       Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+model DeviceSyncBaseline {
+  id             String   @id @default(uuid())
+  masterDeviceId Int
+  deviceId       Int
+  fileKey        String
+  masterPath     String
+  devicePath     String
+  fingerprint    String
+  updatedAt      DateTime @updatedAt
+
+  @@unique([masterDeviceId, deviceId, fileKey])
+}
+
+model DeviceSyncPlan {
+  id             String   @id @default(uuid())
+  masterDeviceId Int
+  deviceId       Int
+  direction      String
+  status         String
+  plans          String
+  conflicts      String
+  summary        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([deviceId, createdAt])
+}
+
+// Immutable backup metadata has no cascading catalog/device relationship.
+model SaveVersion {
+  id          String   @id @default(uuid())
+  deviceId    Int?
+  gameId      Int?
+  deviceName  String
+  gameTitle   String?
+  platform    String?
+  fileKey     String
+  sourcePath  String
+  sha256      String
+  size        BigInt
+  storageKey  String
+  createdAt   DateTime @default(now())
+
+  @@index([gameId, createdAt])
+  @@index([deviceId, fileKey, createdAt])
+}
+
+model SaveSyncBaseline {
+  id             String   @id @default(uuid())
+  masterDeviceId Int
+  deviceId       Int
+  fileKey        String
+  masterPath     String
+  devicePath     String
+  fingerprint    String
+  updatedAt      DateTime @updatedAt
+
+  @@unique([masterDeviceId, deviceId, fileKey])
+}
+
+model SaveSyncPlan {
+  id             String   @id @default(uuid())
+  masterDeviceId Int
+  deviceId       Int
+  direction      String
+  status         String
+  plans          String
+  conflicts      String
+  summary        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([deviceId, createdAt])
+}
+
+// Positive, server-created upload source references; never user-provided paths.
+model UploadFileSource {
+  id         String   @id @default(uuid())
+  sessionId  String
+  path       String
+  filename   String
+  platform   String
+  sha256     String
+  size       BigInt
+  identity   String
+  modifiedAt String?
+  released   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([sessionId, createdAt])
 }

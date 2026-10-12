@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
+import { withDeviceFiles, assertDeviceJobsOwned } from "@/lib/device-jobs";
+import { AdmissionError, admissionResponse } from "@/lib/job-admission";
 
 const PASSWORD_MASK = "********";
 
@@ -97,13 +99,17 @@ export async function PUT(
         : body.blacklist;
     }
 
-    const device = await prisma.device.update({
-      where: { id: deviceId },
-      data,
+    const device = await withDeviceFiles([deviceId], request, async (jobs) => {
+      await jobs.assertActive();
+      return prisma.$transaction(async (tx) => {
+        await assertDeviceJobsOwned(jobs, tx);
+        return tx.device.update({ where: { id: deviceId }, data });
+      });
     });
 
     return NextResponse.json(maskPassword(device));
   } catch (error) {
+    if (error instanceof AdmissionError) return admissionResponse(error);
     console.error("Failed to update device:", error);
     return NextResponse.json(
       { error: "Device not found or update failed" },
@@ -126,18 +132,17 @@ export async function DELETE(
   }
 
   try {
-    // Clear activeDeviceId if this device was the active one
-    const settings = await prisma.settings.findUnique({ where: { id: 1 } });
-    if (settings?.activeDeviceId === Number(id)) {
-      await prisma.settings.update({
-        where: { id: 1 },
-        data: { activeDeviceId: null },
+    await withDeviceFiles([deviceId], request, async (jobs) => {
+      await jobs.assertActive();
+      await prisma.$transaction(async (tx) => {
+        await assertDeviceJobsOwned(jobs, tx);
+        await tx.settings.updateMany({ where: { id: 1, activeDeviceId: deviceId }, data: { activeDeviceId: null } });
+        await tx.device.delete({ where: { id: deviceId } });
       });
-    }
-
-    await prisma.device.delete({ where: { id: deviceId } });
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof AdmissionError) return admissionResponse(error);
     console.error("Failed to delete device:", error);
     return NextResponse.json(
       { error: "Device not found" },

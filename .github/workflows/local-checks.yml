@@ -1,0 +1,40 @@
+name: Local correctness checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: file:./ci.db
+      NEXT_TELEMETRY_DISABLED: '1'
+      PRISMA_HIDE_UPDATE_MESSAGE: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      # Versioned action interface: https://github.com/actions/setup-node
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.23.1'
+          package-manager-cache: false
+      - name: Install the pinned package manager and dependency graph
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.21.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Generate and migrate the disposable local database
+        run: |
+          pnpm exec prisma generate
+          pnpm exec prisma migrate deploy
+      - name: Verify without providers or device services
+        run: |
+          pnpm test --maxWorkers=2
+          pnpm exec tsc --noEmit
+          pnpm lint

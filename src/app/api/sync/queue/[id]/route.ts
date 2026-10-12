@@ -1,31 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
+import { FilePlanError } from "@/lib/file-plans";
+import { filePlanFailure } from "@/lib/file-plan-api";
+import { syncJournal } from "@/lib/sync-journal";
 
-// DELETE /api/sync/queue/[id] — remove single item from queue
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const authError = requireAuth(request);
-  if (authError) return authError;
-
-  const { id } = await params;
-  if (!/^\d+$/.test(id)) {
-    return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
-  }
-
-  // Only allow removal of pending/failed items — in_progress items are being applied
-  const deleted = await prisma.syncQueue.deleteMany({
-    where: { id: Number(id), status: { not: "in_progress" } },
-  });
-
-  if (deleted.count === 0) {
-    return NextResponse.json(
-      { error: "Item not found or currently being applied" },
-      { status: 404 },
-    );
-  }
-
-  return NextResponse.json({ deleted: true });
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = requireAuth(request); if (denied) return denied;
+  try {
+    const raw = (await params).id;
+    if (!/^[1-9]\d{0,9}$/.test(raw) || Number(raw) > 2147483647) throw new FilePlanError(400, "INVALID_ID", "Invalid queue ID");
+    const result = await syncJournal.clear([Number(raw)], request);
+    return Response.json({ deleted: result.cleared === 1 }, { status: result.cleared === 1 ? 200 : 404, headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return filePlanFailure(error); }
 }

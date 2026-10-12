@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ConfirmDialog, AlertDialog } from "@/components/confirm-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FilePlanPanel } from "@/components/file-plan-panel";
+import type { FilePlanView } from "@/lib/file-plans";
 
 interface DetailedEntry {
   name: string;
@@ -68,7 +70,7 @@ export function FilePanel({
   const [renameName, setRenameName] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [deleteAlertErrors, setDeleteAlertErrors] = useState<string[] | null>(null);
+  const [plan, setPlan] = useState<FilePlanView | null>(null);
 
   const browse = useCallback(
     async (path: string) => {
@@ -176,7 +178,9 @@ export function FilePanel({
       }
       setMkdirMode(false);
       setMkdirName("");
-      browse(currentPath);
+      const data = await res.json();
+      if (!data.plan) throw new Error("Directory plan preview is missing");
+      setPlan(data.plan);
     } catch (err) {
       setError(err instanceof Error ? err.message : "mkdir failed");
     }
@@ -207,7 +211,9 @@ export function FilePanel({
       }
       setRenameTarget(null);
       setRenameName("");
-      browse(currentPath);
+      const data = await res.json();
+      if (!data.plan) throw new Error("Rename plan preview is missing");
+      setPlan(data.plan);
     } catch (err) {
       setError(err instanceof Error ? err.message : "rename failed");
     }
@@ -230,16 +236,14 @@ export function FilePanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paths }),
       });
-      if (res.status === 207) {
-        const data = await res.json().catch(() => null);
-        const errors: string[] = data?.errors ?? ["Some files could not be deleted"];
-        setDeleteAlertErrors(errors);
-      } else if (!res.ok) {
+      if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error ?? "delete failed");
       }
+      const data = await res.json();
+      if (!data.plan) throw new Error("Delete plan preview is missing");
+      setPlan(data.plan);
       setSelected(new Set());
-      browse(currentPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "delete failed");
     }
@@ -481,10 +485,10 @@ export function FilePanel({
 
       <ConfirmDialog
         open={deleteConfirm}
-        title="Delete Items"
-        message={`Delete ${selectedCount} item${selectedCount > 1 ? "s" : ""}? This cannot be undone.`}
+        title="Löschplan vorbereiten"
+        message={`${selectedCount} Einträge prüfen? Die Vorschau verändert keine Dateien. Die spätere Ausführung verschiebt Dateien in die Quarantäne.`}
         items={Array.from(selected)}
-        confirmLabel="Delete"
+        confirmLabel="Vorschau erstellen"
         confirmVariant="danger"
         onConfirm={() => {
           setDeleteConfirm(false);
@@ -492,13 +496,9 @@ export function FilePanel({
         }}
         onCancel={() => setDeleteConfirm(false)}
       />
-      <AlertDialog
-        open={deleteAlertErrors !== null}
-        title="Delete Errors"
-        message="Some items could not be deleted:"
-        items={deleteAlertErrors ?? []}
-        onClose={() => setDeleteAlertErrors(null)}
-      />
+      {plan && <div className="p-3"><FilePlanPanel plan={plan} onChanged={(result) => {
+        if (["applied", "undone", "compensated"].includes(result.status)) void browse(currentPath);
+      }} /></div>}
     </div>
   );
 }

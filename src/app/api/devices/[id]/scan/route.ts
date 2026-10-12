@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getDecryptedDevice } from "@/lib/encryption";
 import { isScanRunning } from "@/lib/scan-progress";
-import { runScanInBackground } from "@/lib/scan-runner";
+import { startScanInBackground } from "@/lib/scan-runner";
+import { admissionResponse } from "@/lib/job-admission";
 
 export async function POST(
   request: NextRequest,
@@ -32,8 +33,8 @@ export async function POST(
     );
   }
 
-  // Fire and forget — scan runs in background
-  runScanInBackground(deviceId).catch((err) => console.error("Scan crashed:", err));
+  try { await startScanInBackground(deviceId); }
+  catch (error) { return admissionResponse(error); }
 
   return NextResponse.json({ success: true, message: `Scan started for ${device.name}` });
 }

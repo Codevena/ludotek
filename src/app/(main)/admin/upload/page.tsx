@@ -33,6 +33,8 @@ export default function UploadPage() {
   const [failed, setFailed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [devices, setDevices] = useState<{ id: number; name: string; protocol: string }[]>([]);
+  const [deviceId, setDeviceId] = useState("");
   const transferStarts = useRef<Record<string, number>>({});
 
   // Auto-detect state
@@ -69,6 +71,17 @@ export default function UploadPage() {
       });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (authRequired === null || (authRequired && !authenticated) || !authConfigured) return;
+    const controller = new AbortController();
+    void fetch("/api/devices", { signal: controller.signal, cache: "no-store" }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data.devices)) throw new Error(data.error || "Upload-Zielgeräte konnten nicht geladen werden.");
+      if (!controller.signal.aborted) setDevices(data.devices);
+    }).catch((failure) => { if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Upload-Zielgeräte konnten nicht geladen werden."); });
+    return () => controller.abort();
+  }, [authRequired, authenticated, authConfigured]);
 
   async function handleLogin() {
     setAuthError("");
@@ -137,6 +150,7 @@ export default function UploadPage() {
   }
 
   async function handleManualConfirm(gameIds: string[]) {
+    if (!deviceId) { setError("Vor Verarbeitung ein Upload-Zielgerät auswählen."); return; }
     setPhase("processing");
     setError(null);
     setGameProgress(
@@ -153,7 +167,7 @@ export default function UploadPage() {
       const res = await fetch("/api/upload/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, platform, gameIds }),
+        body: JSON.stringify({ sessionId, platform, gameIds, deviceId: Number(deviceId) }),
       });
 
       if (!res.ok) {
@@ -194,6 +208,7 @@ export default function UploadPage() {
   }
 
   async function handleGroupConfirm(finalGroups: PlatformGroup[]) {
+    if (!deviceId) { setError("Vor Verarbeitung ein Upload-Zielgerät auswählen."); return; }
     setPhase("processing");
     setError(null);
     setTotalGroups(finalGroups.length);
@@ -272,6 +287,7 @@ export default function UploadPage() {
             sessionId: groupSessionId,
             platform: group.platformId,
             gameIds,
+            deviceId: Number(deviceId),
           }),
         });
 
@@ -389,6 +405,10 @@ export default function UploadPage() {
                   : g,
               ),
             );
+          } else if (data.type === "game-plan") {
+            if (typeof data.planId === "string" && /^[0-9a-f-]{36}$/i.test(data.planId)) {
+              setGameProgress((prev) => prev.map((g) => g.gameId === data.gameId ? { ...g, planId: data.planId } : g));
+            }
           } else if (data.type === "enrich-skipped" || data.type === "enrich-error") {
             setGameProgress((prev) => prev.map((g) => g.gameId === data.gameId ? {
               ...g,
@@ -403,6 +423,7 @@ export default function UploadPage() {
                       ...g,
                       status: "done",
                       dbId: data.dbId,
+                      planId: data.planId ?? g.planId,
                       coverUrl: data.coverUrl,
                     }
                   : g,
@@ -412,7 +433,7 @@ export default function UploadPage() {
             setGameProgress((prev) =>
               prev.map((g) =>
                 g.gameId === data.gameId
-                  ? { ...g, status: "failed", error: data.error }
+                  ? { ...g, status: "failed", error: data.error, planId: data.planId ?? g.planId }
                   : g,
               ),
             );
@@ -491,6 +512,15 @@ export default function UploadPage() {
       />
 
       <h1 className="font-heading text-2xl font-bold mb-8">Upload ROMs</h1>
+      <div className="card mb-6 space-y-2">
+        <label htmlFor="upload-device" className="block text-sm text-vault-muted">Upload-Zielgerät</label>
+        <select id="upload-device" value={deviceId} disabled={uploading || phase === "processing"} onChange={(event) => setDeviceId(event.target.value)} className={inputClass}>
+          <option value="">Vorhandenes Gerät ausdrücklich auswählen</option>
+          {devices.map((device) => <option key={device.id} value={device.id}>{device.name} · {device.protocol}</option>)}
+        </select>
+        <p className="text-xs text-vault-muted">Das gespeicherte Geräteprofil bestimmt ROM-Wurzeln, Formate und Speicherreserve. Nicht belegte Schreibfähigkeiten werden vor Geräteänderungen abgelehnt.</p>
+        {devices.length === 0 && <Link href="/admin" className="text-sm text-vault-amber">Zuerst ein Zielgerät hinzufügen</Link>}
+      </div>
 
       {/* Error display */}
       {error && (
@@ -567,7 +597,7 @@ export default function UploadPage() {
               </div>
               <UploadDropzone
                 onFilesSelected={handleManualFilesSelected}
-                disabled={uploading}
+                disabled={uploading || !deviceId}
               />
             </>
           )}
@@ -577,7 +607,7 @@ export default function UploadPage() {
               {/* Auto mode: show dropzone immediately */}
               <UploadDropzone
                 onFilesSelected={handleAutoFilesSelected}
-                disabled={uploading}
+                disabled={uploading || !deviceId}
               />
               <div className="mt-3 text-center">
                 <button
@@ -609,7 +639,7 @@ export default function UploadPage() {
             groups={platformGroups}
             unknownFiles={unknownFiles}
             onConfirm={handleGroupConfirm}
-            disabled={uploading}
+            disabled={uploading || !deviceId}
           />
         </div>
       )}
@@ -630,7 +660,7 @@ export default function UploadPage() {
           <UploadPreview
             games={detectedGames}
             onConfirm={handleManualConfirm}
-            disabled={false}
+            disabled={!deviceId}
           />
         </div>
       )}

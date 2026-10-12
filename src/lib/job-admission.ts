@@ -34,7 +34,7 @@ function validateLifetime(ttlMs: number) {
   if (!Number.isSafeInteger(ttlMs) || ttlMs < 1000 || ttlMs > 300000) throw new Error("Invalid lease lifetime");
 }
 function validateResource(resource: string) {
-  if (!/^(enrichment|discover|missing:[a-z0-9-]{1,40}|(?:scan|files|integrity|saves):[1-9]\d{0,9})$/.test(resource)) {
+  if (!/^(enrichment|discover|lan-discovery|device-files|missing:[a-z0-9-]{1,40}|(?:scan|files|integrity|saves):[1-9]\d{0,9})$/.test(resource)) {
     throw new Error("Invalid job resource");
   }
 }
@@ -192,6 +192,8 @@ const context = new AsyncLocalStorage<JobContext>();
 export const getJobContext = () => context.getStore();
 
 export class EnrichmentJob {
+  get resource(): string { return this.lease.resource; }
+  get owner(): string { return this.lease.owner; }
   private readonly controller = new AbortController();
   private timer?: ReturnType<typeof setTimeout>;
   private closing = false;

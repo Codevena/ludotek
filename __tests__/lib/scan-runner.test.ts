@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dependencies = vi.hoisted(() => ({
   scanDevice: vi.fn(), deleteGameFiles: vi.fn(), setScanProgress: vi.fn(), clearScanProgress: vi.fn(),
+  persistDeviceManifest: vi.fn(),
+  jobs: { signal: new AbortController().signal, assertActive: vi.fn(), assertOwned: vi.fn(), close: vi.fn() },
   prisma: {
+    $transaction: vi.fn(),
     device: { findMany: vi.fn() },
+    deviceFile: { findFirst: vi.fn() },
     game: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn(), groupBy: vi.fn() },
     gameDevice: { upsert: vi.fn(), deleteMany: vi.fn() },
     syncQueue: { deleteMany: vi.fn() },
@@ -12,6 +16,8 @@ const dependencies = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: dependencies.prisma }));
+vi.mock("@/lib/device-manifest", () => ({ persistDeviceManifest: dependencies.persistDeviceManifest }));
+vi.mock("@/lib/device-jobs", () => ({ acquireDeviceFiles: vi.fn(async () => dependencies.jobs), assertDeviceJobsOwned: vi.fn(async (_jobs, tx) => dependencies.jobs.assertOwned(tx)) }));
 vi.mock("@/lib/scanner", () => ({ scanDevice: dependencies.scanDevice }));
 vi.mock("@/lib/image-cache", () => ({ deleteGameFiles: dependencies.deleteGameFiles }));
 vi.mock("@/lib/encryption", () => ({ decrypt: (value: string) => value }));
@@ -31,12 +37,14 @@ beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
   dependencies.prisma.device.findMany.mockResolvedValue([device]);
+  dependencies.prisma.deviceFile.findFirst.mockResolvedValue(null);
+  dependencies.prisma.$transaction.mockImplementation(async (work) => work(dependencies.prisma));
   dependencies.prisma.game.findUnique.mockResolvedValue(null);
   dependencies.prisma.game.findFirst.mockResolvedValue(null);
   dependencies.prisma.game.create.mockResolvedValue({ id: 42 });
   dependencies.prisma.game.findMany.mockResolvedValue([{ id: 99 }]);
   dependencies.prisma.game.groupBy.mockResolvedValue([]);
-  dependencies.scanDevice.mockResolvedValue({ games: [], reliable: false });
+  dependencies.scanDevice.mockResolvedValue({ games: [], reliable: false, files: [] });
 });
 
 afterEach(() => {
@@ -47,7 +55,7 @@ afterEach(() => {
 
 describe("scan runner pruning", () => {
   it.each([{ games: [] }, { games: [game] }])("performs no stale-link, queue, orphan or cache deletion for unreliable games $games", async ({ games }) => {
-    dependencies.scanDevice.mockResolvedValue({ games, reliable: false });
+    dependencies.scanDevice.mockResolvedValue({ games, reliable: false, files: [] });
     await runScanInBackground(1);
     expect(dependencies.prisma.gameDevice.deleteMany).toHaveBeenCalledTimes(0);
     expect(dependencies.prisma.syncQueue.deleteMany).toHaveBeenCalledTimes(0);
@@ -63,14 +71,14 @@ describe("scan runner pruning", () => {
   });
 
   it("allows stale links, queue entries and orphan cleanup after a reliable empty scan", async () => {
-    dependencies.scanDevice.mockResolvedValue({ games: [], reliable: true });
+    dependencies.scanDevice.mockResolvedValue({ games: [], reliable: true, files: [] });
     await runScanInBackground(1);
     expect(dependencies.prisma.gameDevice.deleteMany).toHaveBeenCalledWith({ where: { deviceId: 1 } });
     expect(dependencies.prisma.syncQueue.deleteMany).toHaveBeenCalledWith({
       where: { deviceId: 1, status: { in: ["pending", "failed"] } },
     });
     expect(dependencies.deleteGameFiles).toHaveBeenCalledWith([99]);
-    expect(dependencies.prisma.game.deleteMany).toHaveBeenCalledWith({ where: { id: { in: [99] } } });
+    expect(dependencies.prisma.game.deleteMany).toHaveBeenCalledWith({ where: { id: { in: [99] }, devices: { none: {} } } });
   });
 
   it("performs no deletions after a connection exception", async () => {

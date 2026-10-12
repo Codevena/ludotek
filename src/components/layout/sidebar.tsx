@@ -39,7 +39,7 @@ export function Sidebar() {
   }, []);
 
   return (
-    <aside className="w-64 h-screen sticky top-0 bg-vault-surface border-r border-vault-border overflow-y-auto flex-shrink-0">
+    <aside className="hidden md:block w-64 h-screen sticky top-0 bg-vault-surface border-r border-vault-border overflow-y-auto flex-shrink-0">
       <div className="p-6">
         <Link href="/" className="flex items-center gap-3 mb-8">
           <img src="/logo.png" alt="Ludotek" className="w-9 h-9" />
@@ -54,6 +54,9 @@ export function Sidebar() {
         </Link>
 
         <nav className="space-y-1">
+          <Link href="/saves" className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${pathname === "/saves" ? "bg-vault-amber/10 text-vault-amber" : "text-vault-muted hover:text-vault-text hover:bg-vault-bg"}`}>
+            <span aria-hidden="true">💾</span><span>Save-Versionen</span>
+          </Link>
           <Link
             href="/"
             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${

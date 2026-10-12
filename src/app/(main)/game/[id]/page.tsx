@@ -39,33 +39,10 @@ export default async function GameDetailPage({ params }: Props) {
     include: { device: { select: { id: true, name: true, scanPaths: true } } },
   });
 
-  const { PLATFORM_CONFIG } = await import("@/lib/platforms");
-
-  const deviceFiles = gameDevices.flatMap((gd) => {
-    let scanPaths: { path: string; type: string }[];
-    try {
-      scanPaths = JSON.parse(gd.device.scanPaths);
-    } catch {
-      return [];
-    }
-    if (!Array.isArray(scanPaths)) return [];
-    const platDef = PLATFORM_CONFIG.find((p) => p.id === game.platform);
-    const platDir = platDef?.dirs[0] || game.platform;
-
-    // Use this device's own filename (falls back to the shared representative
-    // for links predating the per-device column) so multi-device games show the
-    // correct path per device.
-    const fileName = gd.originalFile ?? game.originalFile;
-
-    return scanPaths
-      .filter((sp) => sp.type === "rom")
-      .map((sp) => ({
-        deviceId: gd.device.id,
-        deviceName: gd.device.name,
-        filePath: `${sp.path}/${platDir}/${fileName}`,
-        fileName,
-      }));
-  });
+  const { getConfirmedGameFiles } = await import("@/lib/device-manifest");
+  const deviceFiles = await getConfirmedGameFiles(prisma, gameId);
+  const confirmedDevices = new Set(deviceFiles.map((file) => file.deviceId));
+  const unconfirmedDeviceCount = gameDevices.filter((link) => !confirmedDevices.has(link.deviceId)).length;
 
   const screenshots = screenshotUrls(game);
   const genres = safeJsonParse(game.genres);
@@ -245,7 +222,7 @@ export default async function GameDetailPage({ params }: Props) {
         </div>
       )}
 
-      <GameFiles gameId={game.id} files={deviceFiles} />
+      <GameFiles gameId={game.id} files={deviceFiles} unconfirmedDeviceCount={unconfirmedDeviceCount} />
 
     </div>
   );

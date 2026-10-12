@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { PrismaClient } from "@prisma/client";
@@ -28,7 +28,10 @@ describe("existing db-push upgrade", () => {
       await legacy.$disconnect();
       await expect(command("migrate", "deploy")).rejects.toMatchObject({ code: 1, stderr: expect.stringContaining("P3005") });
       await command("migrate", "diff", "--from-url", legacyUrl, "--to-schema-datamodel", "prisma/legacy-db-push.schema.prisma", "--exit-code");
-      const migrations = (await readdir("prisma/migrations")).filter((name) => /^\d+_/.test(name) && name !== "20261012120000_local_admission").sort();
+      // Execute the documented, fixed legacy baseline. Newly added migrations
+      // must actually run, never be guessed to be already present.
+      const baseline = guide.match(/for migration in \\\n([\s\S]*?)\ndo/)![1];
+      const migrations = baseline.match(/\d{14}_[a-z_]+/g)!;
       expect(migrations).toHaveLength(16);
       for (const migration of migrations) await command("migrate", "resolve", "--applied", migration);
       await command("migrate", "deploy");
@@ -36,6 +39,11 @@ describe("existing db-push upgrade", () => {
       expect(await upgraded.game.findUnique({ where: { id: game.id } })).toMatchObject({ title: "Legacy toy", originalFile: "Toy.sfc" });
       expect(await upgraded.device.findUnique({ where: { id: device.id } })).toMatchObject({ password: "synthetic-preserved-ciphertext" });
       expect(await upgraded.gameDevice.count()).toBe(1);
+      expect(await upgraded.filePlan.count()).toBe(0);
+      expect(await upgraded.saveVersion.count()).toBe(0);
+      expect(await upgraded.uploadFileSource.count()).toBe(0);
+      const newMigrations = await upgraded.$queryRaw<{ migration_name: string }[]>`SELECT migration_name FROM _prisma_migrations WHERE migration_name LIKE '20261012%' AND finished_at IS NOT NULL`;
+      expect(newMigrations.map((row) => row.migration_name).sort()).toEqual(["20261012120000_local_admission", "20261012130000_device_file_journal"]);
       await expect(new AdmissionStore(upgraded).assertAvailable()).resolves.toBeUndefined();
       const backup = new PrismaClient({ datasourceUrl: `file:${path.join(fixture.directory, "before-upgrade.db")}` });
       try { expect(await backup.game.count()).toBe(1); expect(await backup.device.count()).toBe(1); }

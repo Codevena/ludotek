@@ -2,6 +2,8 @@ import { Client as SshClient } from "ssh2";
 import { Client as FtpClient } from "basic-ftp";
 import { Readable, Writable } from "stream";
 import { getLocalFilesRoots, resolveLocalPath, LocalPathError } from "@/lib/local-paths";
+import { LocalFileIo, SftpFileIo, FtpFileIo, FileIoError, type FileIo, type FileEntryStat } from "@/lib/file-io";
+export type { FileIo, FileEntryStat, IoLimits, FileIoCapabilities, FreeBytesResult } from "@/lib/file-io";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -43,6 +45,9 @@ export interface FileStat {
 }
 
 export interface DeviceConnection {
+  /** Optional for legacy consumers/doubles; new mutation plans require this surface. */
+  readonly fileIo?: FileIo;
+  lstat?(path: string): Promise<FileEntryStat>;
   listDir(path: string, options?: { requireComplete?: boolean }): Promise<DirEntry[]>;
   listDirDetailed(path: string): Promise<DetailedDirEntry[]>;
   mkdir(path: string): Promise<void>;
@@ -52,6 +57,11 @@ export interface DeviceConnection {
   writeFile(remotePath: string, data: Buffer): Promise<void>;
   stat(path: string): Promise<FileStat>;
   disconnect(): void;
+}
+
+export function requireFileIo(connection: DeviceConnection): FileIo {
+  if (!connection.fileIo) throw new FileIoError("This connection has no bounded file I/O capability surface", { code: "UNSUPPORTED_CAPABILITY" });
+  return connection.fileIo;
 }
 
 export interface ConnectionConfig {
@@ -190,14 +200,25 @@ export function sshExec(conn: SshClient, command: string): Promise<string> {
 
 class SshConnection implements DeviceConnection {
   private sftpSession: import("ssh2").SFTPWrapper | null = null;
+  private disconnected = false;
+  readonly fileIo: FileIo;
 
-  constructor(private conn: SshClient) {}
+  constructor(private conn: SshClient) {
+    this.fileIo = new SftpFileIo(() => this.getSftp(), () => this.disconnect());
+  }
+
+  async lstat(path: string): Promise<FileEntryStat> { return this.fileIo.lstat(path); }
 
   private async getSftp(): Promise<import("ssh2").SFTPWrapper> {
+    if (this.disconnected) throw new Error("SSH connection is closed");
     if (this.sftpSession) return this.sftpSession;
     return new Promise((resolve, reject) => {
       this.conn.sftp((err, sftp) => {
         if (err) return reject(err);
+        if (this.disconnected) {
+          sftp.end?.();
+          return reject(new Error("SSH connection closed before its SFTP channel opened"));
+        }
         this.sftpSession = sftp;
         resolve(sftp);
       });
@@ -407,6 +428,9 @@ class SshConnection implements DeviceConnection {
   }
 
   disconnect(): void {
+    if (this.disconnected) return;
+    this.disconnected = true;
+    this.sftpSession?.end?.();
     this.conn.end();
   }
 }
@@ -416,142 +440,154 @@ class SshConnection implements DeviceConnection {
 // ---------------------------------------------------------------------------
 
 class FtpConnection implements DeviceConnection {
-  constructor(private client: FtpClient) {}
+  readonly fileIo: FtpFileIo;
+  constructor(private client: FtpClient) { this.fileIo = new FtpFileIo(client); }
+  async lstat(path: string): Promise<FileEntryStat> { return this.fileIo.lstat(path); }
 
   async listDir(path: string, options?: { requireComplete?: boolean }): Promise<DirEntry[]> {
-    const items = await this.client.list(path);
+    return this.fileIo.runCommand(async () => {
+      const items = await this.client.list(path);
 
-    const entries: DirEntry[] = limitEntries(
-      items.filter((item) => item.name && item.name !== "." && item.name !== ".."),
-      options?.requireComplete,
-    )
-      .map((item) => ({
-        name: item.name,
-        type: item.isSymbolicLink
-          ? "symlink" as const
-          : item.isDirectory
-            ? "dir" as const
-            : "file" as const,
-      }));
+      const entries: DirEntry[] = limitEntries(
+        items.filter((item) => item.name && item.name !== "." && item.name !== ".."),
+        options?.requireComplete,
+      )
+        .map((item) => ({
+          name: item.name,
+          type: item.isSymbolicLink
+            ? "symlink" as const
+            : item.isDirectory
+              ? "dir" as const
+              : "file" as const,
+        }));
 
-    return sortEntries(entries);
+      return sortEntries(entries);
+    });
   }
 
   async listDirDetailed(path: string): Promise<DetailedDirEntry[]> {
-    const items = await this.client.list(path);
+    return this.fileIo.runCommand(async () => {
+      const items = await this.client.list(path);
 
-    const entries: DetailedDirEntry[] = items
-      .filter((item) => item.name && item.name !== "." && item.name !== "..")
-      .slice(0, MAX_ENTRIES)
-      .map((item) => ({
-        name: item.name,
-        type: (item.isSymbolicLink
-          ? "symlink"
-          : item.isDirectory
-            ? "dir"
-            : "file") as "dir" | "file" | "symlink",
-        size: item.size,
-        modifiedAt: item.rawModifiedAt
-          ? new Date(item.rawModifiedAt).toISOString()
-          : undefined,
-        symlinkTarget: item.isSymbolicLink ? item.link : undefined,
-      }));
+      const entries: DetailedDirEntry[] = items
+        .filter((item) => item.name && item.name !== "." && item.name !== "..")
+        .slice(0, MAX_ENTRIES)
+        .map((item) => ({
+          name: item.name,
+          type: (item.isSymbolicLink
+            ? "symlink"
+            : item.isDirectory
+              ? "dir"
+              : "file") as "dir" | "file" | "symlink",
+          size: item.size,
+          modifiedAt: item.rawModifiedAt
+            ? new Date(item.rawModifiedAt).toISOString()
+            : undefined,
+          symlinkTarget: item.isSymbolicLink ? item.link : undefined,
+        }));
 
-    return sortEntries(entries);
+      return sortEntries(entries);
+    });
   }
 
   async mkdir(path: string): Promise<void> {
-    await this.client.ensureDir(path);
+    await this.fileIo.runCommand(() => this.client.ensureDir(path));
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
-    await this.client.rename(oldPath, newPath);
-  }
-
-  async remove(path: string): Promise<void> {
-    try {
-      await this.client.remove(path);
-    } catch (fileErr) {
-      try {
-        await this.client.removeDir(path);
-      } catch {
-        // Directory removal also failed — throw the original file error
-        throw fileErr;
-      }
+    await this.fileIo.runCommand(async () => { await this.client.rename(oldPath, newPath); });
     }
+
+    async remove(path: string): Promise<void> {
+    await this.fileIo.runCommand(async () => {
+      try {
+        await this.client.remove(path);
+      } catch (fileErr) {
+        try {
+          await this.client.removeDir(path);
+        } catch {
+          // Directory removal also failed — throw the original file error
+          throw fileErr;
+        }
+      }
+    });
   }
 
   async readFile(path: string, maxBytes?: number): Promise<Buffer> {
-    const chunks: Buffer[] = [];
-    let totalRead = 0;
+    return this.fileIo.runCommand(async () => {
+      const chunks: Buffer[] = [];
+      let totalRead = 0;
 
-    const writable = new Writable({
-      write(chunk: Buffer, _encoding, callback) {
-        if (maxBytes !== undefined) {
-          const remaining = maxBytes - totalRead;
-          if (remaining <= 0) {
-            callback();
-            return;
+      const writable = new Writable({
+        write(chunk: Buffer, _encoding, callback) {
+          if (maxBytes !== undefined) {
+            const remaining = maxBytes - totalRead;
+            if (remaining <= 0) {
+              callback();
+              return;
+            }
+            const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+            chunks.push(slice);
+            totalRead += slice.length;
+          } else {
+            chunks.push(chunk);
           }
-          const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
-          chunks.push(slice);
-          totalRead += slice.length;
-        } else {
-          chunks.push(chunk);
-        }
-        callback();
-      },
+          callback();
+        },
     });
 
     await this.client.downloadTo(writable, path);
     return Buffer.concat(chunks);
+    });
   }
 
   async writeFile(remotePath: string, data: Buffer): Promise<void> {
     const readable = Readable.from(data);
-    await this.client.uploadFrom(readable, remotePath);
-  }
+    await this.fileIo.runCommand(async () => { await this.client.uploadFrom(readable, remotePath); });
+    }
 
-  async stat(path: string): Promise<FileStat> {
-    let size = 0;
-    let isDirectory = false;
-    try {
-      size = await this.client.size(path);
-    } catch (sizeErr) {
-      // size() throws on directories, but also on missing files. Verify it's a
-      // real directory with a CWD round-trip instead of LIST: some device FTP
-      // daemons (e.g. certain 3DS/Switch ftpd builds) answer an empty, OK LIST
-      // for a NON-existent path, which would let stat() succeed on a missing
-      // scan root and wrongly allow stale-link cleanup. CWD reliably 550s on a
-      // bad path even there. Restore the working directory afterwards.
-      let original: string | undefined;
+    async stat(path: string): Promise<FileStat> {
+    return this.fileIo.runCommand(async () => {
+      let size = 0;
+      let isDirectory = false;
       try {
-        original = await this.client.pwd();
-        await this.client.cd(path);
-        isDirectory = true;
-      } catch {
-        // Neither a file nor a directory — re-throw original error
-        throw sizeErr;
-      } finally {
-        if (original !== undefined) {
-          try {
-            await this.client.cd(original);
-          } catch {
-            // best-effort restore of the working directory
+        size = await this.client.size(path);
+      } catch (sizeErr) {
+        // size() throws on directories, but also on missing files. Verify it's a
+        // real directory with a CWD round-trip instead of LIST: some device FTP
+        // daemons (e.g. certain 3DS/Switch ftpd builds) answer an empty, OK LIST
+        // for a NON-existent path, which would let stat() succeed on a missing
+        // scan root and wrongly allow stale-link cleanup. CWD reliably 550s on a
+        // bad path even there. Restore the working directory afterwards.
+        let original: string | undefined;
+        try {
+          original = await this.client.pwd();
+          await this.client.cd(path);
+          isDirectory = true;
+        } catch {
+          // Neither a file nor a directory — re-throw original error
+          throw sizeErr;
+        } finally {
+          if (original !== undefined) {
+            try {
+              await this.client.cd(original);
+            } catch {
+              // best-effort restore of the working directory
+            }
           }
         }
       }
-    }
-    let modifiedAt: string | undefined;
-    if (!isDirectory) {
-      try {
-        const lastMod = await this.client.lastMod(path);
-        modifiedAt = lastMod.toISOString();
-      } catch {
-        // lastMod not supported by all FTP servers
+      let modifiedAt: string | undefined;
+      if (!isDirectory) {
+        try {
+          const lastMod = await this.client.lastMod(path);
+          modifiedAt = lastMod.toISOString();
+        } catch {
+          // lastMod not supported by all FTP servers
+        }
       }
-    }
-    return { size, modifiedAt, isDirectory };
+      return { size, modifiedAt, isDirectory };
+    });
   }
 
   disconnect(): void {
@@ -564,6 +600,8 @@ class FtpConnection implements DeviceConnection {
 // ---------------------------------------------------------------------------
 
 class LocalConnection implements DeviceConnection {
+  readonly fileIo: FileIo = new LocalFileIo();
+  async lstat(path: string): Promise<FileEntryStat> { return this.fileIo.lstat(path); }
   async listDir(path: string, options?: { requireComplete?: boolean }): Promise<DirEntry[]> {
     const fs = await import("fs/promises");
     const safePath = await resolveLocalPath(path);
@@ -685,9 +723,11 @@ class LocalConnection implements DeviceConnection {
 
   async stat(path: string): Promise<FileStat> {
     const fs = await import("fs/promises");
-    const stats = await fs.stat(await resolveLocalPath(path));
+    const stats = await fs.stat(await resolveLocalPath(path), { bigint: true });
+    const size = Number(stats.size);
+    if (!Number.isSafeInteger(size)) throw new Error("Local file size exceeds the safe integer limit");
     return {
-      size: stats.size,
+      size,
       modifiedAt: stats.mtime.toISOString(),
       isDirectory: stats.isDirectory(),
     };

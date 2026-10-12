@@ -9,6 +9,14 @@ beforeAll(async () => { fixture = await createTestDatabase(); second = new Prism
 afterAll(async () => { await second.$disconnect(); await fixture.cleanup(); });
 
 describe("atomic SQLite admission", () => {
+  it("coordinates the bounded LAN discovery job through the same durable store", async () => {
+    const a = new AdmissionStore(fixture.client, () => 5000);
+    const b = new AdmissionStore(second, () => 5000);
+    const lease = await a.acquire("lan-discovery");
+    await expect(b.acquire("lan-discovery")).rejects.toMatchObject({ status: 409 });
+    await lease.release();
+    await (await b.acquire("lan-discovery")).release();
+  });
   it("has one winner across actual clients and preserves owner checks", async () => {
     const a = new AdmissionStore(fixture.client, () => 10000);
     const b = new AdmissionStore(second, () => 10000);

@@ -77,7 +77,7 @@ export default function UploadPreview({
         onClick={() => onConfirm(games.map((g) => g.id))}
         className="w-full rounded-lg bg-vault-amber py-3 font-heading font-semibold text-black transition-colors hover:bg-vault-amber-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Upload to Steam Deck ({formatSize(totalSize)})
+        Upload selected games ({formatSize(totalSize)})
       </button>
     </div>
   );

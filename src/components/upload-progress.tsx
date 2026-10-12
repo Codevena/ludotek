@@ -12,6 +12,7 @@ export interface GameProgress {
   transferSpeed?: string; // e.g. "12.5 MB/s"
   error?: string;
   dbId?: number;
+  planId?: string;
   coverUrl?: string | null;
   enrichmentStatus?: "skipped" | "error";
   enrichmentWarning?: string;
@@ -178,6 +179,9 @@ export default function UploadProgress({
             {game.error && (
               <p className="mt-2 text-sm text-red-400">{game.error}</p>
             )}
+            {game.planId && <Link className="inline-block mt-2 text-sm text-vault-amber underline" href={`/files?plan=${encodeURIComponent(game.planId)}`}>
+              {game.status === "done" ? "Dateiplan und Rücknahme prüfen" : "Dateiplan und Wiederherstellung prüfen"}
+            </Link>}
           </div>
         ))}
       </div>

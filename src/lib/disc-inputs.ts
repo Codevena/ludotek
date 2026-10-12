@@ -28,6 +28,7 @@ export function validateUploadBody(body: unknown, processing: boolean): {
 } {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new UploadInputError("Invalid JSON body");
   const input = body as Record<string, unknown>;
+  if (Object.keys(input).some((key) => !["sessionId", "platform", "gameIds", "deviceId"].includes(key))) throw new UploadInputError("Unexpected upload input field");
   assertUploadPlatform(input.platform);
   assertUploadFilename(input.sessionId);
   if (processing && (!Array.isArray(input.gameIds) || input.gameIds.length === 0 ||
@@ -45,13 +46,14 @@ function within(root: string, filename: string): boolean {
   return relative !== "" && !relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative);
 }
 
-async function readDescriptor(filename: string): Promise<string> {
+async function readDescriptor(filename: string, signal?: AbortSignal): Promise<string> {
   const handle = await open(filename, "r");
   try {
     // The probe byte detects overflow even when size metadata is stale.
     const buffer = Buffer.alloc(MAX_DESCRIPTOR_BYTES + 1);
     let offset = 0;
     while (offset < buffer.length) {
+      signal?.throwIfAborted();
       const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
       if (bytesRead === 0) break;
       offset += bytesRead;
@@ -151,9 +153,10 @@ function parseReferences(contents: string, extension: string): string[] {
 }
 
 /** Detect and Process must use the same canonical paths and descriptor ownership. */
-export async function loadUploadSession(sessionId: string, platform: string) {
+export async function loadUploadSession(sessionId: string, platform: string, options: { signal?: AbortSignal } = {}) {
   assertUploadPlatform(platform);
   assertUploadFilename(sessionId);
+  options.signal?.throwIfAborted();
   let sessionDir: string;
   try {
     const base = await realpath(UPLOAD_BASE);
@@ -165,11 +168,16 @@ export async function loadUploadSession(sessionId: string, platform: string) {
   }
   const files: UploadedFile[] = [];
   const seenPaths = new Set<string>();
+  let entries = 0; let totalBytes = 0;
   for (const relative of await readdir(sessionDir, { recursive: true })) {
+    options.signal?.throwIfAborted();
+    if (++entries > 1000) throw new UploadInputError("Upload session exceeds its entry limit", 413);
+    if (relative.split(path.sep).some((part) => part.startsWith(".ludotek-"))) continue;
     const filename = await realpath(path.join(sessionDir, relative));
     if (!within(sessionDir, filename)) throw new UploadInputError("File escapes upload session");
     const info = await stat(filename);
     if (!info.isFile() || seenPaths.has(filename)) continue;
+    if (!Number.isSafeInteger(info.size) || info.size < 0 || info.size > 16 * 1024 ** 3 || (totalBytes += info.size) > 32 * 1024 ** 3 || files.length >= 100) throw new UploadInputError("Upload session exceeds its byte/file limit", 413);
     // Converter dispatches by its actual input path, not a symlink alias.
     const name = path.basename(filename);
     assertUploadFilename(name);
@@ -181,10 +189,11 @@ export async function loadUploadSession(sessionId: string, platform: string) {
   const descriptorInputs = new Map<string, string[]>();
   const referenced = new Set<string>();
   for (const descriptor of files) {
+    options.signal?.throwIfAborted();
     const extension = path.extname(descriptor.name).toLowerCase();
     if (extension !== ".cue" && extension !== ".gdi") continue;
     const inputs: string[] = [];
-    for (const reference of parseReferences(await readDescriptor(descriptor.path), extension)) {
+    for (const reference of parseReferences(await readDescriptor(descriptor.path, options.signal), extension)) {
       if (!reference || /[\\\x00-\x1f\x7f]/.test(reference) || path.isAbsolute(reference) || path.win32.isAbsolute(reference)) {
         throw new UploadInputError("Invalid disc reference");
       }

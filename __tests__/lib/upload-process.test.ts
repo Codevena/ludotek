@@ -5,24 +5,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { detectGames } from "@/lib/upload-detector";
 
 const deps = vi.hoisted(() => ({
-  settings: vi.fn(), device: vi.fn(), convert: vi.fn(), transfer: vi.fn(), playlist: vi.fn(),
+  settings: vi.fn(), device: vi.fn(), convert: vi.fn(), transfer: vi.fn(), playlist: vi.fn(), createPlan: vi.fn(),
   gameUpsert: vi.fn(), gameDeviceUpsert: vi.fn(), platformUpsert: vi.fn(), count: vi.fn(),
   readdir: vi.fn(), stat: vi.fn(), realpath: vi.fn(), open: vi.fn(),
+  sources: new Map<string, { id: string; path: string; filename: string; platform: string; size: bigint }>(), plans: new Map<string, { operations: Record<string, unknown>[]; platform: string }>(),
 }));
 vi.mock("@/lib/auth", () => ({ requireAuth: () => null }));
-vi.mock("@/lib/encryption", () => ({ getDecryptedSettings: deps.settings, getDecryptedDevice: deps.device }));
+vi.mock("@/lib/encryption", () => ({ decrypt: (value: string) => value }));
 vi.mock("@/lib/converter", () => ({ convert: deps.convert }));
-vi.mock("@/lib/uploader", async (original) => ({
-  ...await original<typeof import("@/lib/uploader")>(), transferFiles: deps.transfer, transferM3u: deps.playlist,
+vi.mock("@/lib/device-jobs", () => ({ acquireDeviceFiles: async (_ids: number[], request: Request) => ({ signal: request.signal, assertActive: async () => request.signal.throwIfAborted(), assertOwned: async () => {}, close: async () => {} }), assertDeviceJobsOwned: async () => {} }));
+vi.mock("@/lib/connection", () => ({ createConnection: async () => ({
+  fileIo: { capabilities: async () => Object.fromEntries(["readStream", "exclusiveTemp", "publishNoReplace", "renameNoReplace", "fileFlush", "directoryFlush", "freeBytes"].map((key) => [key, { state: "supported" }])), lstat: async (name: string) => { if (/\/roms\/[a-z0-9-]+$/.test(name)) return { type: "directory" }; throw Object.assign(new Error("absent"), { code: "ENOENT" }); }, freeBytes: async () => ({ state: "known", bytes: BigInt(128 * 1024 ** 3) }) }, disconnect: () => {},
+}), requireFileIo: (connection: { fileIo: unknown }) => connection.fileIo }));
+const fakeDb = vi.hoisted(() => ({
+  settings: { findUnique: deps.settings }, device: { findUnique: deps.device },
+  deviceProfile: { findUnique: async () => ({ template: "custom", romRoots: JSON.stringify([{ path: "/fixture/roms" }]), saveRoots: "[]", formats: "[]", reserveBytes: BigInt(0), updatedAt: new Date(0) }) },
+  uploadFileSource: { create: async ({ data }: { data: { path: string; filename: string; platform: string; size: bigint } }) => { const source = { ...data, id: crypto.randomUUID() }; deps.sources.set(source.id, source); return source; }, updateMany: async () => ({ count: 1 }), count: async () => 0 },
+  game: { upsert: deps.gameUpsert, count: deps.count }, gameDevice: { upsert: deps.gameDeviceUpsert }, platform: { upsert: deps.platformUpsert },
+  filePlan: { findUnique: async () => ({ status: "applied" }) },
+  deviceFile: { findMany: async ({ where }: { where: { deviceId: number; path: { in: string[] } } }) => where.path.in.map((filename) => ({ path: filename, deviceId: where.deviceId, kind: "file", platform: filename.split("/")[3] })), updateMany: async () => ({ count: 1 }) },
 }));
-vi.mock("@/lib/prisma", () => ({ prisma: {
-  game: { upsert: deps.gameUpsert, count: deps.count },
-  gameDevice: { upsert: deps.gameDeviceUpsert }, platform: { upsert: deps.platformUpsert },
-} }));
-vi.mock("fs/promises", async (original) => {
-  const actual = await original<typeof import("fs/promises")>();
-  return { ...actual, readdir: deps.readdir, stat: deps.stat, realpath: deps.realpath, open: deps.open };
-});
+vi.mock("@/lib/prisma", () => ({ prisma: { ...fakeDb, $transaction: async (work: (db: typeof fakeDb) => Promise<unknown>) => work(fakeDb) } }));
+vi.mock("@/lib/file-plans", () => ({
+  createUploadFilePlan: deps.createPlan, applyFilePlan: deps.transfer,
+  getFilePlanFingerprints: async () => [], getUploadSourceReleaseProof: async () => ({ releasable: true, sourceIds: [] }),
+}));
+vi.mock("fs/promises", async (original) => { const actual = await original<typeof import("fs/promises")>(); return { ...actual, readdir: deps.readdir, stat: deps.stat, realpath: deps.realpath, open: deps.open }; });
 
 import { POST as processUpload } from "@/app/api/upload/process/route";
 import { POST as detectUpload } from "@/app/api/upload/detect/route";
@@ -30,7 +38,7 @@ import { POST as detectUpload } from "@/app/api/upload/detect/route";
 const roots: string[] = [];
 let sessionDir: string;
 beforeEach(async () => {
-  vi.clearAllMocks();
+  vi.clearAllMocks(); deps.sources.clear(); deps.plans.clear();
   vi.spyOn(console, "error").mockImplementation(() => {});
   const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
   deps.readdir.mockImplementation(actual.readdir);
@@ -38,10 +46,18 @@ beforeEach(async () => {
   deps.realpath.mockImplementation(actual.realpath);
   deps.open.mockImplementation(actual.open);
   deps.settings.mockResolvedValue({ activeDeviceId: 1 });
-  deps.device.mockResolvedValue({ id: 1, protocol: "ssh", host: "test.invalid", port: 22, user: "test", password: "toy" });
+  deps.device.mockResolvedValue({ id: 1, protocol: "ssh", host: "test.invalid", port: 22, user: "test", password: "toy", scanPaths: JSON.stringify([{ path: "/fixture/roms", type: "rom" }]) });
   deps.convert.mockImplementation(async ({ outputPath }: { outputPath: string }) => { await writeFile(outputPath, "converted toy"); });
-  deps.transfer.mockImplementation(async (_host: string, _user: string, _password: string, jobs: { localPath: string }[]) => {
-    for (const job of jobs) expect((await actual.stat(job.localPath)).isFile()).toBe(true);
+  deps.createPlan.mockImplementation(async (input: { targetDeviceId: number; sources: { sourceId: string; targetPath: string }[] }) => {
+    const id = crypto.randomUUID(); const operations = input.sources.map((source, ordinal) => ({ id: String(ordinal), sourceUploadId: source.sourceId, sourcePath: deps.sources.get(source.sourceId)!.path, targetPath: source.targetPath, targetDeviceId: input.targetDeviceId, kind: "copy", bytes: Number(deps.sources.get(source.sourceId)!.size) }));
+    const plan = { id, status: "ready", kind: "upload", totalBytes: String(operations.reduce((sum, operation) => sum + operation.bytes, 0)), operations }; deps.plans.set(id, { operations, platform: "" }); return plan;
+  });
+  deps.transfer.mockImplementation(async (id: string) => {
+    const plan = deps.plans.get(id)!;
+    for (const operation of plan.operations) expect((await actual.stat(operation.sourcePath as string)).isFile()).toBe(true);
+    const playlist = plan.operations.find((operation) => String(operation.targetPath).endsWith(".m3u"));
+    if (playlist) await deps.playlist(path.basename(playlist.targetPath as string), await actual.readFile(playlist.sourcePath as string, "utf8"));
+    return { id, status: "applied", kind: "upload", totalBytes: "0", operations: plan.operations };
   });
   deps.playlist.mockResolvedValue(undefined);
   deps.gameUpsert.mockResolvedValue({ id: 10 });
@@ -80,7 +96,7 @@ async function run(platform = "psx", selected?: string[]) {
   return { games, response, events };
 }
 function transferredNames() {
-  return deps.transfer.mock.calls.flatMap((call) => call[3].map((job: { remotePath: string }) => path.basename(job.remotePath)));
+  return deps.transfer.mock.calls.flatMap((call) => deps.plans.get(call[0])!.operations.map((operation) => path.basename(operation.targetPath as string)));
 }
 function expectNoWork() {
   for (const fn of [deps.settings, deps.device, deps.readdir, deps.stat, deps.realpath, deps.open, deps.convert, deps.transfer, deps.gameUpsert, deps.gameDeviceUpsert]) expect(fn).not.toHaveBeenCalled();
@@ -202,9 +218,9 @@ describe("upload conversion and transfer", () => {
     await files({ "Game (Disc 1).iso": "toy", "Game (Disc 2).iso": "toy" });
     deps.playlist.mockImplementation(async () => { expect(deps.gameUpsert).not.toHaveBeenCalled(); });
     const { events } = await run();
-    expect(transferredNames()).toEqual(["Game (Disc 1).chd", "Game (Disc 2).chd"]);
-    expect(deps.playlist.mock.calls[0][3]).toBe("Game.m3u");
-    expect(deps.playlist.mock.calls[0][4]).toBe("/home/deck/EmuVirtual/Emulation/roms/psx-multidisc/Game (Disc 1).chd\n/home/deck/EmuVirtual/Emulation/roms/psx-multidisc/Game (Disc 2).chd\n");
+    expect(transferredNames()).toEqual(["Game (Disc 1).chd", "Game (Disc 2).chd", "Game.m3u"]);
+    expect(deps.playlist.mock.calls[0][0]).toBe("Game.m3u");
+    expect(deps.playlist.mock.calls[0][1]).toBe("Game (Disc 1).chd\nGame (Disc 2).chd\n");
     expect(deps.gameUpsert.mock.calls[0][0].create.originalFile).toBe("Game.m3u");
     expect(events).toContainEqual(expect.objectContaining({ type: "done", succeeded: 1, failed: 0 }));
   });

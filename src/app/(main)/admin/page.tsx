@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/breadcrumbs";
-import { DeviceForm } from "@/components/device-form";
+import { DeviceForm, type DeviceFormData } from "@/components/device-form";
+import { LanDiscovery } from "@/components/lan-discovery";
 import { CacheManager } from "@/components/cache-manager";
 import { useEnrichment } from "@/context/enrichment-context";
 import { useScan } from "@/context/scan-context";
@@ -49,6 +50,8 @@ export default function AdminPage() {
   const [tokenInput, setTokenInput] = useState("");
   const [devices, setDevices] = useState<Array<{ id: number; name: string; type: string; host: string; port: number; user: string; protocol: string; ftps?: boolean }>>([]);
   const [showDeviceForm, setShowDeviceForm] = useState(false);
+  const [devicePrefill, setDevicePrefill] = useState<Partial<DeviceFormData>>();
+  const [deviceFormVersion, setDeviceFormVersion] = useState(0);
   const [editingDeviceId, setEditingDeviceId] = useState<number | null>(null);
   const [authError, setAuthError] = useState("");
   const [deviceLinkCount, setDeviceLinkCount] = useState<number | null>(null);
@@ -438,6 +441,12 @@ export default function AdminPage() {
 
         <div className="space-y-4">
           <h3 className="text-vault-amber text-sm font-semibold uppercase tracking-wide">Devices</h3>
+          <LanDiscovery onSelect={(selection) => {
+            setDevicePrefill({ ...selection, name: "Gefundenes Gerät", user: "", password: "", ftps: false });
+            setDeviceFormVersion((version) => version + 1);
+            setEditingDeviceId(null);
+            setShowDeviceForm(true);
+          }} />
           {devices.length > 0 && (
             <div className="space-y-2">
               {devices.map((device) => (
@@ -507,13 +516,20 @@ export default function AdminPage() {
           {showDeviceForm ? (
             <div className="border border-vault-border rounded-xl p-4 bg-vault-bg">
               <DeviceForm
+                key={deviceFormVersion}
+                initial={devicePrefill}
                 onSubmit={async (data) => {
-                  await fetch("/api/devices", {
+                  const response = await fetch("/api/devices", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(data),
                   });
+                  if (!response.ok) {
+                    const failure = await response.json();
+                    throw new Error(failure.error || "Device could not be added");
+                  }
                   setShowDeviceForm(false);
+                  setDevicePrefill(undefined);
                   loadDevices();
                 }}
                 onCancel={() => setShowDeviceForm(false)}
@@ -523,6 +539,8 @@ export default function AdminPage() {
           ) : (
             <button
               onClick={() => {
+                setDevicePrefill(undefined);
+                setDeviceFormVersion((version) => version + 1);
                 setShowDeviceForm(true);
                 setEditingDeviceId(null);
               }}

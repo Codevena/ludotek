@@ -1,65 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { createConnection } from "@/lib/connection";
-import type { ConnectionConfig } from "@/lib/connection";
-import { validateRemotePath, loadDevice } from "@/lib/path-validation";
+import { createFilePlan } from "@/lib/file-plans";
+import { readBoundedJson } from "@/lib/request-body";
+import { filePlanFailure } from "@/lib/file-plan-api";
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const authError = requireAuth(request);
-  if (authError) return authError;
-
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = requireAuth(request); if (denied) return denied;
   const { id } = await params;
-  const result = await loadDevice(id);
-  if (result.error) return result.error;
-  const { device } = result;
-
-  const body = await request.json().catch(() => null);
-  if (!body?.paths || !Array.isArray(body.paths) || body.paths.length === 0) {
-    return NextResponse.json(
-      { error: "paths array is required" },
-      { status: 400 },
-    );
-  }
-
-  for (const p of body.paths) {
-    const pathError = validateRemotePath(p);
-    if (pathError) return pathError;
-  }
-
-  let conn;
+  if (!/^[1-9]\d{0,9}$/.test(id)) return Response.json({ error: "Invalid device ID" }, { status: 400 });
   try {
-    conn = await createConnection({
-      protocol: device.protocol,
-      host: device.host,
-      port: device.port,
-      user: device.user,
-      password: device.password,
-      ftps: device.ftps,
-    } as ConnectionConfig);
-
-    const errors: string[] = [];
-    for (const p of body.paths) {
-      try {
-        await conn.remove(p);
-      } catch (err) {
-        errors.push(
-          `${p}: ${err instanceof Error ? err.message : "delete failed"}`,
-        );
-      }
-    }
-
-    if (errors.length > 0) {
-      return NextResponse.json({ ok: false, errors }, { status: 207 });
-    }
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    console.error("delete failed:", error);
-    const message = error instanceof Error ? error.message : "delete failed";
-    return NextResponse.json({ error: message }, { status: 502 });
-  } finally {
-    conn?.disconnect();
-  }
+    const body = await readBoundedJson(request) as { paths?: unknown };
+    if (!Array.isArray(body?.paths) || body.paths.length < 1 || body.paths.length > 100 || body.paths.some((path) => typeof path !== "string")) return Response.json({ error: "1–100 file paths are required" }, { status: 400 });
+    const plan = await createFilePlan({ kind: "delete", operations: body.paths.map((filePath) => ({ deviceId: Number(id), filePath })) }, request);
+    return Response.json({ plan, planId: plan.id, preview: true }, { status: 201 });
+  } catch (error) { return filePlanFailure(error); }
 }

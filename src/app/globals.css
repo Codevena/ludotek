@@ -38,6 +38,14 @@
 }
 
 @layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-vault-amber px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-vault-amber-hover disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vault-amber;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-vault-border bg-vault-surface px-4 py-2 text-sm font-medium text-vault-text transition-colors hover:border-vault-muted disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-vault-amber;
+  }
+
   .card {
     @apply bg-vault-surface rounded-xl border border-vault-border p-4 transition-all duration-200;
   }
